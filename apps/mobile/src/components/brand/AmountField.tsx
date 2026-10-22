@@ -27,13 +27,13 @@ export function AmountField({ rule, value, onChange }: AmountFieldProps) {
   const wrong = check === "low" || check === "high";
 
   return (
-    <View style={{ gap: 10 }}>
+    <View style={{ gap: 8 }}>
       <View
         style={{
-          height: 50,
+          height: 52,
           flexDirection: "row",
           alignItems: "center",
-          paddingHorizontal: 14,
+          paddingHorizontal: 16,
           borderRadius: radius.control,
           borderWidth: 1,
           borderColor: wrong ? c.danger : c.border,

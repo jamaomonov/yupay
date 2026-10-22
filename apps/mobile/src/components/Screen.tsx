@@ -26,7 +26,7 @@ export function Screen({ children, title, header }: ScreenProps) {
     >
       {header}
       {title !== undefined && (
-        <View style={{ height: 48, justifyContent: "center", marginBottom: 6 }}>
+        <View style={{ height: 48, justifyContent: "center", marginBottom: 8 }}>
           <T variant="display">{title}</T>
         </View>
       )}

@@ -59,7 +59,7 @@ export default function PromoScreen() {
         placeholder={t("promo.placeholder")}
       />
       {result !== null && (
-        <Card style={{ padding: 14 }}>
+        <Card style={{ padding: 16 }}>
           <T tone={result.ok ? "ok" : "danger"}>{result.text}</T>
         </Card>
       )}

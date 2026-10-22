@@ -1,20 +1,19 @@
 import { router } from "expo-router";
-import { ActivityIndicator, Pressable, View } from "react-native";
+import { Pressable, View } from "react-native";
 
-import { BrandGrid } from "@/components/BrandGrid";
+import { BrandGrid, BrandGridSkeleton } from "@/components/BrandGrid";
 import { HomeHeader } from "@/components/HomeHeader";
 import { Screen } from "@/components/Screen";
 import { Button, Notice, T } from "@/components/ui";
 import { useBrands } from "@/lib/api";
 import { sellable } from "@/lib/catalog";
 import { useI18n } from "@/lib/i18n";
-import { useTheme } from "@/theme/ThemeProvider";
+import { TOUCH } from "@/theme/tokens";
 
 const POPULAR = 9;
 
 export default function HomeScreen() {
   const { t, locale } = useI18n();
-  const { c } = useTheme();
   const brands = useBrands(locale);
 
   const openCatalog = () => router.navigate("/catalog");
@@ -25,21 +24,25 @@ export default function HomeScreen() {
         style={{
           flexDirection: "row",
           justifyContent: "space-between",
-          alignItems: "baseline",
+          alignItems: "center",
           marginTop: 8,
-          marginBottom: 12,
+          marginBottom: 8,
         }}
       >
-        <T variant="h2">{t("home.popular")}</T>
-        <Pressable onPress={openCatalog} hitSlop={10}>
-          <T variant="label" tone="accent">
+        <T variant="title">{t("home.popular")}</T>
+        <Pressable
+          accessibilityRole="link"
+          onPress={openCatalog}
+          style={{ minHeight: TOUCH, paddingLeft: 16, justifyContent: "center" }}
+        >
+          <T variant="h2" tone="accent">
             {t("home.all")}
           </T>
         </Pressable>
       </View>
 
       {brands.isPending ? (
-        <ActivityIndicator color={c.mute} style={{ marginTop: 40 }} />
+        <BrandGridSkeleton />
       ) : brands.isError ? (
         <Notice
           text={t("common.loadError")}

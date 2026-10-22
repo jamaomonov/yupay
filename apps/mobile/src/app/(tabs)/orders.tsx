@@ -1,35 +1,42 @@
 import type { BrandOut, OrderOut } from "@yupay/api-client/types";
 import { Image } from "expo-image";
 import { router } from "expo-router";
-import { ChevronRight, ReceiptText } from "lucide-react-native";
-import { ActivityIndicator, Pressable, View } from "react-native";
+import { ChevronRight, ReceiptText, Wallet } from "lucide-react-native";
+import { Pressable, View } from "react-native";
 
 import { Screen } from "@/components/Screen";
-import { Button, Card, Notice, T } from "@/components/ui";
+import { Badge, Button, Card, Notice, Skeleton, T } from "@/components/ui";
 import { useBrands } from "@/lib/api";
 import { itemLabel, orderImage } from "@/lib/catalog";
-import { stageOf } from "@/lib/checkout";
+import { stageOf, stageTone } from "@/lib/checkout";
 import { useI18n } from "@/lib/i18n";
 import { useAccountOrders } from "@/lib/orders";
 import { useTheme } from "@/theme/ThemeProvider";
 
 interface Row {
   id: string;
-  title: string;
+  /** `null` for a balance top-up: the screen names it. */
+  title: string | null;
+  topUp: boolean;
   at: string;
-  status: string | undefined;
+  status: string;
   image: string | null;
 }
 
 function fromOrder(order: OrderOut, brands: readonly BrandOut[] | undefined): Row {
   const display = order.items[0]?.display;
-  const label = itemLabel(order.items[0]);
+  const topUp = order.purpose === "wallet_topup";
   return {
     id: order.id,
-    title: display ? `${display.brand_name} · ${label}` : `#${order.id.slice(0, 8)}`,
+    title: topUp
+      ? null
+      : display
+        ? `${display.brand_name} · ${itemLabel(order.items[0])}`
+        : `#${order.id.slice(0, 8)}`,
+    topUp,
     at: order.created_at,
     status: order.status,
-    image: orderImage(display, brands),
+    image: topUp ? null : orderImage(display, brands),
   };
 }
 
@@ -52,7 +59,7 @@ function OrderList({ rows }: { rows: Row[] }) {
             flexDirection: "row",
             alignItems: "center",
             gap: 12,
-            padding: 14,
+            padding: 16,
             borderTopWidth: index === 0 ? 0 : 1,
             borderTopColor: c.border,
             opacity: pressed ? 0.7 : 1,
@@ -76,19 +83,44 @@ function OrderList({ rows }: { rows: Row[] }) {
                 contentFit="cover"
                 transition={150}
               />
+            ) : row.topUp ? (
+              <Wallet size={20} color={c.mute} strokeWidth={1.8} />
             ) : (
-              <ReceiptText size={20} color={c.dim} strokeWidth={1.8} />
+              <ReceiptText size={20} color={c.mute} strokeWidth={1.8} />
             )}
           </View>
-          <View style={{ flex: 1, gap: 3 }}>
-            <T numberOfLines={1}>{row.title}</T>
-            <T variant="small" tone="mute">
-              {date.format(new Date(row.at))}
-              {row.status !== undefined ? ` · ${t(`order.${stageOf(row.status)}`)}` : ""}
+          <View style={{ flex: 1, gap: 8 }}>
+            <T variant="h2" numberOfLines={1}>
+              {row.title ?? t("orders.topUp")}
             </T>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+              <Badge
+                label={t(`order.${stageOf(row.status)}`)}
+                tone={stageTone(stageOf(row.status))}
+              />
+              <T variant="small" tone="mute">
+                {date.format(new Date(row.at))}
+              </T>
+            </View>
           </View>
           <ChevronRight size={18} color={c.dim} />
         </Pressable>
+      ))}
+    </Card>
+  );
+}
+
+function Loading() {
+  return (
+    <Card>
+      {[0, 1, 2, 3].map((n) => (
+        <View key={n} style={{ flexDirection: "row", gap: 12, padding: 16, alignItems: "center" }}>
+          <Skeleton style={{ width: 44, height: 44, borderRadius: 12 }} />
+          <View style={{ flex: 1, gap: 8 }}>
+            <Skeleton style={{ width: "70%", height: 14 }} />
+            <Skeleton style={{ width: "45%", height: 12 }} />
+          </View>
+        </View>
       ))}
     </Card>
   );
@@ -98,7 +130,7 @@ function Empty() {
   const { t } = useI18n();
   const { c } = useTheme();
   return (
-    <Card style={{ padding: 24, alignItems: "center", gap: 10, marginTop: 8 }}>
+    <Card style={{ padding: 24, alignItems: "center", gap: 12, marginTop: 8 }}>
       <View
         style={{
           width: 56,
@@ -114,6 +146,9 @@ function Empty() {
       <T variant="h2" style={{ textAlign: "center" }}>
         {t("orders.empty")}
       </T>
+      <View style={{ alignSelf: "stretch", marginTop: 4 }}>
+        <Button label={t("common.toCatalog")} onPress={() => router.navigate("/catalog")} />
+      </View>
     </Card>
   );
 }
@@ -121,7 +156,6 @@ function Empty() {
 /** The account's orders: from the website, the mini app and this app alike. */
 export default function OrdersScreen() {
   const { t, locale } = useI18n();
-  const { c } = useTheme();
   const orders = useAccountOrders();
   const brands = useBrands(locale);
   const rows = (orders.data?.items ?? []).map((order) => fromOrder(order, brands.data?.items));
@@ -129,7 +163,7 @@ export default function OrdersScreen() {
   return (
     <Screen title={t("orders.title")}>
       {orders.isPending ? (
-        <ActivityIndicator color={c.mute} style={{ marginTop: 40 }} />
+        <Loading />
       ) : orders.isError ? (
         <Notice
           text={t("common.loadError")}

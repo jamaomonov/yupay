@@ -13,7 +13,7 @@ import { useI18n } from "@/lib/i18n";
 import { register, SocialSignInError, useSession } from "@/lib/session";
 import type { Provider } from "@/lib/social-state";
 import { useTheme } from "@/theme/ThemeProvider";
-import { space } from "@/theme/tokens";
+import { fonts, space, TOUCH } from "@/theme/tokens";
 
 const WEB_URL = process.env.EXPO_PUBLIC_WEB_URL ?? "https://yupay.uz";
 const MIN_PASSWORD = 8;
@@ -108,9 +108,9 @@ export default function SignInScreen() {
       }}
       keyboardShouldPersistTaps="handled"
     >
-      <View style={{ paddingTop: 28, paddingBottom: 8, gap: 18 }}>
+      <View style={{ paddingTop: 28, paddingBottom: 8, gap: 16 }}>
         <Logo />
-        <View style={{ gap: 6 }}>
+        <View style={{ gap: 8 }}>
           <T variant="display">{mode === "signIn" ? t("auth.title") : t("auth.registerTitle")}</T>
           <T tone="mute">{t("auth.lead")}</T>
         </View>
@@ -129,9 +129,9 @@ export default function SignInScreen() {
             busy={social}
             onPress={(provider) => void withProvider(provider)}
           />
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginVertical: 2 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginVertical: 4 }}>
             <View style={{ flex: 1, height: 1, backgroundColor: c.border }} />
-            <T variant="small" tone="dim">
+            <T variant="small" tone="mute">
               {t("auth.or")}
             </T>
             <View style={{ flex: 1, height: 1, backgroundColor: c.border }} />
@@ -169,16 +169,28 @@ export default function SignInScreen() {
         onPress={() => void submit()}
       />
 
-      <View style={{ alignItems: "center", gap: 14, marginTop: 4 }}>
+      <View style={{ alignItems: "center", gap: 4 }}>
         {mode === "signIn" && (
-          <Pressable onPress={forgot} hitSlop={8}>
-            <T tone="accent">{t("auth.forgot")}</T>
+          <Pressable
+            accessibilityRole="link"
+            onPress={forgot}
+            style={{ minHeight: TOUCH, justifyContent: "center", paddingHorizontal: 16 }}
+          >
+            <T tone="accent" style={{ fontFamily: fonts.semibold }}>
+              {t("auth.forgot")}
+            </T>
           </Pressable>
         )}
-        <Pressable onPress={switchMode} hitSlop={8}>
+        <Pressable
+          accessibilityRole="button"
+          onPress={switchMode}
+          style={{ minHeight: TOUCH, justifyContent: "center", paddingHorizontal: 16 }}
+        >
           <T tone="mute">
             {mode === "signIn" ? t("auth.noAccount") : t("auth.haveAccount")}{" "}
-            <T tone="accent">{mode === "signIn" ? t("auth.register") : t("auth.signIn")}</T>
+            <T tone="accent" style={{ fontFamily: fonts.semibold }}>
+              {mode === "signIn" ? t("auth.register") : t("auth.signIn")}
+            </T>
           </T>
         </Pressable>
       </View>

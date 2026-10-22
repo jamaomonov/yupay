@@ -29,7 +29,7 @@ export function PlayerFields({
   result,
 }: PlayerFieldsProps) {
   return (
-    <View style={{ gap: 14 }}>
+    <View style={{ gap: 16 }}>
       {fields.map((field) => (
         <Field
           key={field.key}
@@ -68,8 +68,12 @@ function Field({ field, value, onChange, onCheck, checking }: FieldProps) {
           {label}
         </T>
         {help !== undefined && (
-          <Pressable onPress={() => setHelpOpen((open) => !open)} hitSlop={8}>
-            <T variant="label" tone="accent">
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => setHelpOpen((open) => !open)}
+            hitSlop={{ top: 14, bottom: 14, left: 12, right: 12 }}
+          >
+            <T variant="label" tone="accent" style={{ fontFamily: fonts.semibold }}>
               {t("brand.whereId")}
             </T>
           </Pressable>
@@ -77,7 +81,7 @@ function Field({ field, value, onChange, onCheck, checking }: FieldProps) {
       </View>
 
       {field.options != null && field.options.length > 0 ? (
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
           {field.options.map((option) => (
             <Chip
               key={option.value}
@@ -90,11 +94,11 @@ function Field({ field, value, onChange, onCheck, checking }: FieldProps) {
       ) : (
         <View
           style={{
-            height: 50,
+            height: 52,
             flexDirection: "row",
             alignItems: "center",
-            gap: 10,
-            paddingLeft: 14,
+            gap: 8,
+            paddingLeft: 16,
             paddingRight: 6,
             borderRadius: radius.control,
             borderWidth: 1,
@@ -114,12 +118,14 @@ function Field({ field, value, onChange, onCheck, checking }: FieldProps) {
           />
           {onCheck !== undefined && (
             <Pressable
+              accessibilityRole="button"
               onPress={onCheck}
               disabled={checking || value.trim() === ""}
+              hitSlop={{ top: 6, bottom: 6, right: 6 }}
               style={({ pressed }) => ({
-                height: 38,
+                height: 40,
                 minWidth: 96,
-                paddingHorizontal: 14,
+                paddingHorizontal: 16,
                 borderRadius: radius.small,
                 backgroundColor: c.muted,
                 alignItems: "center",
@@ -130,7 +136,7 @@ function Field({ field, value, onChange, onCheck, checking }: FieldProps) {
               {checking ? (
                 <ActivityIndicator size="small" color={c.fg} />
               ) : (
-                <T variant="label" style={{ fontFamily: fonts.semibold, fontSize: 13 }}>
+                <T variant="label" style={{ fontFamily: fonts.semibold }}>
                   {t("brand.check")}
                 </T>
               )}
@@ -141,7 +147,7 @@ function Field({ field, value, onChange, onCheck, checking }: FieldProps) {
 
       {helpOpen && help !== undefined && (
         <View style={{ marginTop: 8, padding: 12, borderRadius: 12, backgroundColor: c.muted }}>
-          <T variant="small" tone="mute" style={{ lineHeight: 19 }}>
+          <T variant="small" tone="mute" style={{ lineHeight: 20 }}>
             {help}
           </T>
         </View>
@@ -167,7 +173,7 @@ function CheckResult({ result }: { result: PlayerCheckResult }) {
         flexDirection: "row",
         alignItems: "center",
         gap: 8,
-        paddingVertical: 10,
+        paddingVertical: 12,
         paddingHorizontal: 12,
         borderRadius: 12,
         backgroundColor: look.bg,

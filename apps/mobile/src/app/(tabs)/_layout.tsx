@@ -21,7 +21,7 @@ const LABELS: Record<string, string> = {
   profile: "tabs.profile",
 };
 
-/** Four tabs with a lime dot under the active one (the agreed mockup). */
+/** Four tabs; the active one sits on a lime pill, so it reads at a glance. */
 function TabBar({ state, navigation }: BottomTabBarProps) {
   const { c } = useTheme();
   const { t } = useI18n();
@@ -32,8 +32,8 @@ function TabBar({ state, navigation }: BottomTabBarProps) {
       style={{
         flexDirection: "row",
         justifyContent: "space-around",
-        paddingTop: 9,
-        paddingBottom: Math.max(insets.bottom, 10),
+        paddingTop: 8,
+        paddingBottom: Math.max(insets.bottom, 8),
         backgroundColor: c.card,
         borderTopWidth: 1,
         borderTopColor: c.border,
@@ -42,7 +42,7 @@ function TabBar({ state, navigation }: BottomTabBarProps) {
       {state.routes.map((route, index) => {
         const focused = state.index === index;
         const Icon = ICONS[route.name] ?? House;
-        const color = focused ? c.fg : c.dim;
+        const color = focused ? c.fg : c.mute;
         return (
           <Pressable
             key={route.key}
@@ -51,20 +51,33 @@ function TabBar({ state, navigation }: BottomTabBarProps) {
             onPress={() => {
               if (!focused) navigation.navigate(route.name);
             }}
-            style={{ alignItems: "center", gap: 4, width: 72 }}
+            style={{ alignItems: "center", gap: 4, width: 76, minHeight: 48 }}
           >
-            <Icon size={22} color={color} strokeWidth={1.8} />
-            <Text style={{ fontFamily: fonts.medium, fontSize: 10.5, color }}>
-              {t(LABELS[route.name] ?? route.name)}
-            </Text>
             <View
               style={{
-                width: 4,
-                height: 4,
-                borderRadius: 2,
+                width: 56,
+                height: 30,
+                borderRadius: 15,
+                alignItems: "center",
+                justifyContent: "center",
                 backgroundColor: focused ? c.primary : "transparent",
               }}
-            />
+            >
+              <Icon
+                size={22}
+                color={focused ? c.primaryFg : color}
+                strokeWidth={focused ? 2.2 : 1.8}
+              />
+            </View>
+            <Text
+              style={{
+                fontFamily: focused ? fonts.semibold : fonts.medium,
+                fontSize: 11,
+                color,
+              }}
+            >
+              {t(LABELS[route.name] ?? route.name)}
+            </Text>
           </Pressable>
         );
       })}

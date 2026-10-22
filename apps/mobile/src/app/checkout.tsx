@@ -3,11 +3,12 @@ import { useQueryClient } from "@tanstack/react-query";
 import * as Linking from "expo-linking";
 import { router, useLocalSearchParams } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
+import { Wallet } from "lucide-react-native";
 import { useMemo, useRef, useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { MethodPicker } from "@/components/checkout/MethodPicker";
+import { MethodPicker, MethodRow } from "@/components/checkout/MethodPicker";
 import { TopBar } from "@/components/TopBar";
 import { Button, Card, T } from "@/components/ui";
 import { spendable, useWallet } from "@/lib/account";
@@ -17,7 +18,7 @@ import { useI18n } from "@/lib/i18n";
 import { createIntent, createOrder, newKey, useProviders } from "@/lib/orders";
 import { balanceOption, type BalanceOption } from "@/lib/wallet";
 import { useTheme } from "@/theme/ThemeProvider";
-import { radius, space } from "@/theme/tokens";
+import { fonts, space } from "@/theme/tokens";
 
 type Method = PayMethod | "wallet";
 
@@ -55,10 +56,10 @@ async function openPayment(url: string): Promise<void> {
 }
 
 /**
- * «From balance»: picked when the balance covers the order, otherwise shown with what is
- * missing and a way to top up.
+ * «From balance» as the first method row: picked when the balance covers the order, otherwise
+ * greyed with what is missing and a way to top up.
  */
-function BalanceTile({
+function BalanceRow({
   option,
   balance,
   active,
@@ -73,42 +74,46 @@ function BalanceTile({
   const { c } = useTheme();
   const ready = option.state === "ready";
   return (
-    <Pressable
-      accessibilityRole="radio"
-      accessibilityState={{ selected: active, disabled: !ready }}
+    <MethodRow
+      first
+      mark={
+        <View
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: 10,
+            backgroundColor: c.primary,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Wallet size={20} color={c.primaryFg} strokeWidth={2} />
+        </View>
+      }
+      title={t("checkout.fromBalance")}
+      {...(balance !== null ? { value: `${formatSum(balance)} ${t("common.sum")}` } : {})}
+      hint={
+        option.state === "short" ? (
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <T variant="small" tone="mute">
+              {t("checkout.balanceShort", { sum: formatSum(option.missing) })}
+            </T>
+            <Pressable
+              accessibilityRole="link"
+              hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+              onPress={() => router.push("/topup")}
+            >
+              <T variant="small" tone="accent" style={{ fontFamily: fonts.semibold }}>
+                {t("wallet.topUp")}
+              </T>
+            </Pressable>
+          </View>
+        ) : undefined
+      }
+      active={active}
       disabled={!ready}
       onPress={onSelect}
-      style={{
-        padding: 14,
-        gap: 4,
-        borderRadius: radius.tile,
-        borderWidth: active ? 2 : 1,
-        borderColor: active ? c.selBorder : c.border,
-        backgroundColor: active ? c.selBg : c.card,
-        opacity: ready ? 1 : 0.85,
-      }}
-    >
-      <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
-        <T variant="h2">{t("checkout.fromBalance")}</T>
-        {balance !== null && (
-          <T tone="mute" style={{ fontVariant: ["tabular-nums"] }}>
-            {formatSum(balance)} {t("common.sum")}
-          </T>
-        )}
-      </View>
-      {option.state === "short" && (
-        <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
-          <T variant="small" tone="mute">
-            {t("checkout.balanceShort", { sum: formatSum(option.missing) })}
-          </T>
-          <Pressable hitSlop={8} onPress={() => router.push("/topup")}>
-            <T variant="small" tone="accent">
-              {t("wallet.topUp")}
-            </T>
-          </Pressable>
-        </View>
-      )}
-    </Pressable>
+    />
   );
 }
 
@@ -193,14 +198,14 @@ export default function CheckoutScreen() {
         contentContainerStyle={{
           paddingTop: insets.top + 4,
           paddingHorizontal: space.gutter,
-          paddingBottom: 150,
-          gap: 18,
+          paddingBottom: 180,
+          gap: 24,
         }}
         keyboardShouldPersistTaps="handled"
       >
         <TopBar title={t("checkout.title")} />
 
-        <Card style={{ padding: 16, gap: 10 }}>
+        <Card style={{ padding: 16, gap: 12 }}>
           {rows.map(([name, value]) => (
             <View
               key={name}
@@ -212,44 +217,33 @@ export default function CheckoutScreen() {
               </T>
             </View>
           ))}
-          <View style={{ height: 1, backgroundColor: c.border }} />
-          <View
-            style={{
-              flexDirection: "row",
-              justifyContent: "space-between",
-              alignItems: "baseline",
-            }}
-          >
-            <T tone="mute">{t("checkout.total")}</T>
-            <T variant="h2" style={{ fontSize: 17, fontVariant: ["tabular-nums"] }}>
-              {formatSum(params.price)} {t("common.sum")}
-            </T>
-          </View>
         </Card>
 
         <View>
           <T variant="label" tone="mute" style={{ marginBottom: 8 }}>
             {t("checkout.method")}
           </T>
-          <View style={{ gap: 8 }}>
-            {walletStatus !== "maintenance" && option.state !== "unknown" && (
-              <BalanceTile
-                option={option}
-                balance={balance}
-                active={method === "wallet"}
-                onSelect={() => setPicked("wallet")}
-              />
-            )}
-            {methods.length > 0 ? (
-              <MethodPicker
-                methods={methods}
-                selected={method === "wallet" ? null : method}
-                onSelect={setPicked}
-              />
-            ) : (
-              <T tone="mute">{t("checkout.noMethods")}</T>
-            )}
-          </View>
+          {methods.length > 0 ? (
+            <MethodPicker
+              methods={methods}
+              selected={method === "wallet" ? null : method}
+              onSelect={setPicked}
+              {...(walletStatus !== "maintenance" && option.state !== "unknown"
+                ? {
+                    before: (
+                      <BalanceRow
+                        option={option}
+                        balance={balance}
+                        active={method === "wallet"}
+                        onSelect={() => setPicked("wallet")}
+                      />
+                    ),
+                  }
+                : {})}
+            />
+          ) : (
+            <T tone="mute">{t("checkout.noMethods")}</T>
+          )}
         </View>
 
         {error !== null && <T tone="danger">{error}</T>}
@@ -269,6 +263,20 @@ export default function CheckoutScreen() {
           borderTopColor: c.border,
         }}
       >
+        {/* The total sits on the button's shoulder: the last thing read before paying. */}
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "space-between",
+            alignItems: "baseline",
+            marginBottom: 12,
+          }}
+        >
+          <T tone="mute">{t("checkout.total")}</T>
+          <T variant="amount">
+            {formatSum(params.price)} {t("common.sum")}
+          </T>
+        </View>
         <Button
           label={t("checkout.pay", { sum: formatSum(params.price) })}
           disabled={method === null}

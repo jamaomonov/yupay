@@ -9,7 +9,7 @@ import { formatSum } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 import { useSession } from "@/lib/session";
 import { useTheme } from "@/theme/ThemeProvider";
-import { fonts, radius } from "@/theme/tokens";
+import { fonts, radius, TOUCH } from "@/theme/tokens";
 
 function IconButton({
   Icon,
@@ -27,8 +27,8 @@ function IconButton({
       accessibilityLabel={label}
       onPress={onPress}
       style={({ pressed }) => ({
-        width: 40,
-        height: 40,
+        width: TOUCH,
+        height: TOUCH,
         borderRadius: radius.control,
         backgroundColor: c.muted,
         alignItems: "center",
@@ -53,10 +53,10 @@ export function HomeHeader() {
   return (
     <View
       style={{
-        height: 52,
+        height: 56,
         flexDirection: "row",
         alignItems: "center",
-        gap: 10,
+        gap: 8,
         marginBottom: 8,
       }}
     >
@@ -78,8 +78,8 @@ export function HomeHeader() {
         accessibilityLabel={t("profile.balance")}
         onPress={() => router.push("/wallet")}
         style={({ pressed }) => ({
-          height: 40,
-          paddingHorizontal: 14,
+          height: TOUCH,
+          paddingHorizontal: 16,
           borderRadius: radius.control,
           backgroundColor: c.muted,
           justifyContent: "center",
@@ -97,7 +97,7 @@ export function HomeHeader() {
         hitSlop={6}
         onPress={() => router.navigate("/profile")}
       >
-        <Avatar name={name} photoUrl={user?.photo_url ?? null} size={40} />
+        <Avatar name={name} photoUrl={user?.photo_url ?? null} size={TOUCH} />
       </Pressable>
     </View>
   );

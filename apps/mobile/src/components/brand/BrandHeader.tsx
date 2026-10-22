@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { T } from "@/components/ui";
 import { useTheme } from "@/theme/ThemeProvider";
-import { space } from "@/theme/tokens";
+import { space, TOUCH } from "@/theme/tokens";
 
 const HERO = 170;
 
@@ -34,7 +34,7 @@ export function BrandHeader({ brand }: { brand: BrandDetailOut }) {
           />
         )}
         <LinearGradient
-          colors={["rgba(0,0,0,0.25)", "transparent", c.bg]}
+          colors={["rgba(0,0,0,0.45)", "transparent", c.bg]}
           locations={[0, 0.45, 1]}
           style={{ position: "absolute", inset: 0 }}
         />
@@ -43,28 +43,29 @@ export function BrandHeader({ brand }: { brand: BrandDetailOut }) {
           accessibilityRole="button"
           style={{
             position: "absolute",
-            top: insets.top + 6,
+            top: insets.top + 8,
             left: space.gutter,
-            width: 40,
-            height: 40,
-            borderRadius: 12,
+            width: TOUCH,
+            height: TOUCH,
+            borderRadius: 14,
             alignItems: "center",
             justifyContent: "center",
-            backgroundColor: "rgba(0,0,0,0.35)",
+            // Dark on any cover: a light hero image used to swallow the button.
+            backgroundColor: "rgba(6,7,18,0.6)",
             borderWidth: 1,
-            borderColor: "rgba(255,255,255,0.15)",
+            borderColor: "rgba(255,255,255,0.2)",
           }}
         >
-          <ChevronLeft size={20} color="#FFFFFF" />
+          <ChevronLeft size={22} color="#FFFFFF" />
         </Pressable>
       </View>
 
-      <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 12, marginTop: -30 }}>
+      <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 12, marginTop: -32 }}>
         <View
           style={{
-            width: 58,
-            height: 58,
-            borderRadius: 17,
+            width: 64,
+            height: 64,
+            borderRadius: 18,
             overflow: "hidden",
             borderWidth: 2,
             borderColor: c.bg,
@@ -79,12 +80,12 @@ export function BrandHeader({ brand }: { brand: BrandDetailOut }) {
             />
           )}
         </View>
-        <View style={{ flex: 1, paddingBottom: 2 }}>
+        <View style={{ flex: 1, paddingBottom: 4 }}>
           <T variant="title" numberOfLines={1}>
             {brand.name}
           </T>
           {brand.rating != null && (
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 4 }}>
               <Star size={13} color="#FFB800" fill="#FFB800" />
               <T variant="small" tone="mute">
                 {brand.rating.avg.toFixed(1)} · {brand.rating.count}

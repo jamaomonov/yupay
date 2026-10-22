@@ -25,9 +25,9 @@ export function SearchField({
   const box = {
     flexDirection: "row" as const,
     alignItems: "center" as const,
-    gap: 10,
-    height: 46,
-    paddingHorizontal: 14,
+    gap: 8,
+    height: 52,
+    paddingHorizontal: 16,
     borderRadius: radius.control,
     backgroundColor: c.card,
     borderWidth: 1,
@@ -38,7 +38,7 @@ export function SearchField({
     return (
       <Pressable onPress={onPress} style={box}>
         <Search size={18} color={c.dim} />
-        <T tone="dim">{placeholder}</T>
+        <T tone="mute">{placeholder}</T>
       </Pressable>
     );
   }
@@ -53,7 +53,7 @@ export function SearchField({
         placeholderTextColor={c.dim}
         autoFocus={autoFocus === true}
         autoCorrect={false}
-        style={{ flex: 1, fontFamily: fonts.medium, fontSize: 14, color: c.fg, height: "100%" }}
+        style={{ flex: 1, fontFamily: fonts.medium, fontSize: 15, color: c.fg, height: "100%" }}
       />
     </View>
   );

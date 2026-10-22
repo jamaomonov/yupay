@@ -1,10 +1,10 @@
 import { Image } from "expo-image";
+import type { ReactNode } from "react";
 import { Pressable, View } from "react-native";
 
-import { T } from "@/components/ui";
+import { Card, T } from "@/components/ui";
 import type { PayMethod } from "@/lib/checkout";
 import { useTheme } from "@/theme/ThemeProvider";
-import { radius } from "@/theme/tokens";
 
 const MARKS: Record<PayMethod, { name: string; mark: number }> = {
   payme: { name: "Payme", mark: require("../../../assets/images/payment/payme-mark.png") },
@@ -12,45 +12,105 @@ const MARKS: Record<PayMethod, { name: string; mark: number }> = {
   uzum: { name: "Uzum", mark: require("../../../assets/images/payment/uzum-mark.png") },
 };
 
+interface MethodRowProps {
+  /** A 36-pt mark: a bank's logo, or an icon tile for the balance. */
+  mark: ReactNode;
+  title: string;
+  /** A second line: the balance, what is missing. */
+  hint?: ReactNode;
+  /** Right of the title, before the radio. */
+  value?: string;
+  active: boolean;
+  disabled?: boolean;
+  first?: boolean;
+  onPress: () => void;
+}
+
+/** One way to pay: mark, name, a radio. Every method is the same row, balance included. */
+export function MethodRow({
+  mark,
+  title,
+  hint,
+  value,
+  active,
+  disabled,
+  first,
+  onPress,
+}: MethodRowProps) {
+  const { c } = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="radio"
+      accessibilityState={{ selected: active, disabled: disabled === true }}
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => ({
+        minHeight: 64,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 12,
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        borderTopWidth: first === true ? 0 : 1,
+        borderTopColor: c.border,
+        opacity: pressed ? 0.7 : 1,
+      })}
+    >
+      {mark}
+      <View style={{ flex: 1, gap: 2 }}>
+        <T variant="h2" tone={disabled === true ? "mute" : "fg"}>
+          {title}
+        </T>
+        {hint}
+      </View>
+      {value !== undefined && (
+        <T tone="mute" style={{ fontVariant: ["tabular-nums"] }}>
+          {value}
+        </T>
+      )}
+      <View
+        style={{
+          width: 22,
+          height: 22,
+          borderRadius: 11,
+          borderWidth: active ? 7 : 2,
+          borderColor: active ? c.selBorder : c.border,
+          backgroundColor: c.card,
+        }}
+      />
+    </Pressable>
+  );
+}
+
 interface MethodPickerProps {
   methods: readonly PayMethod[];
   selected: PayMethod | null;
   onSelect: (method: PayMethod) => void;
+  /** Rows above the banks in the same card — the balance at checkout. */
+  before?: ReactNode;
 }
 
-/** The acquirers side by side, a brand mark over the name. */
-export function MethodPicker({ methods, selected, onSelect }: MethodPickerProps) {
-  const { c } = useTheme();
+/** The acquirers as rows in one card, a brand mark and a radio each. */
+export function MethodPicker({ methods, selected, onSelect, before }: MethodPickerProps) {
   return (
-    <View style={{ flexDirection: "row", gap: 8 }}>
-      {methods.map((method) => {
-        const active = method === selected;
-        return (
-          <Pressable
-            key={method}
-            accessibilityRole="radio"
-            accessibilityState={{ selected: active }}
-            onPress={() => onSelect(method)}
-            style={{
-              flex: 1,
-              alignItems: "center",
-              gap: 8,
-              paddingVertical: 14,
-              borderRadius: radius.tile,
-              borderWidth: active ? 2 : 1,
-              borderColor: active ? c.selBorder : c.border,
-              backgroundColor: active ? c.selBg : c.card,
-            }}
-          >
+    <Card>
+      {before}
+      {methods.map((method, index) => (
+        <MethodRow
+          key={method}
+          first={before === undefined && index === 0}
+          mark={
             <Image
               source={MARKS[method].mark}
-              style={{ width: 36, height: 36, borderRadius: 9 }}
+              style={{ width: 36, height: 36, borderRadius: 10 }}
               contentFit="contain"
             />
-            <T variant="label">{MARKS[method].name}</T>
-          </Pressable>
-        );
-      })}
-    </View>
+          }
+          title={MARKS[method].name}
+          active={method === selected}
+          onPress={() => onSelect(method)}
+        />
+      ))}
+    </Card>
   );
 }

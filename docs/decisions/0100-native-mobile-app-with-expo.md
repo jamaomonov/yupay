@@ -49,7 +49,9 @@ Shape:
   as in web, react-hook-form + zod for forms, expo-secure-store for the refresh token,
   expo-notifications for push. Styling is React Native `StyleSheet` over one token module
   (`src/theme`) that mirrors the web palette (`apps/web/src/app/globals.css`) and adds a
-  light theme; `packages/ui` is DOM-only and is not reused.
+  light theme; `packages/ui` is DOM-only and is not reused. expo-haptics (an Expo SDK
+  module, added 2026-10-22) gives the delivered-order screen its success tap; animation stays
+  on React Native's `Animated`.
 - **Builds.** EAS Build and EAS Submit (Expo's cloud) produce and upload store binaries; no
   store build runs in GitHub Actions. CI runs lint, typecheck and unit tests for
   `apps/mobile` only when it or a shared package changes.

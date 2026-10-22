@@ -106,6 +106,24 @@ export function stageOf(status: string): OrderStage {
   }
 }
 
+export type StageTone = "ok" | "warn" | "danger" | "mute";
+
+/** The colour a stage reads in: done is green, waiting amber, failed red, closed grey. */
+export function stageTone(stage: OrderStage): StageTone {
+  switch (stage) {
+    case "done":
+      return "ok";
+    case "awaiting":
+    case "working":
+      return "warn";
+    case "failed":
+      return "danger";
+    case "closed":
+    case "refunded":
+      return "mute";
+  }
+}
+
 /** Stages that can still change by themselves: the order screen keeps asking. */
 export function isLive(stage: OrderStage): boolean {
   return stage === "awaiting" || stage === "working";

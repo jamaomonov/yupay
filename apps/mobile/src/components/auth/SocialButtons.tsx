@@ -85,7 +85,7 @@ interface SocialButtonsProps {
 export function SocialButtons({ label, busy, onPress }: SocialButtonsProps) {
   const { c } = useTheme();
   return (
-    <View style={{ gap: 10 }}>
+    <View style={{ gap: 12 }}>
       {(["telegram", "google", "steam"] as const).map((provider) => (
         <Pressable
           key={provider}
@@ -101,7 +101,7 @@ export function SocialButtons({ label, busy, onPress }: SocialButtonsProps) {
             flexDirection: "row",
             alignItems: "center",
             justifyContent: "center",
-            gap: 10,
+            gap: 12,
             opacity: busy !== null && busy !== provider ? 0.5 : pressed ? 0.8 : 1,
           })}
         >

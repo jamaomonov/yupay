@@ -3,18 +3,18 @@ import Constants from "expo-constants";
 import * as Linking from "expo-linking";
 import { router } from "expo-router";
 import { ChevronRight, Gift, Globe, MessageCircle, Moon } from "lucide-react-native";
-import { ActivityIndicator, Pressable, View } from "react-native";
+import { Pressable, View } from "react-native";
 
 import { Avatar } from "@/components/Avatar";
 import { ListRow } from "@/components/ListRow";
 import { Screen } from "@/components/Screen";
-import { Card, T } from "@/components/ui";
+import { Card, Skeleton, T } from "@/components/ui";
 import { accountName, spendable, useWallet } from "@/lib/account";
 import { formatSum } from "@/lib/format";
 import { LOCALE_NAMES, useI18n } from "@/lib/i18n";
 import { useSession } from "@/lib/session";
 import { useTheme } from "@/theme/ThemeProvider";
-import { fonts } from "@/theme/tokens";
+import { radius } from "@/theme/tokens";
 
 const SUPPORT_URL = "https://t.me/yupay_support";
 
@@ -36,8 +36,8 @@ function AccountCard({ user }: { user: MeOut }) {
         })}
       >
         <Avatar name={name} photoUrl={user.photo_url} />
-        <View style={{ flex: 1, gap: 3 }}>
-          <T variant="h2" style={{ fontSize: 17 }} numberOfLines={1}>
+        <View style={{ flex: 1, gap: 4 }}>
+          <T variant="amount" numberOfLines={1}>
             {name}
           </T>
           {user.sign_in_with != null && (
@@ -65,7 +65,7 @@ function BalanceCard() {
         style={({ pressed }) => ({
           flexDirection: "row",
           alignItems: "center",
-          padding: 16,
+          padding: 20,
           opacity: pressed ? 0.7 : 1,
         })}
       >
@@ -75,26 +75,27 @@ function BalanceCard() {
             wallet.isError ? (
               <T tone="mute">—</T>
             ) : (
-              <ActivityIndicator
-                color={c.mute}
-                style={{ alignSelf: "flex-start", marginVertical: 6 }}
-              />
+              <Skeleton style={{ width: 160, height: 32 }} />
             )
           ) : (
-            <T
-              style={{
-                fontFamily: fonts.display,
-                fontSize: 26,
-                letterSpacing: -0.6,
-                fontVariant: ["tabular-nums"],
-              }}
-            >
+            <T variant="display" style={{ fontVariant: ["tabular-nums"] }}>
               {formatSum(balance)} {t("common.sum")}
             </T>
           )}
         </View>
-        <T tone="accent">{t("wallet.topUp")}</T>
-        <ChevronRight size={18} color={c.dim} style={{ marginLeft: 4 }} />
+        <View
+          style={{
+            height: 40,
+            paddingHorizontal: 16,
+            borderRadius: radius.control,
+            backgroundColor: c.primary,
+            justifyContent: "center",
+          }}
+        >
+          <T variant="h2" style={{ color: c.primaryFg }}>
+            {t("wallet.topUp")}
+          </T>
+        </View>
       </Pressable>
     </Card>
   );
@@ -108,7 +109,7 @@ export default function ProfileScreen() {
 
   return (
     <Screen title={t("profile.title")}>
-      <View style={{ gap: 10, marginTop: 6 }}>
+      <View style={{ gap: 12, marginTop: 8 }}>
         {user != null && <AccountCard user={user} />}
         <BalanceCard />
 
@@ -144,7 +145,7 @@ export default function ProfileScreen() {
         </Card>
       </View>
 
-      <T variant="small" tone="dim" style={{ textAlign: "center", marginTop: 24 }}>
+      <T variant="small" tone="mute" style={{ textAlign: "center", marginTop: 24 }}>
         {t("profile.version", { version })}
       </T>
     </Screen>

@@ -1,9 +1,4 @@
-import {
-  Inter_400Regular,
-  Inter_500Medium,
-  Inter_600SemiBold,
-  Inter_700Bold,
-} from "@expo-google-fonts/inter";
+import { Inter_500Medium, Inter_600SemiBold } from "@expo-google-fonts/inter";
 import { Unbounded_600SemiBold } from "@expo-google-fonts/unbounded";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useFonts } from "expo-font";
@@ -104,10 +99,8 @@ function Shell() {
 
 export default function RootLayout() {
   const [loaded] = useFonts({
-    Inter_400Regular,
     Inter_500Medium,
     Inter_600SemiBold,
-    Inter_700Bold,
     Unbounded_600SemiBold,
   });
 

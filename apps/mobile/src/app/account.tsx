@@ -29,12 +29,12 @@ export default function AccountScreen() {
         paddingTop: insets.top + 4,
         paddingHorizontal: space.gutter,
         paddingBottom: 32,
-        gap: 14,
+        gap: 16,
       }}
     >
       <TopBar title={t("account.title")} fallback="/profile" />
 
-      <View style={{ alignItems: "center", gap: 10, paddingVertical: 12 }}>
+      <View style={{ alignItems: "center", gap: 12, paddingVertical: 12 }}>
         <Avatar name={name} photoUrl={user.photo_url} size={84} />
         <T variant="title">{name}</T>
         {user.sign_in_with != null && <T tone="mute">{t(`profile.via.${user.sign_in_with}`)}</T>}

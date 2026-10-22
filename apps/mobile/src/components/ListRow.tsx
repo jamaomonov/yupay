@@ -39,9 +39,10 @@ export function ListRow({
       style={({ pressed }) => ({
         flexDirection: "row",
         alignItems: "center",
-        gap: 14,
+        gap: 12,
         paddingHorizontal: 16,
-        paddingVertical: 14,
+        paddingVertical: 12,
+        minHeight: 64,
         borderTopWidth: first === true ? 0 : 1,
         borderTopColor: c.border,
         opacity: pressed ? 0.7 : 1,

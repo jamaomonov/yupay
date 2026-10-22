@@ -4,7 +4,7 @@ import { Pressable, View } from "react-native";
 
 import { T } from "@/components/ui";
 import { useTheme } from "@/theme/ThemeProvider";
-import { radius } from "@/theme/tokens";
+import { radius, TOUCH } from "@/theme/tokens";
 
 interface TopBarProps {
   title: string;
@@ -16,15 +16,15 @@ interface TopBarProps {
 export function TopBar({ title, fallback = "/" }: TopBarProps) {
   const { c } = useTheme();
   return (
-    <View style={{ height: 52, flexDirection: "row", alignItems: "center", gap: 10 }}>
+    <View style={{ height: 56, flexDirection: "row", alignItems: "center", gap: 12 }}>
       <Pressable
         accessibilityRole="button"
-        hitSlop={8}
+        accessibilityLabel="Back"
         onPress={() => (router.canGoBack() ? router.back() : router.replace(fallback))}
         style={{
-          width: 38,
-          height: 38,
-          borderRadius: radius.small,
+          width: TOUCH,
+          height: TOUCH,
+          borderRadius: radius.control,
           backgroundColor: c.muted,
           alignItems: "center",
           justifyContent: "center",

@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { checkBlocks, isEmail, orderBody, orderFingerprint, returnUrl, stageOf } from "./checkout";
+import {
+  checkBlocks,
+  isEmail,
+  orderBody,
+  orderFingerprint,
+  returnUrl,
+  stageOf,
+  stageTone,
+} from "./checkout";
 
 describe("checkout", () => {
   it("accepts an address and refuses a half-typed one", () => {
@@ -43,5 +51,14 @@ describe("checkout", () => {
     expect(stageOf("delivered")).toBe("done");
     expect(stageOf("partially_refunded")).toBe("refunded");
     expect(stageOf("expired")).toBe("closed");
+  });
+
+  it("colours a stage: done green, waiting amber, failed red, the rest grey", () => {
+    expect(stageTone(stageOf("delivered"))).toBe("ok");
+    expect(stageTone(stageOf("pending_payment"))).toBe("warn");
+    expect(stageTone(stageOf("fulfilling"))).toBe("warn");
+    expect(stageTone(stageOf("failed"))).toBe("danger");
+    expect(stageTone(stageOf("refunded"))).toBe("mute");
+    expect(stageTone(stageOf("cancelled"))).toBe("mute");
   });
 });

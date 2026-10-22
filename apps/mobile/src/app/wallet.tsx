@@ -1,15 +1,15 @@
 import { router } from "expo-router";
-import { ActivityIndicator, Pressable, ScrollView, View } from "react-native";
+import { Pressable, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { TopBar } from "@/components/TopBar";
-import { Button, Card, T } from "@/components/ui";
+import { Button, Card, Skeleton, T } from "@/components/ui";
 import { accountIds, spendable, useWallet, useWalletHistory } from "@/lib/account";
 import { formatSum } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 import { historyRow, kindKey, type HistoryRow } from "@/lib/wallet";
 import { useTheme } from "@/theme/ThemeProvider";
-import { fonts, space } from "@/theme/tokens";
+import { space } from "@/theme/tokens";
 
 function Row({ row, first }: { row: HistoryRow; first: boolean }) {
   const { t, locale } = useI18n();
@@ -34,7 +34,7 @@ function Row({ row, first }: { row: HistoryRow; first: boolean }) {
     >
       <View style={{ flex: 1, gap: 2 }}>
         <T>{t(kindKey(row.kind))}</T>
-        <T variant="small" tone="dim">
+        <T variant="small" tone="mute">
           {date}
         </T>
       </View>
@@ -81,20 +81,13 @@ export default function WalletScreen() {
     >
       <TopBar title={t("wallet.title")} fallback="/profile" />
 
-      <Card style={{ padding: 16, gap: 14 }}>
+      <Card style={{ padding: 24, gap: 16 }}>
         <View style={{ gap: 4 }}>
           <T tone="mute">{t("profile.balance")}</T>
           {balance === null ? (
-            <ActivityIndicator color={c.mute} style={{ alignSelf: "flex-start" }} />
+            <Skeleton style={{ width: 180, height: 32 }} />
           ) : (
-            <T
-              style={{
-                fontFamily: fonts.display,
-                fontSize: 28,
-                letterSpacing: -0.6,
-                fontVariant: ["tabular-nums"],
-              }}
-            >
+            <T variant="display" style={{ fontVariant: ["tabular-nums"] }}>
               {formatSum(balance)} {t("common.sum")}
             </T>
           )}
@@ -107,7 +100,7 @@ export default function WalletScreen() {
           {t("wallet.history")}
         </T>
         {history.isLoading ? (
-          <ActivityIndicator color={c.mute} />
+          <Skeleton style={{ height: 200, borderRadius: 20 }} />
         ) : history.isError ? (
           <T tone="mute">{t("common.loadError")}</T>
         ) : rows.length === 0 ? (

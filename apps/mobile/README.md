@@ -63,6 +63,20 @@ in-app browser (an app link such as Uzum's leaves the app); when the buyer comes
 order screen asks for the status. The return URL is the storefront's order page, the only
 origin the API accepts.
 
+## Design rules
+
+The 2026-10-22 audit (rules: 4-pt grid, 44-pt touch targets, WCAG AA in both themes) set
+these; keep new screens on them.
+
+- **Type**: `T` variants only — `display` 26 (Unbounded, tab titles and balances), `title`
+  20, `amount` 17 (prices, tabular), `body`/`h2` 15, `label`/`small` 13. Inter 500 and 600.
+- **Spacing**: multiples of 4 (`space` in `theme/tokens.ts`); the side gutter is 16.
+- **Touch**: anything tappable is at least `TOUCH` (44) — size it or give it `hitSlop`.
+- **Colour**: `dim` is for placeholders and chevrons, never for text that must be read.
+  Disabled buttons are grey, not faded lime. Light-theme cards carry `cardShadow`.
+- **States**: loading is a `Skeleton` in the content's shape; an order's status is a `Badge`
+  in `stageTone`'s colour.
+
 ## Typed amounts
 
 Steam is bought in dollars and Telegram Stars by count, so their pages show a field instead of

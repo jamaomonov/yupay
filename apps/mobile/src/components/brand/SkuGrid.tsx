@@ -1,5 +1,6 @@
 import type { SkuOut } from "@yupay/api-client/types";
 import { Image } from "expo-image";
+import { Check } from "lucide-react-native";
 import { Pressable, useWindowDimensions, View } from "react-native";
 
 import { T } from "@/components/ui";
@@ -33,20 +34,38 @@ export function SkuGrid({ skus, selectedId, onSelect }: SkuGridProps) {
             key={sku.id}
             disabled={!sku.in_stock}
             onPress={() => onSelect(sku)}
-            style={{
+            style={({ pressed }) => ({
+              transform: [{ scale: pressed ? 0.97 : 1 }],
               width: tile,
               alignItems: "center",
               gap: 4,
-              paddingTop: 10,
-              paddingBottom: 11,
-              paddingHorizontal: 6,
+              paddingTop: 12,
+              paddingBottom: 12,
+              paddingHorizontal: 8,
               borderRadius: radius.tile,
               borderWidth: selected ? 2 : 1,
               borderColor: selected ? c.selBorder : c.border,
               backgroundColor: selected ? c.selBg : c.card,
               opacity: sku.in_stock ? 1 : 0.45,
-            }}
+            })}
           >
+            {selected && (
+              <View
+                style={{
+                  position: "absolute",
+                  top: 6,
+                  right: 6,
+                  width: 20,
+                  height: 20,
+                  borderRadius: 10,
+                  backgroundColor: c.primary,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Check size={13} color={c.primaryFg} strokeWidth={3} />
+              </View>
+            )}
             <View style={{ width: 44, height: 44 }}>
               {sku.image_url !== null && (
                 <Image
@@ -56,14 +75,11 @@ export function SkuGrid({ skus, selectedId, onSelect }: SkuGridProps) {
                 />
               )}
             </View>
-            <T variant="body" numberOfLines={1} style={{ fontSize: 13.5 }}>
+            <T variant="h2" numberOfLines={1}>
               {sku.denomination ?? sku.sku_code}
             </T>
-            <T
-              variant="small"
-              tone={selected ? "fg" : "mute"}
-              style={{ fontVariant: ["tabular-nums"] }}
-            >
+            {/* The price in ink, not grey: it is half of what the buyer compares. */}
+            <T style={{ fontVariant: ["tabular-nums"] }}>
               {sku.display_price ? formatSum(sku.display_price.amount) : "—"}
             </T>
           </Pressable>

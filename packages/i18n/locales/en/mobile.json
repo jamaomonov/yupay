@@ -9,7 +9,8 @@
     "sum": "UZS",
     "retry": "Retry",
     "loadError": "Couldn't load. Check your connection.",
-    "soon": "Soon"
+    "soon": "Soon",
+    "toCatalog": "Browse catalogue"
   },
   "home": {
     "search": "Game or service",
@@ -45,7 +46,8 @@
   },
   "orders": {
     "title": "Orders",
-    "empty": "No orders yet"
+    "empty": "No orders yet",
+    "topUp": "Balance top-up"
   },
   "profile": {
     "title": "Profile",
@@ -97,7 +99,15 @@
     "pay": "Pay",
     "support": "Message support",
     "home": "Home",
-    "notFound": "This order isn't on this phone"
+    "notFound": "This order isn't on this phone",
+    "stepPaid": "Paid",
+    "stepCredit": "Crediting",
+    "stepDone": "Done",
+    "date": "Date",
+    "number": "Order number",
+    "copy": "Copy order number",
+    "copied": "Copied",
+    "again": "Buy again"
   },
   "auth": {
     "title": "Sign in",

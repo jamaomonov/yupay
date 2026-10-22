@@ -9,7 +9,8 @@
     "sum": "soʻm",
     "retry": "Qayta urinish",
     "loadError": "Yuklab boʻlmadi. Internetni tekshiring.",
-    "soon": "Tez orada"
+    "soon": "Tez orada",
+    "toCatalog": "Katalogga"
   },
   "home": {
     "search": "Oʻyin yoki xizmat",
@@ -45,7 +46,8 @@
   },
   "orders": {
     "title": "Buyurtmalar",
-    "empty": "Hozircha buyurtmalar yoʻq"
+    "empty": "Hozircha buyurtmalar yoʻq",
+    "topUp": "Balansni toʻldirish"
   },
   "profile": {
     "title": "Profil",
@@ -97,7 +99,15 @@
     "pay": "Toʻlash",
     "support": "Qoʻllab-quvvatlashga yozish",
     "home": "Bosh sahifa",
-    "notFound": "Bu buyurtma telefonda yoʻq"
+    "notFound": "Bu buyurtma telefonda yoʻq",
+    "stepPaid": "Toʻlandi",
+    "stepCredit": "Tushirilmoqda",
+    "stepDone": "Tayyor",
+    "date": "Sana",
+    "number": "Buyurtma raqami",
+    "copy": "Buyurtma raqamini nusxalash",
+    "copied": "Nusxalandi",
+    "again": "Yana sotib olish"
   },
   "auth": {
     "title": "Kirish",

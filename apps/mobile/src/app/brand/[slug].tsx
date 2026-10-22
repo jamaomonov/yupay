@@ -146,7 +146,7 @@ export default function BrandScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
       <ScrollView
-        contentContainerStyle={{ paddingHorizontal: space.gutter, paddingBottom: 150 }}
+        contentContainerStyle={{ paddingHorizontal: space.gutter, paddingBottom: 160 }}
         keyboardShouldPersistTaps="handled"
       >
         <BrandHeader brand={brand.data} />
@@ -161,7 +161,7 @@ export default function BrandScreen() {
                 showsHorizontalScrollIndicator={false}
                 style={{ marginTop: 16 }}
               >
-                <View style={{ flexDirection: "row", gap: 6 }}>
+                <View style={{ flexDirection: "row", gap: 8 }}>
                   {brand.data.products.map((item) => (
                     <Chip
                       key={item.slug}
@@ -174,7 +174,7 @@ export default function BrandScreen() {
               </ScrollView>
             )}
 
-            <View style={{ marginTop: 18 }}>
+            <View style={{ marginTop: 16 }}>
               <PlayerFields
                 fields={fields}
                 values={values}
@@ -191,7 +191,7 @@ export default function BrandScreen() {
               <>
                 {skus.length > 0 && (
                   <>
-                    <T variant="label" tone="mute" style={{ marginTop: 20, marginBottom: 8 }}>
+                    <T variant="label" tone="mute" style={{ marginTop: 24, marginBottom: 8 }}>
                       {t("brand.amount")}
                     </T>
                     <SkuGrid
@@ -206,7 +206,7 @@ export default function BrandScreen() {
                 )}
                 {rule !== null && (
                   <>
-                    <T variant="label" tone="mute" style={{ marginTop: 20, marginBottom: 8 }}>
+                    <T variant="label" tone="mute" style={{ marginTop: 24, marginBottom: 8 }}>
                       {rule.kind === "usd" ? t("brand.amountUsd") : t("brand.amountUnits")}
                     </T>
                     <AmountField
@@ -239,25 +239,24 @@ export default function BrandScreen() {
           borderTopColor: c.border,
         }}
       >
-        <View
-          style={{
-            flexDirection: "row",
-            justifyContent: "space-between",
-            alignItems: "baseline",
-            marginBottom: 10,
-          }}
-        >
-          <T variant="small" tone="mute">
-            {choice ? choice.label : pickHint}
-          </T>
-          {choice && (
-            <T variant="h2" style={{ fontSize: 17, fontVariant: ["tabular-nums"] }}>
+        {/* What is picked and its price; before that the button itself says what is missing. */}
+        {choice && (
+          <View
+            style={{
+              flexDirection: "row",
+              justifyContent: "space-between",
+              alignItems: "baseline",
+              marginBottom: 12,
+            }}
+          >
+            <T tone="mute">{choice.label}</T>
+            <T variant="amount">
               {formatSum(choice.price)} {t("common.sum")}
             </T>
-          )}
-        </View>
+          </View>
+        )}
         <Button
-          label={missingField && choice ? t("brand.enterId") : t("brand.toPay")}
+          label={choice === null ? pickHint : missingField ? t("brand.enterId") : t("brand.toPay")}
           disabled={
             choice === null || missingField !== undefined || checkResult?.status === "invalid"
           }

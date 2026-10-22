@@ -53,7 +53,10 @@ export default function TopUpScreen() {
       ? t("wallet.min", { sum: formatSum(TOP_UP_MIN) })
       : check === "high"
         ? t("wallet.max", { sum: formatSum(TOP_UP_MAX) })
-        : t("wallet.note");
+        : t("brand.range", {
+            min: `${formatSum(TOP_UP_MIN)} ${t("common.sum")}`,
+            max: `${formatSum(TOP_UP_MAX)} ${t("common.sum")}`,
+          });
 
   const submit = async () => {
     if (method === null || check !== "ok") return;
@@ -90,14 +93,14 @@ export default function TopUpScreen() {
         contentContainerStyle={{
           paddingTop: insets.top + 4,
           paddingHorizontal: space.gutter,
-          paddingBottom: 150,
-          gap: 18,
+          paddingBottom: 180,
+          gap: 24,
         }}
         keyboardShouldPersistTaps="handled"
       >
         <TopBar title={t("wallet.topUpTitle")} fallback="/profile" />
 
-        <View style={{ gap: 10 }}>
+        <View style={{ gap: 12 }}>
           <Field
             label={t("wallet.amount")}
             value={amount === 0 ? "" : formatSum(amount)}
@@ -163,6 +166,9 @@ export default function TopUpScreen() {
           loading={busy}
           onPress={() => void submit()}
         />
+        <T variant="small" tone="mute" style={{ textAlign: "center", marginTop: 8 }}>
+          {t("wallet.note")}
+        </T>
       </View>
     </View>
   );

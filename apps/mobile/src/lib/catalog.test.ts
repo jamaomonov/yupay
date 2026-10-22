@@ -18,7 +18,7 @@ function brand(slug: string, name: string, category_slug = "top-ups"): BrandOut 
 }
 
 describe("sellable", () => {
-  it("keeps top-ups and drops gift cards and brands with their own flow", () => {
+  it("keeps top-ups and the Steam wallet, drops gift cards and brands with their own flow", () => {
     const list = [
       brand("pubg-mobile", "PUBG Mobile"),
       brand("roblox", "Roblox", "gift-cards"),
@@ -26,7 +26,7 @@ describe("sellable", () => {
       brand("steam-gifts", "Steam Игры"),
       brand("steam", "Steam"),
     ];
-    expect(sellable(list).map((b) => b.slug)).toEqual(["pubg-mobile"]);
+    expect(sellable(list).map((b) => b.slug)).toEqual(["pubg-mobile", "steam"]);
   });
 });
 

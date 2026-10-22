@@ -32,8 +32,8 @@ export function Field({ label, value, onChange, hint, error, ...input }: FieldPr
         autoCorrect={false}
         {...input}
         style={{
-          height: 50,
-          paddingHorizontal: 14,
+          height: 52,
+          paddingHorizontal: 16,
           borderRadius: radius.control,
           borderWidth: 1,
           borderColor: error === true ? c.danger : c.border,
@@ -44,7 +44,7 @@ export function Field({ label, value, onChange, hint, error, ...input }: FieldPr
         }}
       />
       {hint !== undefined && (
-        <T variant="small" tone={error === true ? "danger" : "mute"} style={{ marginTop: 6 }}>
+        <T variant="small" tone={error === true ? "danger" : "mute"} style={{ marginTop: 8 }}>
           {hint}
         </T>
       )}

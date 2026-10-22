@@ -1,10 +1,10 @@
 import type { BrandOut, OrderItemOut } from "@yupay/api-client/types";
 
 /**
- * Brands with a flow of their own, not built in the app yet: game gifts, skins, and the Steam
- * wallet (an amount the buyer types, not a denomination).
+ * Brands with a flow of their own, not built in the app yet: game gifts and skins. The Steam
+ * wallet is sold: its amount is typed (`lib/amount.ts`).
  */
-const OWN_FLOW = new Set(["steam-gifts", "cs2-skins", "steam"]);
+const OWN_FLOW = new Set(["steam-gifts", "cs2-skins"]);
 
 /**
  * Brands the app sells. Gift cards stay out of the first version (ADR-0100): they carry the
