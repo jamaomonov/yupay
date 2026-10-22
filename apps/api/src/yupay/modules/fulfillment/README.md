@@ -479,8 +479,11 @@ POST /api/v1/admin/fulfillment/tasks/{id}/fail     — manual: отметить 
 `route_switch` это видно как `cost_was` + `cost_usdt`/`cost_source` (`quote` или
 `history`), либо `cost_was` + `cost_kept` с причиной. Строки Steam с переменной
 суммой не трогаются: их цена пишется после доставки из фактического списания
-(`_record_supplier_charge`). Ничто здесь не падает: смена поставщика важнее
-аналитики по ней.
+(`_record_supplier_charge`). Так же пишется цена скина CS2: csmarket и Waxpeer
+отдают, за сколько купили (`skin_trades.bought_units`, `1000 = $1`), и статус-чек
+передаёт это как `supplier_charged_usd`. Без этого строка скина считалась по
+правилу «доллар стоит доллар», и маржа читалась 0 %. Ничто здесь не падает: смена
+поставщика важнее аналитики по ней.
 
 ### Куда переводить и почём (`/reassign-options`)
 

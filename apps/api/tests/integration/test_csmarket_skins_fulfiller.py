@@ -284,7 +284,10 @@ async def test_status_follows_the_trade_to_delivered(db_session: AsyncSession) -
     sent = _Client(
         current=_order("trade_sent", trade=CsmTrade(None, None, None, "7612345678", "seller"))
     )
-    assert (await skin_status(sent, db=db_session, task=task)).outcome == "in_progress"
+    sent_status = await skin_status(sent, db=db_session, task=task)
+    assert sent_status.outcome == "in_progress"
+    # What csmarket took is stated, so the line's cost is frozen and its margin is real.
+    assert sent_status.extra_metadata["supplier_charged_usd"] == "27"
     row = await _row(db_session)
     assert (row.status, row.trade_id, row.release_date) == (4, "7612345678", None)
     assert row.seller == {"name": "seller"}

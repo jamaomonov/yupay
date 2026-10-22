@@ -260,6 +260,8 @@ async def test_status_follows_the_offer_to_acceptance(db_session: AsyncSession) 
     assert accepted.artifact is not None
     assert accepted.artifact["kind"] == "skin"
     assert accepted.artifact["trade_id"] == "9393511289"
+    # Waxpeer's price is stated, so the line's cost is frozen and its margin is real.
+    assert accepted.extra_metadata["supplier_charged_usd"] == "27.867"
     row = await _row(db_session)
     assert row.release_date == release
     assert row.accepted_at is not None
@@ -274,6 +276,7 @@ async def test_an_offer_not_accepted_fails_with_the_money_back(db_session: Async
     )
     assert (failed.outcome, failed.money_outcome) == ("failed", MoneyOutcome.RETURNED)
     assert failed.error == "not_accepted"
+    assert "supplier_charged_usd" not in failed.extra_metadata  # the money came back
     assert (await _row(db_session)).reason == "Buyer failed to accept"
 
 

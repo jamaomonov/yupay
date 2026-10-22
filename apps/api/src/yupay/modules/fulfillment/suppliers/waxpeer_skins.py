@@ -26,6 +26,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from typing import Any, Protocol
 
 from sqlalchemy import select
@@ -378,7 +379,21 @@ async def _pending_buy(
     )
 
 
+def _charged(row: SkinTrade | None) -> dict[str, str]:
+    """What the supplier took for the skin, for ``_record_supplier_charge`` to freeze.
+
+    A skin line is variable-amount, so without this its margin falls back to «a dollar
+    costs a dollar» and reads 0 %. ``bought_units`` is the supplier's own figure
+    (``1000 = $1``); nothing is stated until it is known.
+    """
+    if row is None or not row.bought_units:
+        return {}
+    return {"supplier_charged_usd": str(Decimal(row.bought_units) / Decimal(1000))}
+
+
 def _map(trade: WaxpeerTrade, row: SkinTrade | None, **extra: Any) -> FulfillStatus:
+    # Spent money is a cost whether the trade landed or rolled back; a returned one is not.
+    spent = {**extra, **_charged(row)}
     if trade.status == 5 or (trade.status == 4 and trade.release_date is not None):
         return _status(
             "succeeded",
@@ -388,14 +403,14 @@ def _map(trade: WaxpeerTrade, row: SkinTrade | None, **extra: Any) -> FulfillSta
                 "trade_id": trade.trade_id,
                 "release_date": trade.release_date.isoformat() if trade.release_date else None,
             },
-            **extra,
+            **spent,
         )
     if trade.status == 6:
         accepted = trade.release_date is not None or (row is not None and row.release_date)
         if accepted or trade.penalties:
-            return _status("failed", error="rolled_back", money=MoneyOutcome.SPENT, **extra)
+            return _status("failed", error="rolled_back", money=MoneyOutcome.SPENT, **spent)
         return _status("failed", error="not_accepted", money=MoneyOutcome.RETURNED, **extra)
-    return _status("in_progress", **extra)
+    return _status("in_progress", **spent)
 
 
 async def skin_status(

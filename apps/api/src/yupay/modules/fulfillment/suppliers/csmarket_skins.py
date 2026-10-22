@@ -186,7 +186,20 @@ def mirror(row: SkinTrade, order: CsmOrder) -> None:
     row.updated_at = at
 
 
+def _charged(row: SkinTrade | None) -> dict[str, str]:
+    """What the supplier took for the skin, for ``_record_supplier_charge`` to freeze.
+
+    A skin line is variable-amount, so without this its margin falls back to «a dollar
+    costs a dollar» and reads 0 %. ``bought_units`` is the supplier's own figure
+    (``1000 = $1``); nothing is stated until it is known.
+    """
+    if row is None or not row.bought_units:
+        return {}
+    return {"supplier_charged_usd": str(Decimal(row.bought_units) / Decimal(1000))}
+
+
 def _map(order: CsmOrder, row: SkinTrade) -> FulfillStatus:
+    charged = _charged(row)
     if order.status == "delivered":
         return FulfillStatus(
             outcome="succeeded",
@@ -199,7 +212,7 @@ def _map(order: CsmOrder, row: SkinTrade) -> FulfillStatus:
             },
             error=None,
             money_outcome=None,
-            extra_metadata=_meta(buy_unconfirmed_at=None),
+            extra_metadata=_meta(buy_unconfirmed_at=None, **charged),
         )
     if order.status == "refunded":
         return FulfillStatus(
@@ -216,7 +229,7 @@ def _map(order: CsmOrder, row: SkinTrade) -> FulfillStatus:
         artifact=None,
         error=None,
         money_outcome=None,
-        extra_metadata=_meta(buy_unconfirmed_at=None),
+        extra_metadata=_meta(buy_unconfirmed_at=None, **charged),
     )
 
 
