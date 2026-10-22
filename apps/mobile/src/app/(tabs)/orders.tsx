@@ -7,7 +7,7 @@ import { ActivityIndicator, Pressable, View } from "react-native";
 import { Screen } from "@/components/Screen";
 import { Button, Card, Notice, T } from "@/components/ui";
 import { useBrands } from "@/lib/api";
-import { orderImage } from "@/lib/catalog";
+import { itemLabel, orderImage } from "@/lib/catalog";
 import { stageOf } from "@/lib/checkout";
 import { useI18n } from "@/lib/i18n";
 import { useAccountOrders } from "@/lib/orders";
@@ -23,7 +23,7 @@ interface Row {
 
 function fromOrder(order: OrderOut, brands: readonly BrandOut[] | undefined): Row {
   const display = order.items[0]?.display;
-  const label = display?.denomination ?? display?.product_name ?? "";
+  const label = itemLabel(order.items[0]);
   return {
     id: order.id,
     title: display ? `${display.brand_name} · ${label}` : `#${order.id.slice(0, 8)}`,

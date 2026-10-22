@@ -28,7 +28,14 @@
     "pickAmount": "Pick an amount",
     "enterId": "Enter your ID",
     "outOfStock": "Out of stock",
-    "maintenance": "Temporarily unavailable"
+    "maintenance": "Temporarily unavailable",
+    "amountUsd": "Amount in dollars",
+    "amountUnits": "Quantity",
+    "typeUsd": "Enter an amount",
+    "typeUnits": "Enter a quantity",
+    "range": "From {min} to {max}",
+    "tooLow": "At least {min}",
+    "tooHigh": "At most {max}"
   },
   "check": {
     "valid": "Player found:",

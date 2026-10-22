@@ -28,7 +28,14 @@
     "pickAmount": "Выберите номинал",
     "enterId": "Введите ID",
     "outOfStock": "Нет в наличии",
-    "maintenance": "Временно недоступно"
+    "maintenance": "Временно недоступно",
+    "amountUsd": "Сумма в долларах",
+    "amountUnits": "Количество",
+    "typeUsd": "Введите сумму",
+    "typeUnits": "Введите количество",
+    "range": "От {min} до {max}",
+    "tooLow": "Минимум {min}",
+    "tooHigh": "Максимум {max}"
   },
   "check": {
     "valid": "Игрок найден:",

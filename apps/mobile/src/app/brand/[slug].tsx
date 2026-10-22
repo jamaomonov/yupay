@@ -4,16 +4,27 @@ import { useState } from "react";
 import { ActivityIndicator, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { AmountField } from "@/components/brand/AmountField";
 import { BrandHeader } from "@/components/brand/BrandHeader";
 import { PlayerFields } from "@/components/brand/PlayerFields";
 import { SkuGrid } from "@/components/brand/SkuGrid";
 import { Button, Chip, Notice, T } from "@/components/ui";
+import { amountRule, checkCount, countLabel, lineOf, priceOf, skuKind } from "@/lib/amount";
 import { useBrand, usePlayerCheck, useProduct, type PlayerCheckResult } from "@/lib/api";
 import { checkBlocks, isFixedSku } from "@/lib/checkout";
 import { formatSum } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 import { useTheme } from "@/theme/ThemeProvider";
 import { space } from "@/theme/tokens";
+
+/** What the pay button buys: a tile, or a typed amount priced from its rate. */
+interface Choice {
+  sku: SkuOut;
+  label: string;
+  price: string;
+  qty?: number;
+  amountUsd?: string;
+}
 
 export default function BrandScreen() {
   const { slug } = useLocalSearchParams<{ slug: string }>();
@@ -28,6 +39,9 @@ export default function BrandScreen() {
 
   const [values, setValues] = useState<Record<string, string>>({});
   const [sku, setSku] = useState<SkuOut | null>(null);
+  // A typed amount (Steam dollars, Stars); 0 while nothing is typed. A tile and a typed
+  // amount exclude each other.
+  const [count, setCount] = useState(0);
   const [checkResult, setCheckResult] = useState<PlayerCheckResult | null>(null);
   const check = usePlayerCheck(slug);
 
@@ -50,21 +64,46 @@ export default function BrandScreen() {
   const fields = product.data?.required_fields ?? [];
   const checkField = fields.find((field) => field.check != null);
   const skus = (product.data?.skus ?? []).filter(isFixedSku);
+  const customSku = (product.data?.skus ?? []).find(
+    (item) => skuKind(item) !== "fixed" && item.in_stock !== false,
+  );
+  const rule = customSku !== undefined ? amountRule(customSku) : null;
+  const typed = sku === null && rule !== null && customSku !== undefined && count > 0;
+  const choice: Choice | null =
+    sku?.display_price != null
+      ? { sku, label: sku.denomination ?? sku.sku_code, price: sku.display_price.amount }
+      : typed && checkCount(count, rule) === "ok"
+        ? {
+            sku: customSku,
+            label: countLabel(count, rule),
+            price: String(priceOf(count, rule)),
+            ...lineOf(count, rule),
+          }
+        : null;
+  const pickHint =
+    rule !== null && skus.length === 0
+      ? rule.kind === "usd"
+        ? t("brand.typeUsd")
+        : t("brand.typeUnits")
+      : t("brand.pickAmount");
   const missingField = fields.find(
     (field) => field.required !== false && !(values[field.key] ?? "").trim(),
   );
 
   const toCheckout = (result: PlayerCheckResult | null) => {
-    if (!sku?.display_price || !brand.data) return;
+    if (choice === null || !brand.data) return;
+    const { qty, amountUsd } = choice;
     router.push({
       pathname: "/checkout",
       params: {
         brandSlug: brand.data.slug,
         brandName: brand.data.name,
-        skuId: sku.id,
-        label: sku.denomination ?? sku.sku_code,
-        price: sku.display_price.amount,
+        skuId: choice.sku.id,
+        label: choice.label,
+        price: choice.price,
         fields: JSON.stringify(values),
+        ...(qty !== undefined && qty !== 1 ? { qty: String(qty) } : {}),
+        ...(amountUsd !== undefined ? { amountUsd } : {}),
         ...(result?.status === "valid" && result.name ? { player: result.name } : {}),
       },
     });
@@ -101,6 +140,7 @@ export default function BrandScreen() {
   const pickProduct = (next: string) => {
     setProductSlug(next);
     setSku(null);
+    setCount(0);
   };
 
   return (
@@ -145,13 +185,41 @@ export default function BrandScreen() {
               />
             </View>
 
-            <T variant="label" tone="mute" style={{ marginTop: 20, marginBottom: 8 }}>
-              {t("brand.amount")}
-            </T>
             {product.isPending ? (
-              <ActivityIndicator color={c.mute} style={{ marginTop: 24 }} />
+              <ActivityIndicator color={c.mute} style={{ marginTop: 44 }} />
             ) : (
-              <SkuGrid skus={skus} selectedId={sku?.id ?? null} onSelect={setSku} />
+              <>
+                {skus.length > 0 && (
+                  <>
+                    <T variant="label" tone="mute" style={{ marginTop: 20, marginBottom: 8 }}>
+                      {t("brand.amount")}
+                    </T>
+                    <SkuGrid
+                      skus={skus}
+                      selectedId={sku?.id ?? null}
+                      onSelect={(next) => {
+                        setSku(next);
+                        setCount(0);
+                      }}
+                    />
+                  </>
+                )}
+                {rule !== null && (
+                  <>
+                    <T variant="label" tone="mute" style={{ marginTop: 20, marginBottom: 8 }}>
+                      {rule.kind === "usd" ? t("brand.amountUsd") : t("brand.amountUnits")}
+                    </T>
+                    <AmountField
+                      rule={rule}
+                      value={sku === null ? count : 0}
+                      onChange={(next) => {
+                        setCount(next);
+                        setSku(null);
+                      }}
+                    />
+                  </>
+                )}
+              </>
             )}
           </>
         )}
@@ -180,18 +248,18 @@ export default function BrandScreen() {
           }}
         >
           <T variant="small" tone="mute">
-            {sku ? (sku.denomination ?? sku.sku_code) : t("brand.pickAmount")}
+            {choice ? choice.label : pickHint}
           </T>
-          {sku?.display_price && (
+          {choice && (
             <T variant="h2" style={{ fontSize: 17, fontVariant: ["tabular-nums"] }}>
-              {formatSum(sku.display_price.amount)} {t("common.sum")}
+              {formatSum(choice.price)} {t("common.sum")}
             </T>
           )}
         </View>
         <Button
-          label={missingField && sku ? t("brand.enterId") : t("brand.toPay")}
+          label={missingField && choice ? t("brand.enterId") : t("brand.toPay")}
           disabled={
-            !sku?.display_price || missingField !== undefined || checkResult?.status === "invalid"
+            choice === null || missingField !== undefined || checkResult?.status === "invalid"
           }
           loading={check.isPending}
           onPress={goPay}

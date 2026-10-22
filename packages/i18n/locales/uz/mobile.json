@@ -28,7 +28,14 @@
     "pickAmount": "Miqdorni tanlang",
     "enterId": "ID ni kiriting",
     "outOfStock": "Mavjud emas",
-    "maintenance": "Vaqtincha mavjud emas"
+    "maintenance": "Vaqtincha mavjud emas",
+    "amountUsd": "Dollardagi summa",
+    "amountUnits": "Miqdor",
+    "typeUsd": "Summani kiriting",
+    "typeUnits": "Miqdorni kiriting",
+    "range": "{min} dan {max} gacha",
+    "tooLow": "Kamida {min}",
+    "tooHigh": "Koʻpi bilan {max}"
   },
   "check": {
     "valid": "Oʻyinchi topildi:",

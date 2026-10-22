@@ -11,7 +11,7 @@ import { MethodPicker } from "@/components/checkout/MethodPicker";
 import { TopBar } from "@/components/TopBar";
 import { Button, Card, T } from "@/components/ui";
 import { spendable, useWallet } from "@/lib/account";
-import { orderFingerprint, PAY_METHODS, type PayMethod } from "@/lib/checkout";
+import { orderFingerprint, PAY_METHODS, type OrderLine, type PayMethod } from "@/lib/checkout";
 import { formatSum } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 import { createIntent, createOrder, newKey, useProviders } from "@/lib/orders";
@@ -30,6 +30,10 @@ type Params = {
   price: string;
   fields: string;
   player?: string;
+  /** A typed Stars count. */
+  qty?: string;
+  /** Steam: typed dollars. */
+  amountUsd?: string;
 };
 
 function parseFields(raw: string | undefined): Record<string, string> {
@@ -144,7 +148,12 @@ export default function CheckoutScreen() {
   // One key per order contents: paying again for the same thing resumes the same order.
   const keyRef = useRef<{ fingerprint: string; key: string } | null>(null);
 
-  const line = { skuId: params.skuId, fields };
+  const line: OrderLine = {
+    skuId: params.skuId,
+    fields,
+    ...(params.qty ? { qty: Number(params.qty) } : {}),
+    ...(params.amountUsd ? { amountUsd: params.amountUsd } : {}),
+  };
 
   const pay = async () => {
     if (method === null) return;

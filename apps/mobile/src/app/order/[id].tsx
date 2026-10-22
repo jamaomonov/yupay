@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { TopBar } from "@/components/TopBar";
 import { Button, Card, Notice, T } from "@/components/ui";
+import { itemLabel } from "@/lib/catalog";
 import { PAY_METHODS, stageOf, type OrderStage, type PayMethod } from "@/lib/checkout";
 import { formatSum } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
@@ -87,7 +88,7 @@ export default function OrderScreen() {
     const stage = stageOf(order.data.status);
     const display = order.data.items[0]?.display;
     const brand = display?.brand_name ?? "";
-    const label = display?.denomination ?? display?.product_name ?? "";
+    const label = itemLabel(order.data.items[0]);
     const look = STAGE[stage];
     const Icon = look.icon;
     const color = look.tone === "mute" ? c.mute : c[look.tone];

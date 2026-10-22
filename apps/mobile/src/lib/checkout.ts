@@ -4,6 +4,7 @@
  */
 import type { SkuOut } from "@yupay/api-client/types";
 
+import { skuKind } from "./amount";
 import type { PlayerCheckResult } from "./api";
 
 export const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
@@ -17,12 +18,11 @@ export const PAY_METHODS = ["payme", "click", "uzum"] as const;
 export type PayMethod = (typeof PAY_METHODS)[number];
 
 /**
- * A SKU bought as one fixed line. A typed amount (Steam) or a typed quantity (Telegram Stars)
- * needs its own input, which the app does not have yet.
+ * A SKU bought as one tile. A typed amount (Steam) or a typed quantity (Telegram Stars) has
+ * its own field (`lib/amount.ts`).
  */
 export function isFixedSku(sku: SkuOut): boolean {
-  if (sku.variable_amount === true) return false;
-  return !(sku.amount_unit != null && sku.min_qty != null && sku.max_qty != null);
+  return skuKind(sku) === "fixed";
 }
 
 /**
@@ -33,20 +33,31 @@ export function checkBlocks(result: PlayerCheckResult | null): boolean {
   return result === null || result.status === "invalid";
 }
 
-/** One fixed line as the signed-in account; receipts go where the account says. */
+/** One line as the signed-in account; receipts go where the account says. */
 export interface OrderLine {
   skuId: string;
   fields: Record<string, string>;
+  /** Stars typed as a count; 1 for everything else. */
+  qty?: number;
+  /** Steam: the typed dollars, two decimals. */
+  amountUsd?: string;
 }
 
-/** `POST /orders`: one fixed line, priced in soʻm. */
+/** `POST /orders`: one line, priced in soʻm. */
 export function orderBody(line: OrderLine) {
   const fields = Object.fromEntries(
     Object.entries(line.fields).map(([key, value]) => [key, value.trim()]),
   );
   return {
     currency: "UZS",
-    items: [{ sku_id: line.skuId, qty: 1, fulfillment_data: fields }],
+    items: [
+      {
+        sku_id: line.skuId,
+        qty: line.qty ?? 1,
+        ...(line.amountUsd !== undefined ? { amount_usd: line.amountUsd } : {}),
+        fulfillment_data: fields,
+      },
+    ],
   };
 }
 

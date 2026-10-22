@@ -1,4 +1,4 @@
-import type { BrandOut } from "@yupay/api-client/types";
+import type { BrandOut, OrderItemOut } from "@yupay/api-client/types";
 
 /**
  * Brands with a flow of their own, not built in the app yet: game gifts, skins, and the Steam
@@ -34,4 +34,20 @@ export function orderImage(
   if (display == null) return null;
   if (display.image_url) return display.image_url;
   return brands?.find((b) => b.slug === display.brand_slug)?.logo_url ?? null;
+}
+
+/**
+ * What an order line bought, in a few characters. A Steam top-up's denomination is the
+ * «Любая сумма» placeholder, so it reads as the dollars credited (`unit_price_usd`); a Stars
+ * line bought by count reads as the count. Everything else is its denomination.
+ */
+export function itemLabel(item: OrderItemOut | undefined): string {
+  const display = item?.display;
+  if (item === undefined || display == null) return "";
+  if (display.variable_amount) {
+    const cents = Math.round(Number(item.unit_price_usd) * 100) * item.qty;
+    return `$${(cents / 100).toFixed(2).replace(/\.00$/, "")}`;
+  }
+  if (item.qty > 1) return item.qty.toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  return display.denomination ?? display.product_name;
 }

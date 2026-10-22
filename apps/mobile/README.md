@@ -63,6 +63,14 @@ in-app browser (an app link such as Uzum's leaves the app); when the buyer comes
 order screen asks for the status. The return URL is the storefront's order page, the only
 origin the API accepts.
 
+## Typed amounts
+
+Steam is bought in dollars and Telegram Stars by count, so their pages show a field instead of
+tiles (`lib/amount.ts`, `components/brand/AmountField.tsx`). The bounds come from the SKU:
+`min_amount_usd`/`max_amount_usd` (whole dollars, rounded inward) or `min_qty`/`max_qty`. The
+price shown is the typed amount × `display_price`, rounded to whole soʻm as the API rounds a
+total. The order line carries `amount_usd` for dollars and `qty` for units.
+
 ## Balance
 
 The profile's balance card opens `wallet`: the spendable `user_wallet` balance, «top up», and the

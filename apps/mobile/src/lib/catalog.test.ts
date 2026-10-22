@@ -1,7 +1,7 @@
-import type { BrandOut } from "@yupay/api-client/types";
+import type { BrandOut, OrderItemOut } from "@yupay/api-client/types";
 import { describe, expect, it } from "vitest";
 
-import { matches, orderImage, sellable } from "./catalog";
+import { itemLabel, matches, orderImage, sellable } from "./catalog";
 
 function brand(slug: string, name: string, category_slug = "top-ups"): BrandOut {
   return {
@@ -51,5 +51,43 @@ describe("orderImage", () => {
     );
     expect(orderImage({ image_url: null, brand_slug: "gone" }, brands)).toBeNull();
     expect(orderImage(undefined, brands)).toBeNull();
+  });
+});
+
+function line(
+  qty: number,
+  unit: string,
+  variable: boolean,
+  denomination: string | null,
+): OrderItemOut {
+  return {
+    id: "i",
+    sku_id: "s",
+    qty,
+    unit_price_usd: unit,
+    fulfillment_state: "delivered",
+    fulfillment_data: {},
+    display: {
+      brand_slug: "steam",
+      brand_name: "Steam",
+      product_slug: "p",
+      product_name: "Steam Wallet",
+      product_kind: "top_up",
+      sku_code: "x",
+      denomination,
+      region: null,
+      image_url: null,
+      variable_amount: variable,
+    },
+  };
+}
+
+describe("itemLabel", () => {
+  it("shows the dollars for Steam, the count for Stars, else the denomination", () => {
+    expect(itemLabel(line(1, "25.000000", true, "Любая сумма"))).toBe("$25");
+    expect(itemLabel(line(1, "11.300000", true, "Любая сумма"))).toBe("$11.30");
+    expect(itemLabel(line(1500, "0.017200", false, "Любое количество"))).toBe("1 500");
+    expect(itemLabel(line(1, "5.000000", false, "325 UC"))).toBe("325 UC");
+    expect(itemLabel(undefined)).toBe("");
   });
 });
