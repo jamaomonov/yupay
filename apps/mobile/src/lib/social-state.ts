@@ -3,7 +3,7 @@
  * sends, and reading what comes back. Plain TS, unit-tested.
  */
 
-export type Provider = "google" | "telegram";
+export type Provider = "google" | "telegram" | "steam";
 
 function toBase64Url(text: string): string {
   return btoa(text).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
@@ -29,6 +29,7 @@ export function decodeBase64Utf8(value: string): string {
 export type SocialResult =
   | { provider: "google"; accessToken: string }
   | { provider: "telegram"; payload: Record<string, unknown> }
+  | { provider: "steam"; params: Record<string, string> }
   | { error: true };
 
 /**
@@ -50,5 +51,25 @@ export function readResult(params: Record<string, string | undefined>, sent: str
       // A declined Telegram prompt answers `tgAuthResult=false`, or junk: an error either way.
     }
   }
+  if (params.provider === "steam" && params.steam) {
+    const steam = readSteam(params.steam);
+    if (steam !== null) return { provider: "steam", params: steam };
+  }
   return { error: true };
+}
+
+/** Steam's `openid.*` set as the page packed it: string values only, `claimed_id` present. */
+function readSteam(packed: string): Record<string, string> | null {
+  try {
+    const raw: unknown = JSON.parse(decodeBase64Utf8(packed));
+    if (typeof raw !== "object" || raw === null) return null;
+    const entries = Object.entries(raw);
+    if (!entries.every(([key, value]) => key.startsWith("openid.") && typeof value === "string")) {
+      return null;
+    }
+    const out = Object.fromEntries(entries) as Record<string, string>; // every value checked above
+    return "openid.claimed_id" in out ? out : null;
+  } catch {
+    return null;
+  }
 }

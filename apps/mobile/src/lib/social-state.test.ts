@@ -26,6 +26,24 @@ describe("social sign-in state", () => {
     });
   });
 
+  it("reads Steam's openid set and refuses a mangled one", () => {
+    const set = {
+      "openid.mode": "id_res",
+      "openid.claimed_id": "https://steamcommunity.com/openid/id/7",
+    };
+    const steam = Buffer.from(JSON.stringify(set)).toString("base64url");
+    expect(readResult({ state: "s", provider: "steam", steam }, "s")).toEqual({
+      provider: "steam",
+      params: set,
+    });
+    const foreign = Buffer.from(JSON.stringify({ "openid.mode": "id_res", x: "1" })).toString(
+      "base64url",
+    );
+    expect(readResult({ state: "s", provider: "steam", steam: foreign }, "s")).toEqual({
+      error: true,
+    });
+  });
+
   it("drops an answer for another attempt, an error, or a declined prompt", () => {
     expect(readResult({ state: "other", provider: "google", access_token: "t" }, "s")).toEqual({
       error: true,

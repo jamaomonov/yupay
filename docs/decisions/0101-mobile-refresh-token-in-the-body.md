@@ -73,6 +73,15 @@ the decoded Telegram payload to `/auth/telegram/widget`, both with body transpor
   server-side one-time code), and the `exp://` branch should go.
 - Google requires `https://yupay.uz/app-auth` among the web OAuth client's authorized redirect
   URIs. Telegram requires nothing new: the bot's domain is already `yupay.uz`.
+- **Steam (2026-10-22)** goes through the same page. It sends the buyer to Steam's OpenID login
+  with `openid.return_to=https://yupay.uz/app-auth?provider=steam&state=…`; Steam answers in
+  the query, and the page packs the whole `openid.*` set (base64url JSON) into the app's URL.
+  The app posts it to `/auth/steam`, which accepts `/app-auth?` as its second return address
+  beside the website's callback (`auth.service._steam_return_prefix`; the `?` keeps a
+  lookalike path out). Steam's own `check_authentication` stays the only verification, and an
+  assertion is single-use there. Unlike the Google token, the assertion sits in the query of
+  one `GET /app-auth`, so it reaches the edge access log — the same as the website's callback
+  page already does; the page drops it from the address before leaving.
 
 ### Positive consequences
 

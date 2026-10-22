@@ -22,7 +22,7 @@ local API or at a CORS-adding proxy.
 | ---------------------- | -------------------------------------------------------- |
 | `src/app/(tabs)/`      | The four tabs: home, catalog, orders, profile            |
 | `src/app/brand/[slug]` | A game: products, player ID with the live check, amount  |
-| `src/app/sign-in`      | The front door: Telegram, Google, email and password     |
+| `src/app/sign-in`      | The front door: Telegram, Google, Steam, email, password |
 | `src/app/checkout`     | Checkout as the account: Payme / Click / Uzum, pay       |
 | `src/app/order/[id]`   | One order's status, asked every 3 s until it settles     |
 | `src/app/account`      | The account and sign-out; `promo`, `choose` from profile |
@@ -69,14 +69,14 @@ once and retries. Registration (sent with `X-Yupay-Surface: mobile`, so the acco
 `signup_source = mobile`) sends the confirmation email; the link opens the website, and the
 buyer then signs in here. «Forgot password» opens the website's page.
 
-Telegram and Google go through the storefront's `/app-auth` page in the system browser, which
-returns the provider's answer to `yupay://auth` (ADR-0101). In Expo Go the return address is
+Telegram, Google and Steam go through the storefront's `/app-auth` page in the system browser,
+which returns the provider's answer to `yupay://auth` (ADR-0101). In Expo Go the return address is
 `exp://<LAN IP>:8081/--/auth`, which the page also accepts. Google needs
 `https://yupay.uz/app-auth` among the web OAuth client's redirect URIs.
 
 ## Not built yet
 
-Steam and Apple sign-in; topping up the balance; push (and with it the notifications row of
+Apple sign-in; topping up the balance; push (and with it the notifications row of
 the profile mockup). The mockup's «cashback 2 %» line is left out: there is no purchase
 cashback to show. Gift cards, the Steam wallet, Steam game
 gifts and CS2 skins are hidden from the catalogue until their flows exist (`src/lib/catalog.ts`).

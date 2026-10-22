@@ -255,6 +255,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       if ("error" in result) throw new SocialSignInError(provider);
       if (result.provider === "google") {
         await finish("/auth/google", { access_token: result.accessToken });
+      } else if (result.provider === "steam") {
+        await finish("/auth/steam", { params: result.params });
       } else {
         await finish("/auth/telegram/widget", result.payload);
       }

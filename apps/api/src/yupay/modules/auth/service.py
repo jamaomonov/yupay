@@ -378,6 +378,19 @@ async def google_login(
     return await _open_session(db, user=user, settings=s)
 
 
+def _steam_return_prefix(params: dict[str, str], web_base: str) -> str:
+    """Which of our two Steam return pages the assertion must have been minted for.
+
+    The website's callback page, or the mobile app's ``/app-auth`` bounce (ADR-0101), which
+    hands the ``openid.*`` set to ``yupay://auth``. Both are our own pages; the trailing
+    ``?`` keeps a lookalike path such as ``/app-auth-x`` out.
+    """
+    app_bounce = f"{web_base}/app-auth?"
+    if params.get("openid.return_to", "").startswith(app_bounce):
+        return app_bounce
+    return f"{web_base}/auth/steam/callback"
+
+
 async def steam_login(
     db: AsyncSession,
     params: dict[str, str],
@@ -399,7 +412,9 @@ async def steam_login(
     web_base = (s.web_base_url or s.base_url).rstrip("/")
     verify = verifier or steam.verify_callback
     try:
-        steam_id = await verify(params, expected_return_prefix=f"{web_base}/auth/steam/callback")
+        steam_id = await verify(
+            params, expected_return_prefix=_steam_return_prefix(params, web_base)
+        )
     except steam.SteamAuthError as exc:
         log.info("auth.steam.rejected", reason=str(exc))
         raise UnauthorizedError("steam verification failed") from exc

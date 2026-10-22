@@ -1,11 +1,13 @@
 /**
- * The page the mobile app opens to sign in with Google or Telegram (ADR-0101).
+ * The page the mobile app opens to sign in with Google, Telegram or Steam (ADR-0101).
  *
  * The app cannot run either provider's web flow inside itself, and neither provider will
  * redirect to an app scheme, so the app opens `https://yupay.uz/app-auth` in the system
  * browser. This page sends the buyer to the provider, receives the answer in the URL
- * fragment, and passes it to the app's own URL (`yupay://…`, or `exp://<LAN IP>` from Expo
- * Go in development). The app then posts it to `/auth/google` or `/auth/telegram/widget`.
+ * fragment (Steam: in the query), and passes it to the app's own URL (`yupay://…`, or
+ * `exp://<LAN IP>` from Expo Go in development). The app then posts it to `/auth/google`,
+ * `/auth/telegram/widget` or `/auth/steam`. Steam's `openid.return_to` is this page, which the
+ * API accepts as one of its two Steam return addresses (`auth.service._steam_return_prefix`).
  *
  * It is a bare HTML document served by a route handler, outside the `[locale]` layout, on
  * purpose: that layout loads Yandex.Metrika and Google Tag Manager, which report the full
@@ -79,7 +81,18 @@ export function appAuthScript(config: AppAuthConfig): string {
     location.replace(st.to + (st.to.indexOf("?") === -1 ? "?" : "&") + params.toString());
   }
 
-  if (hash.get("access_token")) {
+  if (query.get("openid.mode") === "id_res") {
+    // Steam's OpenID answer arrives in the query, not the fragment. The whole openid.* set
+    // goes back: the API hands it to Steam for the check (ADR-0101).
+    var steam = {};
+    query.forEach(function (v, k) { if (k.indexOf("openid.") === 0) steam[k] = v; });
+    back(new URLSearchParams({
+      provider: "steam",
+      steam: btoa(JSON.stringify(steam)).replace(/\\+/g, "-").replace(/\\//g, "_").replace(/=+$/, "")
+    }));
+  } else if (query.get("openid.mode")) {
+    back(new URLSearchParams({ error: "1" }));
+  } else if (hash.get("access_token")) {
     back(new URLSearchParams({ provider: "google", access_token: hash.get("access_token") }));
   } else if (hash.get("tgAuthResult")) {
     back(new URLSearchParams({ provider: "telegram", tg: hash.get("tgAuthResult") }));
@@ -94,6 +107,15 @@ export function appAuthScript(config: AppAuthConfig): string {
     location.replace("https://oauth.telegram.org/auth?" + new URLSearchParams({
       bot_id: TG_BOT, origin: location.origin, request_access: "write",
       return_to: SELF + "?" + new URLSearchParams({ provider: "telegram", state: state }).toString()
+    }).toString());
+  } else if (query.get("provider") === "steam") {
+    location.replace("https://steamcommunity.com/openid/login?" + new URLSearchParams({
+      "openid.ns": "http://specs.openid.net/auth/2.0",
+      "openid.mode": "checkid_setup",
+      "openid.return_to": SELF + "?" + new URLSearchParams({ provider: "steam", state: state }).toString(),
+      "openid.realm": location.origin,
+      "openid.identity": "http://specs.openid.net/auth/2.0/identifier_select",
+      "openid.claimed_id": "http://specs.openid.net/auth/2.0/identifier_select"
     }).toString());
   } else {
     say("failed", st);

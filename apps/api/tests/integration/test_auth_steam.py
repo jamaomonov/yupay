@@ -13,6 +13,7 @@ import pytest
 import respx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from yupay.core.config import get_settings
 from yupay.core.errors import UnauthorizedError
 from yupay.modules.auth.service import steam_login
 from yupay.modules.auth.steam import SteamAuthError, build_login_url, verify_callback
@@ -277,3 +278,26 @@ async def test_a_sign_in_counts_against_the_same_shared_steam_quota(
     before = calls()
     await steam_login(db_session, _params(), settings=s, verifier=verify)
     assert calls() == before + 1
+
+
+async def test_the_app_bounce_page_is_a_return_address_of_ours(db_session: AsyncSession) -> None:
+    """The mobile app signs in through ``/app-auth`` (ADR-0101); a lookalike path is not it."""
+    seen: list[str] = []
+
+    async def verify(params: dict[str, str], *, expected_return_prefix: str) -> int:
+        seen.append(expected_return_prefix)
+        if not params["openid.return_to"].startswith(expected_return_prefix):
+            raise SteamAuthError("return_to does not belong to us")
+        return 76561198000000077
+
+    settings = get_settings().model_copy(update={"web_base_url": "https://yupay.uz"})
+    app = _params()
+    app["openid.return_to"] = "https://yupay.uz/app-auth?provider=steam&state=abc"
+    tokens = await steam_login(db_session, app, verifier=verify, settings=settings)
+    assert tokens.access_token
+
+    lookalike = _params()
+    lookalike["openid.return_to"] = "https://yupay.uz/app-auth-x?provider=steam"
+    with pytest.raises(UnauthorizedError):
+        await steam_login(db_session, lookalike, verifier=verify, settings=settings)
+    assert seen == ["https://yupay.uz/app-auth?", "https://yupay.uz/auth/steam/callback"]

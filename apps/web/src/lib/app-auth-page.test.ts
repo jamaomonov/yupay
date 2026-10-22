@@ -45,6 +45,7 @@ function run(href: string): { went: string | null; text: string; address: string
     URL,
     URLSearchParams,
     atob,
+    btoa,
   });
   return out;
 }
@@ -104,6 +105,44 @@ describe("app-auth bounce page", () => {
     const out = run(`https://yupay.uz/app-auth#access_token=tok123&state=${state(to)}`);
     expect(out.went).toBeNull();
     expect(out.text).toBe("ошибка");
+  });
+
+  it("starts Steam with this page as the OpenID return address", () => {
+    const s = state(app);
+    const { went } = run(`https://yupay.uz/app-auth?provider=steam&state=${s}`);
+    const steam = new URL(went ?? "");
+    expect(steam.origin + steam.pathname).toBe("https://steamcommunity.com/openid/login");
+    expect(steam.searchParams.get("openid.realm")).toBe("https://yupay.uz");
+    expect(steam.searchParams.get("openid.return_to")).toBe(
+      `https://yupay.uz/app-auth?provider=steam&state=${s}`,
+    );
+  });
+
+  it("hands Steam's whole openid set to the app and clears it from the address", () => {
+    const s = state(app);
+    const out = run(
+      `https://yupay.uz/app-auth?provider=steam&state=${s}&openid.mode=id_res` +
+        "&openid.claimed_id=https%3A%2F%2Fsteamcommunity.com%2Fopenid%2Fid%2F7656&openid.sig=x%2By",
+    );
+    const back = new URL(out.went ?? "");
+    expect(back.protocol).toBe("yupay:");
+    expect(back.searchParams.get("provider")).toBe("steam");
+    expect(back.searchParams.get("state")).toBe(s);
+    const raw = (back.searchParams.get("steam") ?? "").replace(/-/g, "+").replace(/_/g, "/");
+    expect(JSON.parse(atob(raw))).toEqual({
+      "openid.mode": "id_res",
+      "openid.claimed_id": "https://steamcommunity.com/openid/id/7656",
+      "openid.sig": "x+y",
+    });
+    expect(out.address).toBe("https://yupay.uz/app-auth");
+  });
+
+  it("reports a cancelled Steam sign-in as an error", () => {
+    const s = state(app);
+    const back = new URL(
+      run(`https://yupay.uz/app-auth?provider=steam&state=${s}&openid.mode=cancel`).went ?? "",
+    );
+    expect(back.searchParams.get("error")).toBe("1");
   });
 
   it("refuses a missing or broken state", () => {
