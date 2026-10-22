@@ -13,6 +13,7 @@ import { setApiLocale } from "@/lib/api";
 import { I18nProvider, useI18n } from "@/lib/i18n";
 import { SessionProvider, useSession } from "@/lib/session";
 import { Launch } from "@/components/Launch";
+import { PushBridge } from "@/components/PushBridge";
 import { ThemeProvider, useTheme } from "@/theme/ThemeProvider";
 
 void SplashScreen.preventAutoHideAsync();
@@ -45,6 +46,7 @@ function Routes() {
   return (
     <>
       <StatusBar style={scheme === "dark" ? "light" : "dark"} />
+      {signedIn && Platform.OS !== "web" && <PushBridge />}
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: c.bg } }}>
         <Stack.Protected guard={signedIn}>
           <Stack.Screen name="(tabs)" />

@@ -8,6 +8,7 @@ import { TopBar } from "@/components/TopBar";
 import { Card, T } from "@/components/ui";
 import { accountName } from "@/lib/account";
 import { useI18n } from "@/lib/i18n";
+import { unregisterPush } from "@/lib/push";
 import { useSession } from "@/lib/session";
 import { useTheme } from "@/theme/ThemeProvider";
 import { space } from "@/theme/tokens";
@@ -55,7 +56,8 @@ export default function AccountScreen() {
           Icon={LogOut}
           title={t("profile.signOut")}
           tone="danger"
-          onPress={() => void signOut()}
+          // The install stops getting this account's pushes before the session goes.
+          onPress={() => void unregisterPush().then(signOut)}
         />
       </Card>
     </ScrollView>

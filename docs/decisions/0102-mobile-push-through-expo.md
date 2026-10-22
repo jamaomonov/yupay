@@ -75,6 +75,14 @@ push_queue`. An order that rolls back pushes nothing. `UNIQUE (device_id, dedupe
 - Telegram and email are still fire-and-forget. Moving them onto a queue is not part of this
   change.
 
+### The app's side (2026-10-22)
+
+`apps/mobile/src/lib/push.ts` and `components/PushBridge.tsx`: permission asked once after
+sign-in, the Android channel `orders`, the token registered with `PUT /push/devices` against
+the EAS project `0ccca536-c3c8-4bdf-b5ea-1868b084c444`, `DELETE` before sign-out, and a tap
+opening the order. Expo Go on Android cannot receive remote pushes (SDK 53+), so testing
+there needs a development build.
+
 ## Validation
 
 `apps/api/tests/integration/test_push.py` covers:

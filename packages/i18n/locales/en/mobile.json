@@ -177,6 +177,13 @@
   },
   "notifications": {
     "title": "Notifications",
-    "empty": "No notifications yet"
+    "empty": "No notifications yet",
+    "channel": "Orders",
+    "on": "Notifications are on",
+    "off": "Notifications are off",
+    "what": "We will tell you when an order is done or your balance is topped up",
+    "denied": "Allow YuPay notifications in your phone settings",
+    "enable": "Turn on notifications",
+    "settings": "Open settings"
   }
 }

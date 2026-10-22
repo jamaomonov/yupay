@@ -177,6 +177,13 @@
   },
   "notifications": {
     "title": "Bildirishnomalar",
-    "empty": "Hozircha bildirishnomalar yoʻq"
+    "empty": "Hozircha bildirishnomalar yoʻq",
+    "channel": "Buyurtmalar",
+    "on": "Bildirishnomalar yoqilgan",
+    "off": "Bildirishnomalar oʻchirilgan",
+    "what": "Buyurtma bajarilganda yoki balans toʻldirilganda xabar beramiz",
+    "denied": "Telefon sozlamalarida YuPay bildirishnomalariga ruxsat bering",
+    "enable": "Bildirishnomalarni yoqish",
+    "settings": "Sozlamalarni ochish"
   }
 }

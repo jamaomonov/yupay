@@ -27,7 +27,7 @@ local API or at a CORS-adding proxy.
 | `src/app/order/[id]`    | One order's status, asked every 3 s until it settles     |
 | `src/app/account`       | The account and sign-out; `promo`, `choose` from profile |
 | `src/app/wallet`        | Balance, «top up», history; `topup` starts a deposit     |
-| `src/app/notifications` | Opened by the home bell; empty until push lands          |
+| `src/app/notifications` | Opened by the home bell: push on/off and how to turn on  |
 | `src/components/`       | `ui.tsx` (text, card, button, chip) and screen pieces    |
 | `src/theme/tokens.ts`   | Light and dark palettes, fonts, radii                    |
 | `src/lib/api.ts`        | API calls through `@yupay/api-client`                    |
@@ -134,9 +134,22 @@ which returns the provider's answer to `yupay://auth` (ADR-0101). In Expo Go the
 `exp://<LAN IP>:8081/--/auth`, which the page also accepts. Google needs
 `https://yupay.uz/app-auth` among the web OAuth client's redirect URIs.
 
+## Push
+
+ADR-0102. `components/PushBridge` is mounted while signed in: it asks for permission once,
+creates the Android channel `orders`, sends the Expo token to `PUT /push/devices` (the id
+it gets back is kept in prefs as `push.device`), refreshes the account's queries when a push
+lands, and opens `order/[id]` when one is tapped (`data.type === "order"`). Sign-out calls
+`unregisterPush` (`DELETE /push/devices/{id}`) before the session goes. The notifications
+screen shows whether pushes are on, with «turn on» or «open settings».
+
+The EAS project is `@jamaomonovs-team/yupay` (`extra.eas.projectId` in `app.json`, written
+by `eas init`). Expo Go on Android has no remote pushes since SDK 53 — there `registerPush`
+answers `unsupported` and stays quiet; a development or store build is needed to receive
+them. iOS Expo Go still gets them.
+
 ## Not built yet
 
-Apple sign-in; push (and with it the notifications row of
-the profile mockup). The mockup's «cashback 2 %» line is left out: there is no purchase
-cashback to show. Gift cards, the Steam wallet, Steam game
-gifts and CS2 skins are hidden from the catalogue until their flows exist (`src/lib/catalog.ts`).
+Apple sign-in. The profile mockup's «cashback 2 %» line is left out: there is no purchase
+cashback to show. Gift cards, Steam game gifts and CS2 skins are hidden from the catalogue
+until their flows exist (`src/lib/catalog.ts`).
