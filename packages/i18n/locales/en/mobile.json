@@ -70,7 +70,9 @@
     "badEmail": "Check the email",
     "error": "Couldn't create the order. Try again",
     "stale": "The order has expired. Tap «Pay» again",
-    "noMethods": "Payment is temporarily unavailable"
+    "noMethods": "Payment is temporarily unavailable",
+    "fromBalance": "From balance",
+    "balanceShort": "{sum} soʻm short"
   },
   "order": {
     "title": "Order",
@@ -129,5 +131,31 @@
     "exhausted": "This promo code has run out",
     "inactive": "This promo code is no longer active",
     "error": "Couldn't apply the promo code"
+  },
+  "wallet": {
+    "title": "Balance",
+    "topUp": "Top up",
+    "topUpTitle": "Top up",
+    "amount": "Amount",
+    "note": "The balance updates once the bank confirms the payment",
+    "min": "At least {sum} soʻm",
+    "max": "At most {sum} soʻm",
+    "enterAmount": "Enter an amount",
+    "submit": "Top up {sum} soʻm",
+    "failed": "Couldn't start the top-up. Try again",
+    "badAmount": "Check the amount",
+    "methodDown": "That method is unavailable right now, pick another",
+    "history": "History",
+    "empty": "No operations yet",
+    "tx": {
+      "topUp": "Top-up",
+      "topUpRefund": "Top-up refund",
+      "payment": "Order payment",
+      "refund": "Refund",
+      "promo": "Promo code",
+      "cashback": "Cashback",
+      "adjust": "Adjustment",
+      "other": "Operation"
+    }
   }
 }

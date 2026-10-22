@@ -58,6 +58,8 @@ function Routes() {
           <Stack.Screen name="order/[id]" />
           <Stack.Screen name="account" />
           <Stack.Screen name="promo" />
+          <Stack.Screen name="wallet" />
+          <Stack.Screen name="topup" />
           <Stack.Screen
             name="choose"
             options={{

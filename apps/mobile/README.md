@@ -26,11 +26,13 @@ local API or at a CORS-adding proxy.
 | `src/app/checkout`     | Checkout as the account: Payme / Click / Uzum, pay       |
 | `src/app/order/[id]`   | One order's status, asked every 3 s until it settles     |
 | `src/app/account`      | The account and sign-out; `promo`, `choose` from profile |
+| `src/app/wallet`       | Balance, «top up», history; `topup` starts a deposit     |
 | `src/components/`      | `ui.tsx` (text, card, button, chip) and screen pieces    |
 | `src/theme/tokens.ts`  | Light and dark palettes, fonts, radii                    |
 | `src/lib/api.ts`       | API calls through `@yupay/api-client`                    |
 | `src/lib/orders.ts`    | `POST /orders`, payment intent, order reads              |
 | `src/lib/checkout.ts`  | Checkout rules without network (unit-tested)             |
+| `src/lib/wallet.ts`    | Top-up bounds, history rows, «from balance» (tested)     |
 | `src/lib/session.tsx`  | Access token in memory, refresh token in the keychain    |
 | `src/lib/i18n.tsx`     | Strings from `packages/i18n/locales/*/mobile.json`       |
 
@@ -60,6 +62,17 @@ in-app browser (an app link such as Uzum's leaves the app); when the buyer comes
 order screen asks for the status. The return URL is the storefront's order page, the only
 origin the API accepts.
 
+## Balance
+
+The profile's balance card opens `wallet`: the spendable `user_wallet` balance, «top up», and the
+last 50 movements (the buyer's own leg of each ledger entry, signed in their favour; an order
+payment opens that order). `topup` posts `POST /wallet/topup` with one `Idempotency-Key` per
+amount and method, opens the acquirer, and reads the balance again when the buyer comes back —
+it moves once the acquirer settles. Bounds are the website's: 5 000 – 5 000 000 soʻm. At
+checkout «from balance» comes first and is picked when the balance covers the order (provider
+`wallet`, settles at once, no page to open); when it does not, it says how much is missing and
+links to `topup`.
+
 ## Sign-in
 
 Email and password for now. The app asks the API for both tokens in the JSON
@@ -76,7 +89,7 @@ which returns the provider's answer to `yupay://auth` (ADR-0101). In Expo Go the
 
 ## Not built yet
 
-Apple sign-in; topping up the balance; push (and with it the notifications row of
+Apple sign-in; push (and with it the notifications row of
 the profile mockup). The mockup's «cashback 2 %» line is left out: there is no purchase
 cashback to show. Gift cards, the Steam wallet, Steam game
 gifts and CS2 skins are hidden from the catalogue until their flows exist (`src/lib/catalog.ts`).

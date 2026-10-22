@@ -52,36 +52,50 @@ function AccountCard({ user }: { user: MeOut }) {
   );
 }
 
-/** The spendable balance in soʻm. */
+/** The spendable balance in soʻm; opens the wallet with its history and «top up». */
 function BalanceCard() {
   const { t } = useI18n();
   const { c } = useTheme();
   const wallet = useWallet();
   const balance = spendable(wallet.data);
   return (
-    <Card style={{ padding: 16, gap: 4 }}>
-      <T tone="mute">{t("profile.balance")}</T>
-      {balance === null ? (
-        wallet.isError ? (
-          <T tone="mute">—</T>
-        ) : (
-          <ActivityIndicator
-            color={c.mute}
-            style={{ alignSelf: "flex-start", marginVertical: 6 }}
-          />
-        )
-      ) : (
-        <T
-          style={{
-            fontFamily: fonts.display,
-            fontSize: 26,
-            letterSpacing: -0.6,
-            fontVariant: ["tabular-nums"],
-          }}
-        >
-          {formatSum(balance)} {t("common.sum")}
-        </T>
-      )}
+    <Card>
+      <Pressable
+        onPress={() => router.push("/wallet")}
+        style={({ pressed }) => ({
+          flexDirection: "row",
+          alignItems: "center",
+          padding: 16,
+          opacity: pressed ? 0.7 : 1,
+        })}
+      >
+        <View style={{ flex: 1, gap: 4 }}>
+          <T tone="mute">{t("profile.balance")}</T>
+          {balance === null ? (
+            wallet.isError ? (
+              <T tone="mute">—</T>
+            ) : (
+              <ActivityIndicator
+                color={c.mute}
+                style={{ alignSelf: "flex-start", marginVertical: 6 }}
+              />
+            )
+          ) : (
+            <T
+              style={{
+                fontFamily: fonts.display,
+                fontSize: 26,
+                letterSpacing: -0.6,
+                fontVariant: ["tabular-nums"],
+              }}
+            >
+              {formatSum(balance)} {t("common.sum")}
+            </T>
+          )}
+        </View>
+        <T tone="accent">{t("wallet.topUp")}</T>
+        <ChevronRight size={18} color={c.dim} style={{ marginLeft: 4 }} />
+      </Pressable>
     </Card>
   );
 }

@@ -70,7 +70,9 @@
     "badEmail": "Emailni tekshiring",
     "error": "Buyurtma yaratilmadi. Qayta urinib koʻring",
     "stale": "Buyurtma eskirdi. «Toʻlash»ni yana bosing",
-    "noMethods": "Toʻlov vaqtincha mavjud emas"
+    "noMethods": "Toʻlov vaqtincha mavjud emas",
+    "fromBalance": "Balansdan",
+    "balanceShort": "{sum} soʻm yetmaydi"
   },
   "order": {
     "title": "Buyurtma",
@@ -129,5 +131,31 @@
     "exhausted": "Promokod tugagan",
     "inactive": "Promokod endi amal qilmaydi",
     "error": "Promokodni qoʻllab boʻlmadi"
+  },
+  "wallet": {
+    "title": "Balans",
+    "topUp": "Toʻldirish",
+    "topUpTitle": "Toʻldirish",
+    "amount": "Summa",
+    "note": "Bank toʻlovni tasdiqlagach balans toʻldiriladi",
+    "min": "Kamida {sum} soʻm",
+    "max": "Koʻpi bilan {sum} soʻm",
+    "enterAmount": "Summani kiriting",
+    "submit": "{sum} soʻmga toʻldirish",
+    "failed": "Toʻldirishni boshlab boʻlmadi. Qayta urinib koʻring",
+    "badAmount": "Summani tekshiring",
+    "methodDown": "Bu usul hozir mavjud emas, boshqasini tanlang",
+    "history": "Tarix",
+    "empty": "Hozircha amallar yoʻq",
+    "tx": {
+      "topUp": "Toʻldirish",
+      "topUpRefund": "Toʻldirish qaytarildi",
+      "payment": "Buyurtma toʻlovi",
+      "refund": "Qaytarish",
+      "promo": "Promokod",
+      "cashback": "Keshbek",
+      "adjust": "Tuzatish",
+      "other": "Amal"
+    }
   }
 }

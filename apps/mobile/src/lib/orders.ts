@@ -38,10 +38,11 @@ export function createOrder(line: OrderLine, idempotencyKey: string): Promise<Or
   });
 }
 
-/** A payment for the order through `provider`; the API reuses an open one. */
+/** A payment for the order through `provider`; the API reuses an open one. `wallet` pays
+ *  from the balance and settles at once, with no page to open. */
 export function createIntent(input: {
   orderId: string;
-  provider: PayMethod;
+  provider: PayMethod | "wallet";
   locale: string;
 }): Promise<PaymentOut> {
   return authRequest<PaymentOut>(`${V1}/payments/intents`, {
