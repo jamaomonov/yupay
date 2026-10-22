@@ -216,6 +216,14 @@ of the caller's devices (the app's sign-out; 404 for anyone else's). Both take
 lists the active devices. The token is never echoed back. What gets pushed and when:
 `apps/api/src/yupay/modules/push/README.md` (ADR-0102).
 
+## Deleting an account — `DELETE /auth/me`
+
+Signed-in account only (Bearer); `Idempotency-Key` required (422 without), `204` on success.
+A tombstone: the account cannot be entered again, every session is revoked at once, push
+devices stop; orders, payments and the ledger stay. An account with any role answers `409`
+(`code: has_roles`). A second call cannot happen — the first kills the token it came with.
+Details: `docs/security/pii-handling.md` («Right to deletion»).
+
 ## CS2 skins admin
 
 `POST /admin/skins/trades/{id}/refund` **requires** `Idempotency-Key` (a repeat replays the

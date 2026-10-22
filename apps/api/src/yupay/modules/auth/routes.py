@@ -13,9 +13,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.api.v1.deps import db_session
 from yupay.core.config import get_settings
-from yupay.core.errors import UnauthorizedError
+from yupay.core.errors import UnauthorizedError, ValidationError
+from yupay.core.idempotency import IDEMPOTENCY_HEADER, normalize_idempotency_key
 from yupay.core.logging import get_logger
 from yupay.modules.auth import steam as steam_openid
+from yupay.modules.auth.account_deletion import delete_account
 from yupay.modules.auth.cookies import (
     REFRESH_COOKIE_NAME,
     clear_refresh_cookie,
@@ -467,6 +469,28 @@ async def me(user: Annotated[User, Depends(current_user)]) -> MeOut:
     out = MeOut.model_validate(user)
     out.sign_in_with = _sign_in_method(user)
     return out
+
+
+@router.delete(
+    "/me",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete the signed-in account",
+)
+async def delete_me(
+    user: Annotated[User, Depends(current_user)],
+    db: Annotated[AsyncSession, Depends(db_session)],
+    idempotency_key: Annotated[str | None, Header(alias=IDEMPOTENCY_HEADER)] = None,
+) -> None:
+    """Tombstone the account (``account_deletion``): it cannot be entered again.
+
+    Orders, payments and the ledger stay as financial records. A second call cannot happen:
+    the first revokes the session the bearer token belongs to.
+    """
+    if normalize_idempotency_key(idempotency_key) is None:
+        raise ValidationError(
+            f"{IDEMPOTENCY_HEADER} header is required", extra={"header": IDEMPOTENCY_HEADER}
+        )
+    await delete_account(db, user)
 
 
 @router.post(

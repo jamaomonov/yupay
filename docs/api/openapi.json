@@ -37921,6 +37921,63 @@
       }
     },
     "/api/v1/auth/me": {
+      "delete": {
+        "description": "Tombstone the account (``account_deletion``): it cannot be entered again.\n\nOrders, payments and the ledger stay as financial records. A second call cannot happen:\nthe first revokes the session the bearer token belongs to.",
+        "operationId": "delete_me_api_v1_auth_me_delete",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete the signed-in account",
+        "tags": [
+          "auth"
+        ]
+      },
       "get": {
         "description": "Return the user record identified by the Bearer access token.",
         "operationId": "me_api_v1_auth_me_get",

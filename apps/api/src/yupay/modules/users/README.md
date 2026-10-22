@@ -75,8 +75,11 @@ the exception. `auth.service.google_login`'s equivalent race (unique on
 
 ## Soft delete (GDPR)
 
-`users.deleted_at` is the tombstone. A periodic job (planned in the `users` module) nulls
-PII columns after deletion while keeping order history intact for accounting. See
+`users.deleted_at` is the tombstone, set by `DELETE /auth/me`
+(`auth/account_deletion.py`). Nothing is scrubbed afterwards — the owner's choice
+(2026-10-22). Every read here filters `deleted_at IS NULL`; a Telegram or Steam identity
+whose link points at a deleted account gets a fresh account that takes the link over
+(`_reclaim_telegram_link`, and the same move inside `upsert_user_by_steam`). See
 [`docs/security/pii-handling.md`](../../../../../docs/security/pii-handling.md).
 
 ## Admin directory (`GET /admin/users`)

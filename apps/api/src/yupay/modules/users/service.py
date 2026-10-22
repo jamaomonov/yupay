@@ -118,6 +118,9 @@ async def upsert_user_by_telegram(
     """
     existing = await get_user_by_telegram_id(session, tg_user.id)
     if existing is None:
+        reclaimed = await _reclaim_telegram_link(session, tg_user, signup_source=signup_source)
+        if reclaimed is not None:
+            return reclaimed
         locale = (locale_hint or tg_user.language_code or "ru").split("-")[0][:8] or "ru"
         user = User(
             id=new_id(),
@@ -170,6 +173,58 @@ async def upsert_user_by_telegram(
     existing.updated_at = now()
     await session.flush()
     return existing
+
+
+async def _fresh_user_for(
+    session: AsyncSession, *, display_name: str | None, photo_url: str | None, signup_source: str
+) -> User:
+    """A new, empty account for an identity whose previous account was deleted."""
+    user = User(
+        id=new_id(),
+        email=None,
+        locale="ru",
+        display_name=display_name,
+        photo_url=photo_url,
+        signup_source=signup_source,
+    )
+    session.add(user)
+    await session.flush()
+    return user
+
+
+async def _reclaim_telegram_link(
+    session: AsyncSession, tg_user: TelegramUser, *, signup_source: str
+) -> User | None:
+    """The Telegram id is linked to a **deleted** account: open a fresh one and move the link.
+
+    ``uq_telegram_links_tg_user_id`` is global, so without this a person who deleted their
+    account could never sign in with Telegram again — not in the app, the mini app or the
+    site. The deleted account keeps its orders and ledger; only the identity moves.
+    """
+    link = (
+        await session.execute(
+            select(TelegramLink)
+            .join(User, User.id == TelegramLink.user_id)
+            .where(TelegramLink.tg_user_id == tg_user.id, User.deleted_at.is_not(None))
+            .with_for_update(of=TelegramLink)
+        )
+    ).scalar_one_or_none()
+    if link is None:
+        return None
+    user = await _fresh_user_for(
+        session,
+        display_name=safe_display_name(tg_user.first_name or tg_user.username),
+        photo_url=safe_avatar_url(tg_user.photo_url),
+        signup_source=signup_source,
+    )
+    link.user_id = user.id
+    link.tg_username = tg_user.username
+    link.first_name = tg_user.first_name
+    link.last_name = tg_user.last_name
+    link.last_seen_at = now()
+    await session.flush()
+    await session.refresh(user, attribute_names=["telegram_link"])
+    return user
 
 
 async def _get_steam_link(session: AsyncSession, steam_id: int) -> SteamLink | None:
@@ -256,6 +311,15 @@ async def upsert_user_by_steam(
         else:
             return user
 
+    if link.user.deleted_at is not None:
+        # The steamid belongs to a deleted account: a fresh one takes the link over, as
+        # `_reclaim_telegram_link` does for Telegram; the old account keeps its records.
+        fresh = await _fresh_user_for(
+            session, display_name=name, photo_url=avatar, signup_source=signup_source
+        )
+        link.user_id = fresh.id
+        await session.flush()
+        await session.refresh(link, attribute_names=["user"])
     link.persona_name = name or link.persona_name
     link.avatar_url = avatar or link.avatar_url
     link.last_seen_at = now()

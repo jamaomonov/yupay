@@ -73,6 +73,17 @@ async def disable_device(db: AsyncSession, *, user_id: str, device_id: str) -> P
     return device
 
 
+async def disable_all(db: AsyncSession, *, user_id: str, reason: str) -> int:
+    """Stop pushing to every device of the account (it was deleted). Returns how many."""
+    devices = await active_devices(db, user_id=user_id)
+    moment = now()
+    for device in devices:
+        device.disabled_at = moment
+        device.disabled_reason = reason
+    await db.flush()
+    return len(devices)
+
+
 async def active_devices(db: AsyncSession, *, user_id: str) -> list[PushDevice]:
     """The account's devices that may be pushed to, newest first."""
     rows = await db.execute(
