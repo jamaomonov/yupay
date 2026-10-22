@@ -157,5 +157,9 @@
       "adjust": "Tuzatish",
       "other": "Amal"
     }
+  },
+  "notifications": {
+    "title": "Bildirishnomalar",
+    "empty": "Hozircha bildirishnomalar yoʻq"
   }
 }

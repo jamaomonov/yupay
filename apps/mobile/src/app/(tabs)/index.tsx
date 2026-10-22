@@ -2,7 +2,7 @@ import { router } from "expo-router";
 import { ActivityIndicator, Pressable, View } from "react-native";
 
 import { BrandGrid } from "@/components/BrandGrid";
-import { Logo } from "@/components/Logo";
+import { HomeHeader } from "@/components/HomeHeader";
 import { Screen } from "@/components/Screen";
 import { SearchField } from "@/components/SearchField";
 import { Button, Notice, T } from "@/components/ui";
@@ -21,13 +21,7 @@ export default function HomeScreen() {
   const openCatalog = () => router.navigate("/catalog");
 
   return (
-    <Screen
-      header={
-        <View style={{ height: 48, justifyContent: "center", marginBottom: 8 }}>
-          <Logo />
-        </View>
-      }
-    >
+    <Screen header={<HomeHeader />}>
       <SearchField placeholder={t("home.search")} onPress={openCatalog} />
 
       <View
