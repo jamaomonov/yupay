@@ -75,6 +75,17 @@ export function createTopUp(input: {
   });
 }
 
+/**
+ * Deletes the signed-in account (`DELETE /auth/me`). The server keeps the records and the
+ * account cannot be entered again; the caller signs out locally afterwards.
+ */
+export function deleteAccount(): Promise<void> {
+  return authRequest<void>(`${V1}/auth/me`, {
+    method: "DELETE",
+    headers: { "Idempotency-Key": newKey() },
+  });
+}
+
 export interface Redeemed {
   code: string;
   amount: string;

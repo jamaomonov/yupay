@@ -133,7 +133,15 @@
   },
   "account": {
     "title": "Account",
-    "email": "Email for receipts"
+    "email": "Email for receipts",
+    "delete": "Delete account",
+    "deleteHint": "You will not be able to sign in to it again",
+    "deleteTitle": "Delete account?",
+    "deleteText": "You will not be able to sign in to this account again. Order history is kept as accounting rules require.",
+    "deleteBalance": "Your balance of {sum} will be lost.",
+    "deleteCancel": "Cancel",
+    "deleteConfirm": "Delete",
+    "deleteFailed": "Could not delete the account. Please try again"
   },
   "promo": {
     "title": "Promo code",

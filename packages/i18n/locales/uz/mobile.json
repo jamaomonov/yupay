@@ -133,7 +133,15 @@
   },
   "account": {
     "title": "Akkaunt",
-    "email": "Cheklar uchun email"
+    "email": "Cheklar uchun email",
+    "delete": "Akkauntni oʻchirish",
+    "deleteHint": "Unga qayta kirib boʻlmaydi",
+    "deleteTitle": "Akkaunt oʻchirilsinmi?",
+    "deleteText": "Bu akkauntga boshqa kirib boʻlmaydi. Buyurtmalar tarixi hisob qoidalariga koʻra saqlanadi.",
+    "deleteBalance": "Balansdagi {sum} yoʻqoladi.",
+    "deleteCancel": "Bekor qilish",
+    "deleteConfirm": "Oʻchirish",
+    "deleteFailed": "Akkauntni oʻchirib boʻlmadi. Qayta urinib koʻring"
   },
   "promo": {
     "title": "Promokod",

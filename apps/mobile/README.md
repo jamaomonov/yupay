@@ -148,6 +148,12 @@ by `eas init`). Expo Go on Android has no remote pushes since SDK 53 — there `
 answers `unsupported` and stays quiet; a development or store build is needed to receive
 them. iOS Expo Go still gets them.
 
+## Deleting the account
+
+«Удалить аккаунт» on the account screen (the stores require it): a confirm that names the
+balance about to be forfeited, then `unregisterPush`, `DELETE /auth/me` and a local sign-out.
+The server keeps every record (a tombstone, `docs/security/pii-handling.md`).
+
 ## Not built yet
 
 Apple sign-in. The profile mockup's «cashback 2 %» line is left out: there is no purchase

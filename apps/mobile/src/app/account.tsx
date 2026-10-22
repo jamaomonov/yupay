@@ -1,25 +1,56 @@
-import { LogOut } from "lucide-react-native";
-import { ScrollView, View } from "react-native";
+import { LogOut, Trash2 } from "lucide-react-native";
+import { useState } from "react";
+import { Alert, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Avatar } from "@/components/Avatar";
 import { ListRow } from "@/components/ListRow";
 import { TopBar } from "@/components/TopBar";
 import { Card, T } from "@/components/ui";
-import { accountName } from "@/lib/account";
+import { accountName, deleteAccount, spendable, useWallet } from "@/lib/account";
+import { formatSum } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 import { unregisterPush } from "@/lib/push";
 import { useSession } from "@/lib/session";
 import { useTheme } from "@/theme/ThemeProvider";
 import { space } from "@/theme/tokens";
 
-/** The account: name, how it signs in, its email; sign-out. */
+/** The account: name, how it signs in, its email; sign-out and deletion. */
 export default function AccountScreen() {
   const { t } = useI18n();
   const { c } = useTheme();
   const insets = useSafeAreaInsets();
   const { user, signOut } = useSession();
+  const wallet = useWallet();
+  const [deleting, setDeleting] = useState(false);
   if (user == null) return null;
+
+  const remove = async () => {
+    setDeleting(true);
+    try {
+      await unregisterPush();
+      await deleteAccount();
+      await signOut();
+    } catch {
+      setDeleting(false);
+      Alert.alert(t("account.deleteFailed"));
+    }
+  };
+
+  // The balance is named before the buyer confirms: deleting forfeits it.
+  const confirmDelete = () => {
+    const balance = Number(spendable(wallet.data) ?? "0");
+    const lines = [
+      t("account.deleteText"),
+      ...(balance > 0
+        ? [t("account.deleteBalance", { sum: `${formatSum(balance)} ${t("common.sum")}` })]
+        : []),
+    ];
+    Alert.alert(t("account.deleteTitle"), lines.join("\n\n"), [
+      { text: t("account.deleteCancel"), style: "cancel" },
+      { text: t("account.deleteConfirm"), style: "destructive", onPress: () => void remove() },
+    ]);
+  };
   const name = accountName(user);
   const email = user.delivery_email ?? user.email;
 
@@ -58,6 +89,17 @@ export default function AccountScreen() {
           tone="danger"
           // The install stops getting this account's pushes before the session goes.
           onPress={() => void unregisterPush().then(signOut)}
+        />
+      </Card>
+
+      <Card>
+        <ListRow
+          first
+          Icon={Trash2}
+          title={t("account.delete")}
+          hint={t("account.deleteHint")}
+          tone="danger"
+          {...(deleting ? {} : { onPress: confirmDelete })}
         />
       </Card>
     </ScrollView>
