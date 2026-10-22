@@ -2,6 +2,7 @@ import { Bell } from "lucide-react-native";
 import { ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { EmptyArt } from "@/components/EmptyArt";
 import { TopBar } from "@/components/TopBar";
 import { T } from "@/components/ui";
 import { useI18n } from "@/lib/i18n";
@@ -27,8 +28,8 @@ export default function NotificationsScreen() {
       }}
     >
       <TopBar title={t("notifications.title")} />
-      <View style={{ alignItems: "center", gap: 12, marginTop: 60 }}>
-        <Bell size={32} color={c.dim} />
+      <View style={{ alignItems: "center", gap: 16, marginTop: 48 }}>
+        <EmptyArt Icon={Bell} />
         <T tone="mute" style={{ textAlign: "center" }}>
           {t("notifications.empty")}
         </T>

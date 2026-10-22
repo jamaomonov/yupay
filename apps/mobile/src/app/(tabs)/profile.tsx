@@ -1,4 +1,5 @@
 import type { MeOut } from "@yupay/api-client/types";
+import { useQueryClient } from "@tanstack/react-query";
 import Constants from "expo-constants";
 import * as Linking from "expo-linking";
 import { router } from "expo-router";
@@ -104,11 +105,14 @@ function BalanceCard() {
 export default function ProfileScreen() {
   const { t, locale } = useI18n();
   const { pref } = useTheme();
-  const { user } = useSession();
+  const { user, reload } = useSession();
+  const queryClient = useQueryClient();
+  const refresh = () =>
+    Promise.all([queryClient.refetchQueries({ queryKey: ["account"] }), reload()]);
   const version = Constants.expoConfig?.version ?? "";
 
   return (
-    <Screen title={t("profile.title")}>
+    <Screen title={t("profile.title")} onRefresh={refresh}>
       <View style={{ gap: 12, marginTop: 8 }}>
         {user != null && <AccountCard user={user} />}
         <BalanceCard />

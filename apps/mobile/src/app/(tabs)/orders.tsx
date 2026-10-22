@@ -4,6 +4,8 @@ import { router } from "expo-router";
 import { ChevronRight, ReceiptText, Wallet } from "lucide-react-native";
 import { Pressable, View } from "react-native";
 
+import { EmptyArt } from "@/components/EmptyArt";
+import { FadeIn } from "@/components/FadeIn";
 import { Screen } from "@/components/Screen";
 import { Badge, Button, Card, Notice, Skeleton, T } from "@/components/ui";
 import { useBrands } from "@/lib/api";
@@ -52,59 +54,62 @@ function OrderList({ rows }: { rows: Row[] }) {
   return (
     <Card>
       {rows.map((row, index) => (
-        <Pressable
-          key={row.id}
-          onPress={() => router.push({ pathname: "/order/[id]", params: { id: row.id } })}
-          style={({ pressed }) => ({
-            flexDirection: "row",
-            alignItems: "center",
-            gap: 12,
-            padding: 16,
-            borderTopWidth: index === 0 ? 0 : 1,
-            borderTopColor: c.border,
-            opacity: pressed ? 0.7 : 1,
-          })}
-        >
-          <View
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: 12,
-              overflow: "hidden",
-              backgroundColor: c.muted,
+        <FadeIn key={row.id} delay={Math.min(index, 8) * 40}>
+          <Pressable
+            onPress={() => router.push({ pathname: "/order/[id]", params: { id: row.id } })}
+            style={({ pressed }) => ({
+              flexDirection: "row",
               alignItems: "center",
-              justifyContent: "center",
-            }}
+              gap: 12,
+              padding: 16,
+              borderTopWidth: index === 0 ? 0 : 1,
+              borderTopColor: c.border,
+              opacity: pressed ? 0.7 : 1,
+            })}
           >
-            {row.image !== null ? (
-              <Image
-                source={row.image}
-                style={{ width: "100%", height: "100%" }}
-                contentFit="cover"
-                transition={150}
-              />
-            ) : row.topUp ? (
-              <Wallet size={20} color={c.mute} strokeWidth={1.8} />
-            ) : (
-              <ReceiptText size={20} color={c.mute} strokeWidth={1.8} />
-            )}
-          </View>
-          <View style={{ flex: 1, gap: 8 }}>
-            <T variant="h2" numberOfLines={1}>
-              {row.title ?? t("orders.topUp")}
-            </T>
-            <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
-              <Badge
-                label={t(`order.${stageOf(row.status)}`)}
-                tone={stageTone(stageOf(row.status))}
-              />
-              <T variant="small" tone="mute">
-                {date.format(new Date(row.at))}
-              </T>
+            <View
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: 12,
+                overflow: "hidden",
+                backgroundColor: c.muted,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              {row.image !== null ? (
+                <Image
+                  source={row.image}
+                  style={{ width: "100%", height: "100%" }}
+                  contentFit="cover"
+                  transition={150}
+                />
+              ) : row.topUp ? (
+                <Wallet size={20} color={c.mute} strokeWidth={1.8} />
+              ) : (
+                <ReceiptText size={20} color={c.mute} strokeWidth={1.8} />
+              )}
             </View>
-          </View>
-          <ChevronRight size={18} color={c.dim} />
-        </Pressable>
+            <View style={{ flex: 1, gap: 8 }}>
+              <T variant="h2" numberOfLines={1}>
+                {row.title ?? t("orders.topUp")}
+              </T>
+              <View
+                style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 }}
+              >
+                <Badge
+                  label={t(`order.${stageOf(row.status)}`)}
+                  tone={stageTone(stageOf(row.status))}
+                />
+                <T variant="small" tone="mute">
+                  {date.format(new Date(row.at))}
+                </T>
+              </View>
+            </View>
+            <ChevronRight size={18} color={c.dim} />
+          </Pressable>
+        </FadeIn>
       ))}
     </Card>
   );
@@ -128,21 +133,9 @@ function Loading() {
 
 function Empty() {
   const { t } = useI18n();
-  const { c } = useTheme();
   return (
     <Card style={{ padding: 24, alignItems: "center", gap: 12, marginTop: 8 }}>
-      <View
-        style={{
-          width: 56,
-          height: 56,
-          borderRadius: 18,
-          backgroundColor: c.muted,
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <ReceiptText size={26} color={c.fg} strokeWidth={1.8} />
-      </View>
+      <EmptyArt Icon={ReceiptText} />
       <T variant="h2" style={{ textAlign: "center" }}>
         {t("orders.empty")}
       </T>
@@ -161,7 +154,7 @@ export default function OrdersScreen() {
   const rows = (orders.data?.items ?? []).map((order) => fromOrder(order, brands.data?.items));
 
   return (
-    <Screen title={t("orders.title")}>
+    <Screen title={t("orders.title")} onRefresh={() => orders.refetch()}>
       {orders.isPending ? (
         <Loading />
       ) : orders.isError ? (

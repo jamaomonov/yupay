@@ -75,7 +75,7 @@ export function SkuGrid({ skus, selectedId, onSelect }: SkuGridProps) {
                 />
               )}
             </View>
-            <T variant="h2" numberOfLines={1}>
+            <T variant="h2" numberOfLines={2} style={{ textAlign: "center" }}>
               {sku.denomination ?? sku.sku_code}
             </T>
             {/* The price in ink, not grey: it is half of what the buyer compares. */}

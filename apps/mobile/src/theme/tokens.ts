@@ -1,8 +1,8 @@
 /**
  * Design tokens for the app (ADR-0100).
  *
- * The dark palette is the web storefront's (`apps/web/src/app/globals.css`); the light one is
- * new. Lime is a fill, never text on white — `accent` is the readable green for links and
+ * The dark palette started as the web storefront's (`apps/web/src/app/globals.css`) and was
+ * lifted to graphite-navy on 2026-10-22; the light one is the app's own. Lime is a fill, never text on white — `accent` is the readable green for links and
  * small highlights in the light theme.
  */
 
@@ -51,13 +51,15 @@ export const palettes: Record<Scheme, Palette> = {
     dangerBg: "#FEECEB",
   },
   dark: {
-    bg: "#060712",
-    card: "#0F1324",
-    muted: "#181D33",
-    border: "#232A45",
+    // Graphite-navy, not near-black: on #060712 the cards vanished and the screen read as a
+    // hole (owner, 2026-10-22).
+    bg: "#11141F",
+    card: "#1A1E2D",
+    muted: "#242939",
+    border: "#2E3447",
     fg: "#FFFFFF",
-    mute: "#9DA8C8",
-    dim: "#7982A0",
+    mute: "#A8B0C8",
+    dim: "#7E87A3",
     primary: "#AAFF33",
     primaryFg: "#000000",
     accent: "#AAFF33",

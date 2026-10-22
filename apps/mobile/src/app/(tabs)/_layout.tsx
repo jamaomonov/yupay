@@ -70,6 +70,7 @@ function TabBar({ state, navigation }: BottomTabBarProps) {
               />
             </View>
             <Text
+              maxFontSizeMultiplier={1.2}
               style={{
                 fontFamily: focused ? fonts.semibold : fonts.medium,
                 fontSize: 11,

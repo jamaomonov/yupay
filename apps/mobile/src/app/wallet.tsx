@@ -1,7 +1,10 @@
 import { router } from "expo-router";
-import { Pressable, ScrollView, View } from "react-native";
+import { History } from "lucide-react-native";
+import { useState } from "react";
+import { Pressable, RefreshControl, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { EmptyArt } from "@/components/EmptyArt";
 import { TopBar } from "@/components/TopBar";
 import { Button, Card, Skeleton, T } from "@/components/ui";
 import { accountIds, spendable, useWallet, useWalletHistory } from "@/lib/account";
@@ -63,6 +66,15 @@ export default function WalletScreen() {
   const insets = useSafeAreaInsets();
   const wallet = useWallet();
   const history = useWalletHistory();
+  const [refreshing, setRefreshing] = useState(false);
+  const refresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([wallet.refetch(), history.refetch()]);
+    } finally {
+      setRefreshing(false);
+    }
+  };
   const balance = spendable(wallet.data);
   const mine = accountIds(wallet.data);
   const rows = (history.data?.items ?? [])
@@ -71,6 +83,15 @@ export default function WalletScreen() {
 
   return (
     <ScrollView
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={() => void refresh()}
+          tintColor={c.mute}
+          colors={[c.fg]}
+          progressBackgroundColor={c.card}
+        />
+      }
       style={{ backgroundColor: c.bg }}
       contentContainerStyle={{
         paddingTop: insets.top + 4,
@@ -104,7 +125,10 @@ export default function WalletScreen() {
         ) : history.isError ? (
           <T tone="mute">{t("common.loadError")}</T>
         ) : rows.length === 0 ? (
-          <T tone="mute">{t("wallet.empty")}</T>
+          <Card style={{ padding: 24, alignItems: "center", gap: 12 }}>
+            <EmptyArt Icon={History} />
+            <T tone="mute">{t("wallet.empty")}</T>
+          </Card>
         ) : (
           <Card>
             {rows.map((row, i) => (

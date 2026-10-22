@@ -3,6 +3,7 @@ import { Image } from "expo-image";
 import { router } from "expo-router";
 import { Pressable, useWindowDimensions, View } from "react-native";
 
+import { FadeIn } from "@/components/FadeIn";
 import { Skeleton, T } from "@/components/ui";
 import { useTheme } from "@/theme/ThemeProvider";
 import { space } from "@/theme/tokens";
@@ -36,41 +37,43 @@ export function BrandGrid({ brands }: { brands: readonly BrandOut[] }) {
   const tile = useTile();
   return (
     <View style={{ flexDirection: "row", flexWrap: "wrap", gap: GAP }}>
-      {brands.map((brand) => (
-        <Pressable
-          key={brand.slug}
-          accessibilityRole="link"
-          onPress={() => router.push({ pathname: "/brand/[slug]", params: { slug: brand.slug } })}
-          style={({ pressed }) => ({
-            width: tile,
-            gap: 8,
-            opacity: pressed ? 0.8 : 1,
-            transform: [{ scale: pressed ? 0.97 : 1 }],
-          })}
-        >
-          <View
-            style={{
-              aspectRatio: 1,
-              borderRadius: 18,
-              overflow: "hidden",
-              backgroundColor: c.muted,
-              borderWidth: 1,
-              borderColor: c.border,
-            }}
+      {brands.map((brand, index) => (
+        // Tiles arrive one after another, the first dozen staggered and the rest at once.
+        <FadeIn key={brand.slug} delay={Math.min(index, 12) * 30}>
+          <Pressable
+            accessibilityRole="link"
+            onPress={() => router.push({ pathname: "/brand/[slug]", params: { slug: brand.slug } })}
+            style={({ pressed }) => ({
+              width: tile,
+              gap: 8,
+              opacity: pressed ? 0.8 : 1,
+              transform: [{ scale: pressed ? 0.97 : 1 }],
+            })}
           >
-            {brand.logo_url !== null && (
-              <Image
-                source={brand.logo_url}
-                style={{ width: "100%", height: "100%" }}
-                contentFit="cover"
-                transition={150}
-              />
-            )}
-          </View>
-          <T variant="label" numberOfLines={2}>
-            {brand.name}
-          </T>
-        </Pressable>
+            <View
+              style={{
+                aspectRatio: 1,
+                borderRadius: 18,
+                overflow: "hidden",
+                backgroundColor: c.muted,
+                borderWidth: 1,
+                borderColor: c.border,
+              }}
+            >
+              {brand.logo_url !== null && (
+                <Image
+                  source={brand.logo_url}
+                  style={{ width: "100%", height: "100%" }}
+                  contentFit="cover"
+                  transition={150}
+                />
+              )}
+            </View>
+            <T variant="label" numberOfLines={2}>
+              {brand.name}
+            </T>
+          </Pressable>
+        </FadeIn>
       ))}
     </View>
   );

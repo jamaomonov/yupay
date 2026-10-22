@@ -1,6 +1,6 @@
 import type { SkuOut } from "@yupay/api-client/types";
 import { router, useLocalSearchParams } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ActivityIndicator, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -14,6 +14,7 @@ import { useBrand, usePlayerCheck, useProduct, type PlayerCheckResult } from "@/
 import { checkBlocks, isFixedSku } from "@/lib/checkout";
 import { formatSum } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
+import { loadPlayer, savePlayer } from "@/lib/player-memory";
 import { useTheme } from "@/theme/ThemeProvider";
 import { space } from "@/theme/tokens";
 
@@ -44,6 +45,17 @@ export default function BrandScreen() {
   const [count, setCount] = useState(0);
   const [checkResult, setCheckResult] = useState<PlayerCheckResult | null>(null);
   const check = usePlayerCheck(slug);
+
+  // The ID this game was last bought for comes back filled in; anything typed meanwhile wins.
+  useEffect(() => {
+    let live = true;
+    void loadPlayer(slug).then((saved) => {
+      if (live && Object.keys(saved).length > 0) setValues((prev) => ({ ...saved, ...prev }));
+    });
+    return () => {
+      live = false;
+    };
+  }, [slug]);
 
   if (brand.isPending) {
     return <ActivityIndicator color={c.mute} style={{ marginTop: insets.top + 80 }} />;
@@ -92,6 +104,7 @@ export default function BrandScreen() {
 
   const toCheckout = (result: PlayerCheckResult | null) => {
     if (choice === null || !brand.data) return;
+    void savePlayer(brand.data.slug, values);
     const { qty, amountUsd } = choice;
     router.push({
       pathname: "/checkout",

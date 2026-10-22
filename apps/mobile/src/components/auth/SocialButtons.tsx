@@ -93,7 +93,7 @@ export function SocialButtons({ label, busy, onPress }: SocialButtonsProps) {
           disabled={busy !== null}
           onPress={() => onPress(provider)}
           style={({ pressed }) => ({
-            height: 52,
+            minHeight: 52,
             borderRadius: radius.control,
             borderWidth: 1,
             borderColor: c.border,
@@ -106,7 +106,10 @@ export function SocialButtons({ label, busy, onPress }: SocialButtonsProps) {
           })}
         >
           {busy === provider ? <ActivityIndicator color={c.fg} /> : mark(provider, c.fg)}
-          <Text style={{ fontFamily: fonts.semibold, fontSize: 15, color: c.fg }}>
+          <Text
+            maxFontSizeMultiplier={1.3}
+            style={{ fontFamily: fonts.semibold, fontSize: 15, color: c.fg }}
+          >
             {label(NAMES[provider])}
           </Text>
         </Pressable>

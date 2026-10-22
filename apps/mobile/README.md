@@ -74,8 +74,32 @@ these; keep new screens on them.
 - **Touch**: anything tappable is at least `TOUCH` (44) — size it or give it `hitSlop`.
 - **Colour**: `dim` is for placeholders and chevrons, never for text that must be read.
   Disabled buttons are grey, not faded lime. Light-theme cards carry `cardShadow`.
-- **States**: loading is a `Skeleton` in the content's shape; an order's status is a `Badge`
-  in `stageTone`'s colour.
+- **States**: loading is a `Skeleton` in the content's shape (they breathe on one shared
+  pulse); an order's status is a `Badge` in `stageTone`'s colour; an empty screen shows
+  `EmptyArt` with its own icon.
+- **Motion**: a tab's content and list rows arrive through `FadeIn` (rows staggered); the brand
+  logo springs in on its page; the delivered mark pops with a success haptic. React Native's
+  `Animated` only — the React Compiler lint refuses refs read during render, so values live in
+  `useState(() => new Animated.Value(…))`.
+- **Text size**: the phone's setting is followed, capped by `maxFontSizeMultiplier` (1.4 text,
+  1.3 buttons and chips, 1.2 inputs, tab labels and `display`); buttons, chips and badges take
+  `minHeight`, never a fixed height.
+- **Dark theme**: graphite-navy (`#11141F` / cards `#1A1E2D`), not near-black.
+- **Covers**: a game with no hero image gets its own logo blurred as a cover; with no logo
+  either, a gradient picked by the slug.
+- **Icon**: `assets/images/icon.png` (opaque, App Store), `icon-dark.png` and
+  `icon-tinted.png` for iOS 18's appearances, and the three Android adaptive layers — all
+  rendered from one SVG of the mark.
+
+## Remembered player ID
+
+A brand page fills in the ID (and server) the game was last bought for
+(`lib/player-memory.ts`, SecureStore `player.<slug>`); what the buyer types wins. It is saved
+when they go to checkout and never leaves the phone.
+
+## Pull to refresh
+
+Home, catalogue, orders, profile and the balance refresh on a pull: `Screen`'s `onRefresh`.
 
 ## Typed amounts
 

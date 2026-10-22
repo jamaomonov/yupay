@@ -47,6 +47,7 @@ export function SearchField({
     <View style={box}>
       <Search size={18} color={c.dim} />
       <TextInput
+        maxFontSizeMultiplier={1.2}
         value={value ?? ""}
         {...(onChangeText === undefined ? {} : { onChangeText })}
         placeholder={placeholder}

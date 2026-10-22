@@ -107,6 +107,7 @@ function Field({ field, value, onChange, onCheck, checking }: FieldProps) {
           }}
         >
           <TextInput
+            maxFontSizeMultiplier={1.2}
             value={value}
             onChangeText={onChange}
             placeholder={placeholder}

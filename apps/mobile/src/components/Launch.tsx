@@ -5,9 +5,9 @@ import Svg, { Path } from "react-native-svg";
 import { fonts } from "@/theme/tokens";
 
 /** The native splash's colours, so the hand-over from it is invisible. */
-const BG = "#060712";
+const BG = "#11141F";
 const LIME = "#AAFF33";
-const MUTE = "#9DA8C8";
+const MUTE = "#A8B0C8";
 
 interface LaunchProps {
   /** Set when the session could not be restored for want of a connection. */

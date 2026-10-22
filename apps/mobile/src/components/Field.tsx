@@ -25,6 +25,7 @@ export function Field({ label, value, onChange, hint, error, ...input }: FieldPr
         {label}
       </T>
       <TextInput
+        maxFontSizeMultiplier={1.2}
         value={value}
         onChangeText={onChange}
         placeholderTextColor={c.dim}

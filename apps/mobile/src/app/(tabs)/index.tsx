@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
 import { Pressable, View } from "react-native";
 
@@ -15,11 +16,17 @@ const POPULAR = 9;
 export default function HomeScreen() {
   const { t, locale } = useI18n();
   const brands = useBrands(locale);
+  const queryClient = useQueryClient();
+  const refresh = () =>
+    Promise.all([
+      brands.refetch(),
+      queryClient.refetchQueries({ queryKey: ["account", "wallet"] }),
+    ]);
 
   const openCatalog = () => router.navigate("/catalog");
 
   return (
-    <Screen header={<HomeHeader />}>
+    <Screen header={<HomeHeader />} onRefresh={refresh}>
       <View
         style={{
           flexDirection: "row",

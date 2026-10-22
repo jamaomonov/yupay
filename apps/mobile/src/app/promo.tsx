@@ -1,8 +1,10 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { Gift } from "lucide-react-native";
 import { useState } from "react";
-import { ScrollView } from "react-native";
+import { ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { EmptyArt } from "@/components/EmptyArt";
 import { Field } from "@/components/Field";
 import { TopBar } from "@/components/TopBar";
 import { Button, Card, T } from "@/components/ui";
@@ -49,6 +51,9 @@ export default function PromoScreen() {
       keyboardShouldPersistTaps="handled"
     >
       <TopBar title={t("promo.title")} fallback="/profile" />
+      <View style={{ alignItems: "center" }}>
+        <EmptyArt Icon={Gift} />
+      </View>
       <Field
         label={t("promo.label")}
         value={code}

@@ -9,11 +9,16 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "bundleIdentifier": "uz.yupay.app",
-      "supportsTablet": false
+      "supportsTablet": false,
+      "icon": {
+        "light": "./assets/images/icon.png",
+        "dark": "./assets/images/icon-dark.png",
+        "tinted": "./assets/images/icon-tinted.png"
+      }
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#060712",
+        "backgroundColor": "#151A2E",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
@@ -30,7 +35,7 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#060712",
+          "backgroundColor": "#11141F",
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }

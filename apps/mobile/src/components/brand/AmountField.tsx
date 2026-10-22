@@ -41,6 +41,7 @@ export function AmountField({ rule, value, onChange }: AmountFieldProps) {
         }}
       >
         <TextInput
+          maxFontSizeMultiplier={1.2}
           value={value === 0 ? "" : String(value)}
           onChangeText={(text) => onChange(parseCount(text))}
           keyboardType="number-pad"

@@ -2,9 +2,10 @@
  * The app's small building blocks: text, card, button, chip. Every colour comes from the
  * theme, so a screen never decides light or dark by itself.
  */
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import {
   ActivityIndicator,
+  Animated,
   Pressable,
   Text,
   View,
@@ -51,6 +52,8 @@ export function T({ children, variant = "body", tone = "fg", style, numberOfLine
   return (
     <Text
       {...(numberOfLines === undefined ? {} : { numberOfLines })}
+      // Follows the phone's text size, capped where fixed layouts would start to break.
+      maxFontSizeMultiplier={variant === "display" ? 1.2 : 1.4}
       style={[VARIANTS[variant], { color: c[tone] }, style]}
     >
       {children}
@@ -104,7 +107,9 @@ export function Button({ label, onPress, kind = "primary", disabled, loading }: 
       disabled={disabled === true || loading === true}
       onPress={onPress}
       style={({ pressed }) => ({
-        height: 52,
+        minHeight: 52,
+        paddingVertical: 12,
+        paddingHorizontal: 16,
         borderRadius: radius.control,
         alignItems: "center",
         justifyContent: "center",
@@ -116,7 +121,12 @@ export function Button({ label, onPress, kind = "primary", disabled, loading }: 
       {loading === true ? (
         <ActivityIndicator color={fg} />
       ) : (
-        <Text style={{ fontFamily: fonts.semibold, fontSize: 15, color: fg }}>{label}</Text>
+        <Text
+          maxFontSizeMultiplier={1.3}
+          style={{ fontFamily: fonts.semibold, fontSize: 15, color: fg, textAlign: "center" }}
+        >
+          {label}
+        </Text>
       )}
     </Pressable>
   );
@@ -137,7 +147,7 @@ export function Chip({ label, active, onPress }: ChipProps) {
       onPress={onPress}
       hitSlop={{ top: (TOUCH - 40) / 2, bottom: (TOUCH - 40) / 2 }}
       style={{
-        height: 40,
+        minHeight: 40,
         paddingHorizontal: 16,
         borderRadius: radius.small,
         justifyContent: "center",
@@ -145,6 +155,7 @@ export function Chip({ label, active, onPress }: ChipProps) {
       }}
     >
       <Text
+        maxFontSizeMultiplier={1.3}
         style={{ fontFamily: fonts.semibold, fontSize: 13, color: active === true ? c.bg : c.mute }}
       >
         {label}
@@ -185,20 +196,45 @@ export function Badge({ label, tone }: { label: string; tone: BadgeTone }) {
     <View
       style={{
         alignSelf: "flex-start",
-        height: 24,
+        minHeight: 24,
         paddingHorizontal: 8,
         borderRadius: 8,
         justifyContent: "center",
         backgroundColor: background,
       }}
     >
-      <Text style={{ fontFamily: fonts.semibold, fontSize: 13, color }}>{label}</Text>
+      <Text maxFontSizeMultiplier={1.3} style={{ fontFamily: fonts.semibold, fontSize: 13, color }}>
+        {label}
+      </Text>
     </View>
   );
 }
 
-/** A grey block in the shape of what is loading. */
+/**
+ * One pulse every skeleton shares, so a screen full of them breathes together rather than
+ * flickering out of step. Started by the first skeleton, never stopped: it costs nothing idle.
+ */
+const pulse = new Animated.Value(0.55);
+let pulsing = false;
+
+function startPulse(): void {
+  if (pulsing) return;
+  pulsing = true;
+  Animated.loop(
+    Animated.sequence([
+      Animated.timing(pulse, { toValue: 1, duration: 700, useNativeDriver: true }),
+      Animated.timing(pulse, { toValue: 0.55, duration: 700, useNativeDriver: true }),
+    ]),
+  ).start();
+}
+
+/** A breathing grey block in the shape of what is loading. */
 export function Skeleton({ style }: { style?: StyleProp<ViewStyle> }) {
   const { c } = useTheme();
-  return <View style={[{ backgroundColor: c.muted, borderRadius: radius.small }, style]} />;
+  useEffect(startPulse, []);
+  return (
+    <Animated.View
+      style={[{ backgroundColor: c.muted, borderRadius: radius.small, opacity: pulse }, style]}
+    />
+  );
 }
