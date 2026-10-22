@@ -13,6 +13,8 @@ Three of them, which is why almost everything here is parameterised by a
 - ``blog_indexnow_pings`` / ``blog_indexnow_queue`` — Bing/Yandex IndexNow
   after a blog publish or archive (ADR-0074). Concurrency 1: one endpoint
   we chose, and the volume is editorial events, not checkout.
+- ``push_messages`` / ``push_queue`` — pushes to the mobile app through Expo
+  (ADR-0102). Concurrency 1: one batch request per drain, up to 100 messages.
 
 Each queue runs in its **own task**, on its own loop, so a slow queue delays
 only itself. That is not tidiness: ``asyncio.gather`` returns with its slowest
@@ -67,6 +69,7 @@ from yupay.modules.blog.api import INDEXNOW_QUEUE_CHANNEL, drain_pending_pings
 from yupay.modules.fulfillment.api import drain_pending_tasks
 from yupay.modules.fulfillment.suppliers.g2b_client import close_g2b_pool
 from yupay.modules.merchants.api import WEBHOOK_QUEUE_CHANNEL, drain_pending_deliveries
+from yupay.modules.push.api import PUSH_QUEUE_CHANNEL, drain_pending_pushes
 
 from yupay_worker import shutdown
 
@@ -123,6 +126,12 @@ def _queues(cfg: Settings) -> tuple[Queue, ...]:
             name="blog_indexnow",
             channel=INDEXNOW_QUEUE_CHANNEL,
             drain=drain_pending_pings,
+            concurrency=1,
+        ),
+        Queue(
+            name="push",
+            channel=PUSH_QUEUE_CHANNEL,
+            drain=drain_pending_pushes,
             concurrency=1,
         ),
     )

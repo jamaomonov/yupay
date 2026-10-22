@@ -1221,9 +1221,9 @@ async def on_order_status_changed(
     that happened to be remembered. Both of those modules used to keep their
     own copy of the realtime nudge below; they now delegate here.
 
-    Two consequences today, and they are disjoint by construction: the
-    realtime nudge reaches a *retail owner*, and the webhook reaches a
-    *merchant*. A merchant order has ``user_id IS NULL`` (the actor CHECK on
+    Three consequences today, and they are disjoint by construction: the
+    realtime nudge and the mobile push (``push.enqueue_for_order``) reach a
+    *retail owner*, and the webhook reaches a *merchant*. A merchant order has ``user_id IS NULL`` (the actor CHECK on
     ``orders`` makes the arms exclusive), so the nudge is already a no-op for
     it — which is exactly why the webhook needed a seam of its own instead of
     riding the existing publish.
@@ -1253,6 +1253,12 @@ async def on_order_status_changed(
     if publish_realtime:
         await _publish_status_changed(order)
     if order.merchant_id is None:
+        # The buyer's phones: delivered, failed, refunded, a credited top-up. Queued in this
+        # transaction, sent by the worker. Lazy for the same reason as the webhook below —
+        # ``push`` reads ``orders.models``.
+        from yupay.modules.push import api as push
+
+        await push.enqueue_for_order(db, order)
         return None
     # Lazy: ``merchants`` imports this module (``merchants.orders`` places an
     # order through it), so a module-level import here would close the cycle.

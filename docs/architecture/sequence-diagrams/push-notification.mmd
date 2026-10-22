@@ -1,0 +1,32 @@
+sequenceDiagram
+    autonumber
+    actor B as Buyer's app
+    participant API as push.routes
+    participant O as orders.on_order_status_changed
+    participant DB as Postgres
+    participant W as apps/worker (push_queue)
+    participant S as apps/scheduler
+    participant E as exp.host
+
+    B->>API: PUT /push/devices {token, platform} + Idempotency-Key
+    API->>DB: upsert push_devices by token (moves to this account)
+    API-->>B: {id, active}
+
+    Note over O: any status write (fulfilment settle, refund, top-up credit)
+    O->>DB: push_messages per active device (same txn, UNIQUE device+kind:order)
+    O->>DB: pg_notify push_queue
+    DB-->>W: NOTIFY
+    alt ENVIRONMENT=prod
+        W->>E: POST /push/send (≤100 messages)
+        E-->>W: tickets
+        W->>DB: sent + ticket_id / retry with backoff / failed (+ disable gone device)
+    else
+        W->>DB: status=skipped
+    end
+
+    S->>E: every 15 min: POST /push/getReceipts (sent ≥15 min ago)
+    E-->>S: receipts
+    S->>DB: receipt_status; DeviceNotRegistered disables the device
+
+    B->>API: DELETE /push/devices/{id} (before sign-out)
+    API->>DB: disabled_at, reason=signed_out

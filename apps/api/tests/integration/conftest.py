@@ -179,6 +179,8 @@ _EMPTY_IN_ORDER: tuple[str, ...] = (
     "p2p_reservations",
     "p2p_cards",
     "p2p_settings",
+    "push_messages",
+    "push_devices",
     "merchant_webhook_deliveries",
     "merchant_webhooks",
     "merchant_api_keys",

@@ -31,6 +31,7 @@ from yupay.modules.orders import models as _orders_models  # noqa: F401
 from yupay.modules.p2p import models as _p2p_models  # noqa: F401
 from yupay.modules.payments import models as _payments_models  # noqa: F401
 from yupay.modules.paynet import models as _paynet_models  # noqa: F401
+from yupay.modules.push import models as _push_models  # noqa: F401
 from yupay.modules.reviews import models as _reviews_models  # noqa: F401
 from yupay.modules.sourcing import models as _sourcing_models  # noqa: F401
 from yupay.modules.users import models as _users_models  # noqa: F401

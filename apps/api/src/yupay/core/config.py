@@ -716,6 +716,11 @@ class Settings(BaseSettings):
     #: shared fraud-review group with the payment provider. Empty = off.
     tg_fraud_chat_id: str | None = Field(default=None)
 
+    # --- mobile push (ADR-0102) ---
+    #: Expo access token for push sends (``modules/push``). Optional: empty sends without a
+    #: bearer; set it together with «enhanced push security» in the Expo project.
+    expo_access_token: str = Field(default="")
+
     # --- steam sign-in ---
     #: Steam Web API key (steamcommunity.com/dev/apikey) — used only to fetch
     #: the persona name and avatar after a verified OpenID login. Sign-in

@@ -370,23 +370,27 @@ def test_the_queues_are_the_channels_their_producers_notify() -> None:
     the names come from the modules that emit them."""
     from yupay.modules.blog.api import INDEXNOW_QUEUE_CHANNEL
     from yupay.modules.merchants.api import WEBHOOK_QUEUE_CHANNEL
+    from yupay.modules.push.api import PUSH_QUEUE_CHANNEL
 
     channels = [queue.channel for queue in _queues(get_settings())]
     assert channels == [
         "fulfillment_queue",
         WEBHOOK_QUEUE_CHANNEL,
         INDEXNOW_QUEUE_CHANNEL,
+        PUSH_QUEUE_CHANNEL,
     ]
 
 
 def test_each_queue_gets_its_own_concurrency_dial() -> None:
     """One dial for both would mean tuning a hung supplier call and a hung
-    merchant endpoint with the same number. IndexNow is one host we chose."""
+    merchant endpoint with the same number. IndexNow and Expo are one host each,
+    and a push drain is one batch request."""
     cfg = get_settings()
-    tasks, hooks, indexnow = _queues(cfg)
+    tasks, hooks, indexnow, push = _queues(cfg)
     assert tasks.concurrency == cfg.fulfilment_concurrency
     assert hooks.concurrency == cfg.merchant_webhook_concurrency
     assert indexnow.concurrency == 1
+    assert push.concurrency == 1
 
 
 # ---------- what run() actually builds, and what happens when a loop dies ----------

@@ -30,6 +30,7 @@ from yupay.modules.inventory import models as _inventory_models  # noqa: F401
 from yupay.modules.orders import models as _orders_models  # noqa: F401
 from yupay.modules.payme import models as _payme_models  # noqa: F401
 from yupay.modules.payments import models as _payments_models  # noqa: F401
+from yupay.modules.push import models as _push_models  # noqa: F401
 from yupay.modules.reviews import models as _reviews_models  # noqa: F401
 from yupay.modules.sourcing import models as _sourcing_models  # noqa: F401
 from yupay.modules.users import models as _users_models  # noqa: F401
@@ -55,6 +56,7 @@ from yupay_scheduler.jobs import (
     payme_timeout,
     purge_evidence,
     purge_sessions,
+    push_receipts,
     recompute_review_stats,
     refresh_supplier_prices,
     refresh_voucher_stock,
@@ -97,6 +99,7 @@ def build_scheduler() -> AsyncIOScheduler:
     merchant_feed.register(scheduler)
     nova_reconcile.register(scheduler)
     p2p_sweep.register(scheduler)
+    push_receipts.register(scheduler)
     payme_timeout.register(scheduler)
     purge_evidence.register(scheduler)
     purge_sessions.register(scheduler)

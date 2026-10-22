@@ -206,6 +206,16 @@ was set); `PUT /{slug}` sets `{enabled, max_amount, window_hours}` and takes `Id
 (scope `payments.review_limit:<slug>`). An unknown slug is 404. What the limit does is in
 `docs/runbooks/order-held-for-review.md` («Per-kassa spend limit»).
 
+## Mobile push devices — `/push/devices`
+
+Signed-in account only (Bearer). `PUT` `{token, platform: ios|android, app_version?}` registers
+the install's Expo push token (`ExponentPushToken[…]`, validated by pattern) or refreshes it;
+a token already held by another account moves to this one. `DELETE /{id}` stops pushes to one
+of the caller's devices (the app's sign-out; 404 for anyone else's). Both take
+`Idempotency-Key` (required; scopes `push.device:<user>` / `push.device.disable:<user>`). `GET`
+lists the active devices. The token is never echoed back. What gets pushed and when:
+`apps/api/src/yupay/modules/push/README.md` (ADR-0102).
+
 ## CS2 skins admin
 
 `POST /admin/skins/trades/{id}/refund` **requires** `Idempotency-Key` (a repeat replays the
