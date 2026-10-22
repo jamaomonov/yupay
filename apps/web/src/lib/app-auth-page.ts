@@ -5,7 +5,8 @@
  * redirect to an app scheme, so the app opens `https://yupay.uz/app-auth` in the system
  * browser. This page sends the buyer to the provider, receives the answer in the URL
  * fragment (Steam: in the query), and passes it to the app's own URL (`yupay://…`, or
- * `exp://<LAN IP>` from Expo Go in development). The app then posts it to `/auth/google`,
+ * `exp://<LAN IP>` from Expo Go in development; on Android `yupay://` goes as an intent naming
+ * the package, so no other app can take it). The app then posts it to `/auth/google`,
  * `/auth/telegram/widget` or `/auth/steam`. Steam's `openid.return_to` is this page, which the
  * API accepts as one of its two Steam return addresses (`auth.service._steam_return_prefix`).
  *
@@ -38,6 +39,11 @@ export function appAuthScript(config: AppAuthConfig): string {
   var TG_BOT = ${inline(config.telegramBotId)};
   var TEXT = ${inline(config.text)};
   var SELF = location.origin + "/app-auth";
+  // On Android a bare yupay:// link goes to whichever app claims the scheme first, and
+  // another app can claim it to catch the credential. An intent naming our package reaches
+  // only the app installed as uz.yupay.app (ADR-0101).
+  var PACKAGE = "uz.yupay.app";
+  var ANDROID = /Android/i.test((typeof navigator !== "undefined" && navigator.userAgent) || "");
   // A whole dotted quad, checked by number. A prefix pattern let
   // "10.attacker.example" through as if it were a LAN address.
   function privateIp(host) {
@@ -78,7 +84,11 @@ export function appAuthScript(config: AppAuthConfig): string {
     params.set("state", state);
     // Drop the credential from this page's address before leaving it.
     history.replaceState(null, "", SELF);
-    location.replace(st.to + (st.to.indexOf("?") === -1 ? "?" : "&") + params.toString());
+    var target = st.to + (st.to.indexOf("?") === -1 ? "?" : "&") + params.toString();
+    if (ANDROID && target.indexOf("yupay://") === 0) {
+      target = "intent://" + target.slice(8) + "#Intent;scheme=yupay;package=" + PACKAGE + ";end";
+    }
+    location.replace(target);
   }
 
   if (query.get("openid.mode") === "id_res") {

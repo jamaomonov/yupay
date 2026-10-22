@@ -66,11 +66,17 @@ the decoded Telegram payload to `/auth/telegram/widget`, both with body transpor
   (`apps/web/src/lib/app-auth-page.test.ts`). "Private address" means a literal RFC 1918 or
   loopback IPv4, checked octet by octet: a first version matched by prefix and let
   `exp://10.attacker.example` through.
-- Two residual risks are accepted for now. The `exp://` branch ships in production, so someone
-  on the same Wi-Fi as a developer with Expo Go could pose as Metro. And `yupay://` is a plain
-  custom scheme: on Android another app can register it and receive the credential. Before the
-  first store release the return must move to a verified App Link / Universal Link (or a
-  server-side one-time code), and the `exp://` branch should go.
+- **The scheme hijack is closed (2026-10-22).** `yupay://` is a plain custom scheme, and on
+  Android another app could register it and receive the credential. On Android the page now
+  returns through `intent://…#Intent;scheme=yupay;package=uz.yupay.app;end`: the system hands
+  it only to the app installed under our package. iOS needs nothing: `openAuthSessionAsync` is
+  an `ASWebAuthenticationSession`, whose callback scheme belongs to that session. A verified
+  App Link was the other option; it needs the signing certificate (now known, SHA-256
+  `EF:55:96:AC:…:09:42` in EAS) and Chrome often keeps a script-driven App Link in the tab
+  instead of handing it over, so the intent is the sturdier of the two.
+- One residual risk is accepted for now: the `exp://` branch ships in production, so someone
+  on the same Wi-Fi as a developer with Expo Go could pose as Metro. It stays while the app is
+  tested in Expo Go and should go before the first store release.
 - Google requires `https://yupay.uz/app-auth` among the web OAuth client's authorized redirect
   URIs. Telegram requires nothing new: the bot's domain is already `yupay.uz`.
 - **Steam (2026-10-22)** goes through the same page. It sends the buyer to Steam's OpenID login

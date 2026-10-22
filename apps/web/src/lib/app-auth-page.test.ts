@@ -18,7 +18,10 @@ function state(to: string, l = "ru"): string {
 }
 
 /** Runs the page's script at `href`; returns where it sent the browser and what it said. */
-function run(href: string): { went: string | null; text: string; address: string } {
+function run(
+  href: string,
+  userAgent = "Mozilla/5.0 (iPhone)",
+): { went: string | null; text: string; address: string } {
   const url = new URL(href);
   const out = { went: null as string | null, text: "", address: href };
   const location = {
@@ -42,6 +45,7 @@ function run(href: string): { went: string | null; text: string; address: string
       },
     },
     document: { getElementById: () => node },
+    navigator: { userAgent },
     URL,
     URLSearchParams,
     atob,
@@ -82,6 +86,26 @@ describe("app-auth bounce page", () => {
     expect(back.searchParams.get("access_token")).toBe("tok123");
     expect(back.searchParams.get("state")).toBe(s);
     expect(out.address).toBe("https://yupay.uz/app-auth");
+  });
+
+  it("on Android hands the credential only to our package, as an intent", () => {
+    const s = state(app);
+    const out = run(
+      `https://yupay.uz/app-auth#access_token=tok123&state=${s}`,
+      "Mozilla/5.0 (Linux; Android 14; Pixel 8)",
+    );
+    expect(out.went).toBe(
+      `intent://auth?provider=google&access_token=tok123&state=${s}#Intent;scheme=yupay;package=uz.yupay.app;end`,
+    );
+  });
+
+  it("leaves Expo Go's development address alone on Android", () => {
+    const s = state("exp://192.168.1.20:8081/--/auth");
+    const out = run(
+      `https://yupay.uz/app-auth#access_token=tok123&state=${s}`,
+      "Mozilla/5.0 (Linux; Android 14)",
+    );
+    expect(out.went?.startsWith("exp://192.168.1.20:8081/--/auth?")).toBe(true);
   });
 
   it("hands the Telegram payload to the app", () => {
