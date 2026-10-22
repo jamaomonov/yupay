@@ -11,7 +11,7 @@ import { useSession } from "@/lib/session";
 import { useTheme } from "@/theme/ThemeProvider";
 import { fonts, radius } from "@/theme/tokens";
 
-/** The home screen's top row: the account (opens profile), the balance (opens the wallet), alerts. */
+/** The home screen's top row: alerts, then the balance (opens the wallet) and the account (opens profile). */
 export function HomeHeader() {
   const { t } = useI18n();
   const { c } = useTheme();
@@ -32,11 +32,19 @@ export function HomeHeader() {
     >
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={t("profile.title")}
-        hitSlop={6}
-        onPress={() => router.navigate("/profile")}
+        accessibilityLabel={t("notifications.title")}
+        onPress={() => router.push("/notifications")}
+        style={({ pressed }) => ({
+          width: 40,
+          height: 40,
+          borderRadius: radius.control,
+          backgroundColor: c.muted,
+          alignItems: "center",
+          justifyContent: "center",
+          opacity: pressed ? 0.7 : 1,
+        })}
       >
-        <Avatar name={name} photoUrl={user?.photo_url ?? null} size={40} />
+        <Bell size={20} color={c.fg} />
       </Pressable>
 
       <View style={{ flex: 1 }} />
@@ -61,19 +69,11 @@ export function HomeHeader() {
 
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={t("notifications.title")}
-        onPress={() => router.push("/notifications")}
-        style={({ pressed }) => ({
-          width: 40,
-          height: 40,
-          borderRadius: radius.control,
-          backgroundColor: c.muted,
-          alignItems: "center",
-          justifyContent: "center",
-          opacity: pressed ? 0.7 : 1,
-        })}
+        accessibilityLabel={t("profile.title")}
+        hitSlop={6}
+        onPress={() => router.navigate("/profile")}
       >
-        <Bell size={20} color={c.fg} />
+        <Avatar name={name} photoUrl={user?.photo_url ?? null} size={40} />
       </Pressable>
     </View>
   );
