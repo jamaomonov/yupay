@@ -1,10 +1,13 @@
-import type { OrderOut } from "@yupay/api-client/types";
+import type { BrandOut, OrderOut } from "@yupay/api-client/types";
+import { Image } from "expo-image";
 import { router } from "expo-router";
 import { ChevronRight, ReceiptText } from "lucide-react-native";
 import { ActivityIndicator, Pressable, View } from "react-native";
 
 import { Screen } from "@/components/Screen";
 import { Button, Card, Notice, T } from "@/components/ui";
+import { useBrands } from "@/lib/api";
+import { orderImage } from "@/lib/catalog";
 import { stageOf } from "@/lib/checkout";
 import { useI18n } from "@/lib/i18n";
 import { useAccountOrders } from "@/lib/orders";
@@ -15,9 +18,10 @@ interface Row {
   title: string;
   at: string;
   status: string | undefined;
+  image: string | null;
 }
 
-function fromOrder(order: OrderOut): Row {
+function fromOrder(order: OrderOut, brands: readonly BrandOut[] | undefined): Row {
   const display = order.items[0]?.display;
   const label = display?.denomination ?? display?.product_name ?? "";
   return {
@@ -25,6 +29,7 @@ function fromOrder(order: OrderOut): Row {
     title: display ? `${display.brand_name} · ${label}` : `#${order.id.slice(0, 8)}`,
     at: order.created_at,
     status: order.status,
+    image: orderImage(display, brands),
   };
 }
 
@@ -53,6 +58,28 @@ function OrderList({ rows }: { rows: Row[] }) {
             opacity: pressed ? 0.7 : 1,
           })}
         >
+          <View
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 12,
+              overflow: "hidden",
+              backgroundColor: c.muted,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            {row.image !== null ? (
+              <Image
+                source={row.image}
+                style={{ width: "100%", height: "100%" }}
+                contentFit="cover"
+                transition={150}
+              />
+            ) : (
+              <ReceiptText size={20} color={c.dim} strokeWidth={1.8} />
+            )}
+          </View>
           <View style={{ flex: 1, gap: 3 }}>
             <T numberOfLines={1}>{row.title}</T>
             <T variant="small" tone="mute">
@@ -93,10 +120,11 @@ function Empty() {
 
 /** The account's orders: from the website, the mini app and this app alike. */
 export default function OrdersScreen() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const { c } = useTheme();
   const orders = useAccountOrders();
-  const rows = (orders.data?.items ?? []).map(fromOrder);
+  const brands = useBrands(locale);
+  const rows = (orders.data?.items ?? []).map((order) => fromOrder(order, brands.data?.items));
 
   return (
     <Screen title={t("orders.title")}>

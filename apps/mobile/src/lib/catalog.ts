@@ -22,3 +22,16 @@ export function matches(brand: BrandOut, query: string): boolean {
   if (q === "") return true;
   return brand.name.toLowerCase().includes(q) || brand.slug.includes(q);
 }
+
+/**
+ * The picture for an order line: the SKU's, else the product's (the API already resolves those
+ * two into `display.image_url`), else the brand's logo from the catalogue.
+ */
+export function orderImage(
+  display: { image_url: string | null; brand_slug: string } | null | undefined,
+  brands: readonly BrandOut[] | undefined,
+): string | null {
+  if (display == null) return null;
+  if (display.image_url) return display.image_url;
+  return brands?.find((b) => b.slug === display.brand_slug)?.logo_url ?? null;
+}

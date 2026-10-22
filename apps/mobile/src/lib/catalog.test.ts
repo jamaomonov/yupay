@@ -1,7 +1,7 @@
 import type { BrandOut } from "@yupay/api-client/types";
 import { describe, expect, it } from "vitest";
 
-import { matches, sellable } from "./catalog";
+import { matches, orderImage, sellable } from "./catalog";
 
 function brand(slug: string, name: string, category_slug = "top-ups"): BrandOut {
   return {
@@ -36,5 +36,20 @@ describe("matches", () => {
     expect(matches(brand("pubg-mobile", "PUBG Mobile"), "pubg")).toBe(true);
     expect(matches(brand("pubg-mobile", "PUBG Mobile"), "  ")).toBe(true);
     expect(matches(brand("pubg-mobile", "PUBG Mobile"), "free")).toBe(false);
+  });
+});
+
+describe("orderImage", () => {
+  const brands = [{ ...brand("pubg", "PUBG"), logo_url: "https://cdn/pubg.png" }];
+
+  it("prefers the line's own picture, then the brand logo", () => {
+    expect(orderImage({ image_url: "https://cdn/sku.png", brand_slug: "pubg" }, brands)).toBe(
+      "https://cdn/sku.png",
+    );
+    expect(orderImage({ image_url: null, brand_slug: "pubg" }, brands)).toBe(
+      "https://cdn/pubg.png",
+    );
+    expect(orderImage({ image_url: null, brand_slug: "gone" }, brands)).toBeNull();
+    expect(orderImage(undefined, brands)).toBeNull();
   });
 });
