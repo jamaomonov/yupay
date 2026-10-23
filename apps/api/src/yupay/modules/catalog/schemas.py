@@ -313,6 +313,15 @@ class BrandOut(BaseModel):
     rating: BrandRatingOut | None = None
 
 
+class SkuNoticeOut(BaseModel):
+    """A SKU's notice in one locale: a short tile label and the line under the pick."""
+
+    model_config = ConfigDict(frozen=True)
+
+    badge: str | None = None
+    text: str
+
+
 class SkuOut(BaseModel):
     """A single sellable variant."""
 
@@ -351,6 +360,13 @@ class SkuOut(BaseModel):
     in_stock: bool = Field(
         default=True,
         description="False when the supplier has no codes left. The count itself is not exposed.",
+    )
+    notice: SkuNoticeOut | None = Field(
+        default=None,
+        description=(
+            "A condition the buyer must see before paying (a first-purchase-only bonus, a level"
+            " cap), in the request's locale. Absent on most SKUs."
+        ),
     )
     display_price: PriceOut | None = Field(
         default=None,

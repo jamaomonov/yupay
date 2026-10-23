@@ -35,6 +35,8 @@ type Params = {
   qty?: string;
   /** Steam: typed dollars. */
   amountUsd?: string;
+  /** The pack's condition (a one-off bonus, a level cap), shown before paying. */
+  notice?: string;
 };
 
 function parseFields(raw: string | undefined): Record<string, string> {
@@ -245,6 +247,14 @@ export default function CheckoutScreen() {
             <T tone="mute">{t("checkout.noMethods")}</T>
           )}
         </View>
+
+        {params.notice !== undefined && params.notice !== "" && (
+          <View style={{ padding: 12, borderRadius: 12, backgroundColor: c.warnBg }}>
+            <T variant="label" style={{ color: c.warn }}>
+              {params.notice}
+            </T>
+          </View>
+        )}
 
         {error !== null && <T tone="danger">{error}</T>}
       </ScrollView>

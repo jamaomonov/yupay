@@ -851,6 +851,7 @@ async def create_sku(db: AsyncSession, body: SkuCreate) -> Sku:
         image_url=body.image_url,
         sort_order=body.sort_order,
         active=body.active,
+        notice=body.notice.model_dump() if body.notice else None,
         price_overrides=[
             SkuPrice(currency=o.currency, price=o.price) for o in body.price_overrides
         ],
@@ -891,6 +892,12 @@ def _apply_amount_unit(row: Sku, body: SkuUpdate, sent: set[str]) -> None:
         raise ValidationError(
             "amount_unit and units_per_usd must be set together, unless min_qty is also set"
         )
+
+
+def _apply_notice(row: Sku, body: SkuUpdate, sent: set[str]) -> None:
+    """Merge ``notice`` on the "sent, not None" rule: JSON ``null`` clears it."""
+    if "notice" in sent:
+        row.notice = body.notice.model_dump() if body.notice else None
 
 
 def _apply_qty_bounds(row: Sku, body: SkuUpdate, sent: set[str]) -> None:
@@ -941,6 +948,7 @@ async def update_sku(db: AsyncSession, sku_id: str, body: SkuUpdate) -> Sku:
     # Merged before _apply_amount_unit, which reads row.min_qty for the
     # relaxed amount_unit/units_per_usd rule below.
     _apply_qty_bounds(row, body, sent)
+    _apply_notice(row, body, sent)
     _apply_amount_unit(row, body, sent)
 
     # Validate the RESULTING row, not just the fields this request touched.

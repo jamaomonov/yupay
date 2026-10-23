@@ -29,6 +29,7 @@ export function ConfirmPaymentDialog({
   rows,
   total,
   warning,
+  notice,
   needsAttestation,
   attestLabel,
   onConfirm,
@@ -40,6 +41,8 @@ export function ConfirmPaymentDialog({
   /** Caller picks the wording — a top-up warns the account can't be changed
    *  after payment, a gift card has no account to get that warning wrong. */
   warning: string;
+  /** A condition the buyer must see before paying (a first-purchase-only bonus). */
+  notice?: string;
   needsAttestation: boolean;
   /** What the attestation checkbox actually asks the buyer to re-check —
    *  defaults to `topup.confirmAttest` ("I checked the in-game data is
@@ -84,6 +87,12 @@ export function ConfirmPaymentDialog({
             <dd className="text-base font-extrabold text-white">{total}</dd>
           </div>
         </dl>
+
+        {notice && (
+          <p className="rounded-xl bg-amber-400/15 p-3 text-[13px] font-semibold leading-snug text-amber-300">
+            {notice}
+          </p>
+        )}
 
         <p className="text-[12px] leading-snug text-white/55">{warning}</p>
 

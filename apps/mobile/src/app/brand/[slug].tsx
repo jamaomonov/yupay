@@ -117,6 +117,7 @@ export default function BrandScreen() {
         fields: JSON.stringify(values),
         ...(qty !== undefined && qty !== 1 ? { qty: String(qty) } : {}),
         ...(amountUsd !== undefined ? { amountUsd } : {}),
+        ...(choice.sku.notice ? { notice: choice.sku.notice.text } : {}),
         ...(result?.status === "valid" && result.name ? { player: result.name } : {}),
       },
     });

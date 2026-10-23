@@ -75,6 +75,9 @@ interface SkuApi {
   // Gift cards are finite: the supplier holds real codes and runs out. Same
   // stale-API caveat as above — absent means sellable, never the reverse.
   in_stock?: boolean;
+  // A condition the buyer must see before paying (a one-off bonus, a level
+  // cap), already in the request's locale. Same stale-API caveat — absent is none.
+  notice?: { badge?: string | null; text: string } | null;
   display_price: PriceOut | null;
 }
 
@@ -254,6 +257,8 @@ export interface Package {
   /** False only when the supplier has run out. A missing field on an older
    *  API reads as in stock — an absent flag must not empty the shelf. */
   inStock: boolean;
+  /** A condition shown on the tile (`badge`) and before paying (`text`). */
+  notice: { badge: string | null; text: string } | null;
 }
 
 function skuToPackage(sku: SkuApi): Package {
@@ -284,6 +289,7 @@ function skuToPackage(sku: SkuApi): Package {
     maxQty: sku.max_qty ?? null,
     ratePerDollar: variableAmount ? displayPrice : null,
     inStock: sku.in_stock !== false,
+    notice: sku.notice ? { badge: sku.notice.badge ?? null, text: sku.notice.text } : null,
   };
 }
 

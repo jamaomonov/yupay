@@ -3,7 +3,7 @@ import { Image } from "expo-image";
 import { Check } from "lucide-react-native";
 import { Pressable, useWindowDimensions, View } from "react-native";
 
-import { T } from "@/components/ui";
+import { Badge, T } from "@/components/ui";
 import { formatSum } from "@/lib/format";
 import { useTheme } from "@/theme/ThemeProvider";
 import { radius, space } from "@/theme/tokens";
@@ -82,6 +82,11 @@ export function SkuGrid({ skus, selectedId, onSelect }: SkuGridProps) {
             <T style={{ fontVariant: ["tabular-nums"] }}>
               {sku.display_price ? formatSum(sku.display_price.amount) : "—"}
             </T>
+            {sku.notice?.badge && sku.in_stock && (
+              <View style={{ alignSelf: "center" }}>
+                <Badge label={sku.notice.badge} tone="warn" />
+              </View>
+            )}
           </Pressable>
         );
       })}

@@ -106,6 +106,8 @@ interface Package {
   ratePerDollar: { amount: number; currency: string } | null;
   /** False only when the supplier has run out of codes. */
   inStock: boolean;
+  /** A condition shown on the tile (`badge`) and before paying (`text`). */
+  notice: { badge: string | null; text: string } | null;
 }
 
 function adaptPackage(api: ApiPackage): Package {
@@ -126,6 +128,7 @@ function adaptPackage(api: ApiPackage): Package {
     maxQty: api.maxQty,
     ratePerDollar: api.ratePerDollar,
     inStock: api.inStock,
+    notice: api.notice,
   };
 }
 
@@ -1761,6 +1764,7 @@ export default function TopUp() {
         rows={confirmRows}
         total={formatMoney(promo ? Math.round(Number(promo.totalAfter)) : finalPrice, priceCode)}
         warning={t(accountRequired ? "topup.confirmWarning" : "topup.confirmWarningVoucher")}
+        {...(activePkg?.notice && { notice: activePkg.notice.text })}
         // A field-less product (a gift card) has nothing to attest to — the
         // old `!hasVerifiableField` alone was true for it too (`.some()` on
         // an empty array), which blocked checkout on a checkbox that
@@ -1840,6 +1844,12 @@ function PackageCard({
       <p className="text-sm font-bold text-white">
         {soldOut ? t("topup.outOfStock") : formatMoney(pkg.price, pkg.priceCode)}
       </p>
+
+      {pkg.notice?.badge && !soldOut && (
+        <span className="mt-2 inline-block max-w-full truncate rounded-full bg-amber-400/15 px-2 py-0.5 text-[11px] font-semibold text-amber-300">
+          {pkg.notice.badge}
+        </span>
+      )}
     </button>
   );
 }
@@ -1850,7 +1860,9 @@ function PackageThumb({ pkg, fallback }: { pkg: Package; fallback: string | null
   // denomination we have (e.g. "UC", "VP", "1 мес"). Also doubles as the
   // SafeImage fallback below, so a broken URL degrades to this instead of a
   // blank square now that the wrapper no longer carries its own background.
-  const tag = pkg.label.replace(/^[\s\d.,]+/, "").trim() || "—";
+  // `+` too: «250 + 25 Diamonds» names the bonus after a plus, and the chip
+  // should read the unit («DIAM»), not «+ 25».
+  const tag = pkg.label.replace(/^[\s\d.,+]+/, "").trim() || "—";
   const tagChip = (
     <div
       className="flex h-9 w-9 items-center justify-center rounded-xl text-[10px] font-bold text-black"

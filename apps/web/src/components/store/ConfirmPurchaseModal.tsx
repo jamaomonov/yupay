@@ -34,6 +34,7 @@ export function ConfirmPurchaseModal({
   totalLabel,
   totalValue,
   warning,
+  notice,
   attestation,
   confirmLabel,
   cancelLabel,
@@ -46,6 +47,8 @@ export function ConfirmPurchaseModal({
   totalLabel: string;
   totalValue: string;
   warning: string;
+  /** A condition the buyer must see before paying (a first-purchase-only bonus). */
+  notice?: string | undefined;
   /** Required tick-box copy; omitted when the ID was verified upstream. */
   attestation?: string | undefined;
   confirmLabel: string;
@@ -121,6 +124,12 @@ export function ConfirmPurchaseModal({
             <dd className="font-display text-lg font-extrabold">{totalValue}</dd>
           </div>
         </dl>
+
+        {notice && (
+          <p className="bg-gold/12 text-gold mt-4 rounded-xl p-3 text-[13px] font-semibold leading-snug">
+            {notice}
+          </p>
+        )}
 
         <p className="text-tx-mute mt-4 text-[13px] leading-relaxed">{warning}</p>
 

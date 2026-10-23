@@ -512,3 +512,32 @@ async def test_sku_lookup(integration_client: AsyncClient, _seed_one) -> None:
     assert r.status_code == 200
     body = r.json()
     assert body["sku_code"] == "pubg-uc-60-tr"
+
+
+async def test_product_detail_carries_the_notice_in_the_locale(
+    integration_client: AsyncClient, db_session: AsyncSession, _seed_one
+) -> None:
+    """`notice` follows the column in the request's locale — the `in_stock` trap again."""
+    notice = {
+        "badge": {"ru": "1-я покупка", "en": "First purchase", "uz": "Birinchi xarid"},
+        "text": {"ru": "Бонус один раз", "en": "Bonus once", "uz": ""},
+    }
+    await db_session.execute(
+        update(Sku).where(Sku.sku_code == "pubg-uc-60-tr").values(notice=notice)
+    )
+    await db_session.commit()
+
+    r = await integration_client.get(
+        "/api/v1/catalog/products/pubg-uc", headers={"Accept-Language": "en"}
+    )
+    assert r.status_code == 200, r.text
+    skus = {s["sku_code"]: s for s in r.json()["skus"]}
+    assert skus["pubg-uc-60-tr"]["notice"] == {"badge": "First purchase", "text": "Bonus once"}
+    assert skus["pubg-uc-300-tr"]["notice"] is None
+
+    # An empty locale falls back to Russian rather than showing a blank line.
+    r = await integration_client.get(
+        "/api/v1/catalog/products/pubg-uc", headers={"Accept-Language": "uz"}
+    )
+    skus = {s["sku_code"]: s for s in r.json()["skus"]}
+    assert skus["pubg-uc-60-tr"]["notice"]["text"] == "Бонус один раз"

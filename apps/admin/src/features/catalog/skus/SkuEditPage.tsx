@@ -19,6 +19,59 @@ import { extractApiMessage } from "@/lib/apiError";
 import { marginFromCostAndPrice } from "@/lib/margin";
 import { qk } from "@/lib/queryKeys";
 
+const LOCALES = ["ru", "en", "uz"] as const;
+
+/** `Sku.notice` as the API stores it. */
+interface SkuNotice {
+  badge?: { ru: string; en: string; uz: string } | null;
+  text: { ru: string; en: string; uz: string };
+}
+
+const NO_NOTICE = {
+  notice_badge_ru: "",
+  notice_badge_en: "",
+  notice_badge_uz: "",
+  notice_text_ru: "",
+  notice_text_en: "",
+  notice_text_uz: "",
+};
+
+function noticeFields(notice: SkuNotice | null): typeof NO_NOTICE {
+  if (notice === null) return NO_NOTICE;
+  return {
+    notice_badge_ru: notice.badge?.ru ?? "",
+    notice_badge_en: notice.badge?.en ?? "",
+    notice_badge_uz: notice.badge?.uz ?? "",
+    notice_text_ru: notice.text.ru,
+    notice_text_en: notice.text.en,
+    notice_text_uz: notice.text.uz,
+  };
+}
+
+/** The form's six fields as the API body: `null` when the text is empty everywhere. */
+function noticeBody(v: typeof NO_NOTICE): SkuNotice | null {
+  const text = {
+    ru: v.notice_text_ru.trim(),
+    en: v.notice_text_en.trim(),
+    uz: v.notice_text_uz.trim(),
+  };
+  if (!text.ru && !text.en && !text.uz) return null;
+  const badge = {
+    ru: v.notice_badge_ru.trim(),
+    en: v.notice_badge_en.trim(),
+    uz: v.notice_badge_uz.trim(),
+  };
+  return { text, badge: badge.ru || badge.en || badge.uz ? badge : null };
+}
+
+function noticeError(errors: Partial<Record<string, { message?: string }>>): string | undefined {
+  for (const loc of LOCALES) {
+    const e = errors[`notice_badge_${loc}`] ?? errors[`notice_text_${loc}`];
+    if (e?.message) return `${loc}: ${e.message}`;
+  }
+  return undefined;
+}
+
 const CURRENCIES = ["USD", "USDT", "RUB", "UZS", "KZT", "EUR"] as const;
 const REGION_PRESETS = [
   { value: "GLOBAL", label: "GLOBAL" },
@@ -104,9 +157,33 @@ const skuSchema = z
     image_url: z.string().url().or(z.literal("")).optional().nullable(),
     sort_order: z.coerce.number().int().default(0),
     active: z.boolean().default(true),
+    // The notice (`Sku.notice`): a tile label and the line shown before paying,
+    // per locale. All empty = no notice; the text needs all three locales.
+    notice_badge_ru: z.string().max(20, "до 20 символов").default(""),
+    notice_badge_en: z.string().max(20, "до 20 символов").default(""),
+    notice_badge_uz: z.string().max(20, "до 20 символов").default(""),
+    notice_text_ru: z.string().max(240, "до 240 символов").default(""),
+    notice_text_en: z.string().max(240, "до 240 символов").default(""),
+    notice_text_uz: z.string().max(240, "до 240 символов").default(""),
     price_overrides: z.array(priceOverrideSchema).default([]),
   })
   .superRefine((val, ctx) => {
+    // The API needs all three locales once any is filled — say so on the field.
+    for (const part of ["badge", "text"] as const) {
+      const keys = LOCALES.map((loc) => `notice_${part}_${loc}` as const);
+      const filled = keys.filter((k) => val[k].trim() !== "");
+      if (filled.length > 0 && filled.length < keys.length) {
+        for (const k of keys.filter((key) => val[key].trim() === "")) {
+          ctx.addIssue({ code: "custom", path: [k], message: "нужен на всех трёх языках" });
+        }
+      }
+    }
+    if (
+      LOCALES.some((loc) => val[`notice_badge_${loc}`].trim() !== "") &&
+      LOCALES.every((loc) => val[`notice_text_${loc}`].trim() === "")
+    ) {
+      ctx.addIssue({ code: "custom", path: ["notice_text_ru"], message: "ярлык без текста" });
+    }
     const minQtyStr = (val.min_qty ?? "").trim();
     const maxQtyStr = (val.max_qty ?? "").trim();
     if (minQtyStr || maxQtyStr) {
@@ -204,6 +281,7 @@ const EMPTY: FormValues = {
   image_url: "",
   sort_order: 0,
   active: true,
+  ...NO_NOTICE,
   price_overrides: [],
 };
 
@@ -224,6 +302,7 @@ interface SkuCreateBody {
   image_url: string | null;
   sort_order: number;
   active: boolean;
+  notice: SkuNotice | null;
   price_overrides: { currency: string; price: string }[];
 }
 
@@ -243,6 +322,7 @@ interface SkuPatchBody {
   image_url: string | null;
   sort_order: number;
   active: boolean;
+  notice: SkuNotice | null;
   price_overrides: { currency: string; price: string }[];
 }
 
@@ -350,6 +430,7 @@ export function SkuEditPage() {
       image_url: existing.image_url ?? "",
       sort_order: existing.sort_order,
       active: existing.active,
+      ...noticeFields(existing.notice ?? null),
       price_overrides: existing.price_overrides.map((o) => ({
         currency: o.currency,
         price: o.price,
@@ -499,6 +580,7 @@ export function SkuEditPage() {
           image_url: values.image_url?.trim() || null,
           sort_order: values.sort_order,
           active: values.active,
+          notice: noticeBody(values),
           price_overrides: values.price_overrides.map((o) => ({
             currency: o.currency.toUpperCase(),
             price: o.price,
@@ -522,6 +604,7 @@ export function SkuEditPage() {
         image_url: values.image_url?.trim() || null,
         sort_order: values.sort_order,
         active: values.active,
+        notice: noticeBody(values),
         price_overrides: values.price_overrides.map((o) => ({
           currency: o.currency.toUpperCase(),
           price: o.price,
@@ -827,6 +910,24 @@ export function SkuEditPage() {
               </label>
             </Field>
           </div>
+
+          <Field
+            label="Плашка перед оплатой"
+            error={noticeError(form.formState.errors)}
+            help="Условие, которое покупатель должен увидеть до оплаты: бонус только за первую покупку, ограничение по уровню, выдача по дням. Ярлык (до 20 символов) — на плитке, текст (1–2 строки) — под выбором и в окне подтверждения. Пусто — плашки нет."
+          >
+            <div className="mt-1 grid grid-cols-1 gap-2">
+              {LOCALES.map((loc) => (
+                <div key={loc} className="grid grid-cols-[2.5rem_10rem_1fr] items-center gap-2">
+                  <span className="text-xs font-semibold uppercase text-[var(--text-muted)]">
+                    {loc}
+                  </span>
+                  <Input placeholder="Ярлык" {...form.register(`notice_badge_${loc}`)} />
+                  <Input placeholder="Текст" {...form.register(`notice_text_${loc}`)} />
+                </div>
+              ))}
+            </div>
+          </Field>
 
           <Field
             label="Изображение"

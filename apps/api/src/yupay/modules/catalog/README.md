@@ -257,6 +257,23 @@ template. Set them where search demand says the template misses the buyer's word
 Mobile Legends first (`scripts/seed/2026-10-01_mlbb_seo_titles.sql` — «MLBB»,
 «diamonds», «алмазы»).
 
+## Notices before paying (`skus.notice`)
+
+Some packs do not give everyone what their name suggests: MLBB's «First Top-Up»
+250 + 25 adds its bonus once per account, a Free Fire Level Up Package works only
+below its level, a Weekly Membership arrives over seven days. `skus.notice` holds a
+tile label (`badge`, optional, ≤ 20 characters) and a line or two (`text`, ≤ 240),
+each per locale. `SkuOut.notice` returns them in the request's locale, falling back
+to Russian. The web, the mini app and the mobile app put the label under the tile's
+price and the text under the pick and in the confirm step. Admins edit it on the SKU
+form; `scripts/seed/2026-10-23_sku_notices.sql` filled prod.
+
+Name a first-top-up pack base first — «250 + 25 Diamonds», never «275 Diamonds» —
+and a regular pack total first with the split — «257 Diamonds (234 + 23)» — because
+game events count the base. A supplier that names a first-top-up pack bare (G2B's
+«275») does not reveal it: compare with the panels' names (FazerCards/NOVA say
+«First Top-Up Bonus»).
+
 ## Display-price policy
 
 For every SKU and a requested currency `Q`:

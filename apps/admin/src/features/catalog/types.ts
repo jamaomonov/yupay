@@ -164,6 +164,11 @@ export interface Sku {
   image_url: string | null;
   sort_order: number;
   active: boolean;
+  /** A condition shown before paying: a tile label and a line, per locale. */
+  notice?: {
+    badge?: { ru: string; en: string; uz: string } | null;
+    text: { ru: string; en: string; uz: string };
+  } | null;
   /** SKU-level B2B (merchant catalog) visibility and markup. Read-only
    *  here — writes go through `PATCH /admin/catalog/skus/{id}/b2b` (see
    *  `../b2b.ts`); the plain SKU PATCH ignores both. The markup is margin

@@ -1408,3 +1408,52 @@ async def test_admin_products_list_drops_a_foreign_help_images_url_instead_of_50
     product = next(p for p in r.json() if p["id"] == product_id)
     help_images = product["required_fields"][0]["help_images"]
     assert [img["url"] for img in help_images] == [_help_image_url(0)]
+
+
+async def test_sku_notice_round_trips_and_clears(
+    integration_client: AsyncClient, _admin_headers: dict[str, str]
+) -> None:
+    """The notice is saved per locale, reaches the public SKU, and JSON null clears it."""
+    product_id = await _create_product_for_sku(
+        integration_client, _admin_headers, suffix="notice-roundtrip"
+    )
+    notice = {
+        "badge": {"ru": "1-я покупка", "en": "First purchase", "uz": "Birinchi xarid"},
+        "text": {"ru": "Бонус один раз", "en": "Bonus once", "uz": "Bonus bir marta"},
+    }
+    r = await integration_client.post(
+        "/api/v1/admin/catalog/skus",
+        headers=_admin_headers,
+        json={
+            "product_id": product_id,
+            "sku_code": "notice-roundtrip-sku",
+            "price_usd": "3",
+            "notice": notice,
+        },
+    )
+    assert r.status_code == 201, r.text
+    sku_id = r.json()["id"]
+    assert r.json()["notice"] == notice
+
+    r = await integration_client.get(
+        f"/api/v1/catalog/skus/{sku_id}", headers={"Accept-Language": "uz"}
+    )
+    assert r.json()["notice"] == {"badge": "Birinchi xarid", "text": "Bonus bir marta"}
+
+    # A label that would wrap on a phone grid is refused.
+    long_badge = {**notice, "badge": {**notice["badge"], "ru": "очень длинная плашка тут"}}
+    r = await integration_client.patch(
+        f"/api/v1/admin/catalog/skus/{sku_id}", headers=_admin_headers, json={"notice": long_badge}
+    )
+    assert r.status_code == 422, r.text
+
+    # Another field alone leaves the notice; null clears it.
+    r = await integration_client.patch(
+        f"/api/v1/admin/catalog/skus/{sku_id}", headers=_admin_headers, json={"sort_order": 2}
+    )
+    assert r.json()["notice"] == notice
+    r = await integration_client.patch(
+        f"/api/v1/admin/catalog/skus/{sku_id}", headers=_admin_headers, json={"notice": None}
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["notice"] is None

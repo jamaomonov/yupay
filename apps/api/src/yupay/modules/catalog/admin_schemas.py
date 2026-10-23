@@ -373,6 +373,37 @@ class SkuPriceOverrideIn(BaseModel):
         return v.upper()
 
 
+class LocalizedText(BaseModel):
+    """One string per storefront locale."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    ru: str = Field(min_length=1)
+    en: str = Field(min_length=1)
+    uz: str = Field(min_length=1)
+
+
+class SkuNoticeIn(BaseModel):
+    """``Sku.notice``: a tile label (optional) and the line shown before paying."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    badge: LocalizedText | None = None
+    text: LocalizedText
+
+    @model_validator(mode="after")
+    def _short(self) -> SkuNoticeIn:
+        # A label longer than this wraps on a three-column phone grid; the text is a
+        # notice, not a guide — the brand page's instructions hold the long story.
+        for value in (self.badge.ru, self.badge.en, self.badge.uz) if self.badge else ():
+            if len(value) > 20:
+                raise ValueError("badge must be at most 20 characters")
+        for value in (self.text.ru, self.text.en, self.text.uz):
+            if len(value) > 240:
+                raise ValueError("text must be at most 240 characters")
+        return self
+
+
 class SkuCreate(BaseModel):
     """Body of ``POST /admin/catalog/skus``."""
 
@@ -410,6 +441,8 @@ class SkuCreate(BaseModel):
     image_url: str | None = Field(default=None, max_length=1024)
     sort_order: int = 0
     active: bool = True
+    # A condition shown before paying — see ``Sku.notice``.
+    notice: SkuNoticeIn | None = None
     price_overrides: list[SkuPriceOverrideIn] = Field(default_factory=list)
 
     # SSRF guard — see BrandCreate._validate_image_hosts.
@@ -477,6 +510,8 @@ class SkuUpdate(BaseModel):
     image_url: str | None = None
     sort_order: int | None = None
     active: bool | None = None
+    # Sent-aware like the variable-amount block: JSON ``null`` clears the notice.
+    notice: SkuNoticeIn | None = None
     price_overrides: list[SkuPriceOverrideIn] | None = None
 
     # SSRF guard — see BrandUpdate._validate_image_hosts.
@@ -608,6 +643,7 @@ class AdminSkuOut(BaseModel):
     image_url: str | None
     sort_order: int
     active: bool
+    notice: SkuNoticeIn | None = None
     # Read side of the merchants module's ``PATCH /admin/catalog/skus/{id}/b2b``
     # — admin-only, never on the public SkuOut (the markup is margin data, same
     # sensitivity as rate_multiplier above). Writes stay on the merchants

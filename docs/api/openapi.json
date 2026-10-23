@@ -2149,6 +2149,16 @@
             ],
             "title": "Min Qty"
           },
+          "notice": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SkuNoticeIn"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "price_overrides": {
             "items": {
               "$ref": "#/components/schemas/SkuPriceOverrideIn-Output"
@@ -9636,6 +9646,34 @@
           "users"
         ],
         "title": "LocaleCountOut",
+        "type": "object"
+      },
+      "LocalizedText": {
+        "additionalProperties": false,
+        "description": "One string per storefront locale.",
+        "properties": {
+          "en": {
+            "minLength": 1,
+            "title": "En",
+            "type": "string"
+          },
+          "ru": {
+            "minLength": 1,
+            "title": "Ru",
+            "type": "string"
+          },
+          "uz": {
+            "minLength": 1,
+            "title": "Uz",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ru",
+          "en",
+          "uz"
+        ],
+        "title": "LocalizedText",
         "type": "object"
       },
       "LowStockOut": {
@@ -19246,6 +19284,16 @@
             ],
             "title": "Min Qty"
           },
+          "notice": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SkuNoticeIn"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "price_overrides": {
             "items": {
               "$ref": "#/components/schemas/SkuPriceOverrideIn-Input"
@@ -19351,6 +19399,55 @@
         "title": "SkuCreate",
         "type": "object"
       },
+      "SkuNoticeIn": {
+        "additionalProperties": false,
+        "description": "``Sku.notice``: a tile label (optional) and the line shown before paying.",
+        "properties": {
+          "badge": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LocalizedText"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "text": {
+            "$ref": "#/components/schemas/LocalizedText"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "SkuNoticeIn",
+        "type": "object"
+      },
+      "SkuNoticeOut": {
+        "description": "A SKU's notice in one locale: a short tile label and the line under the pick.",
+        "properties": {
+          "badge": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Badge"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "SkuNoticeOut",
+        "type": "object"
+      },
       "SkuOut": {
         "description": "A single sellable variant.",
         "properties": {
@@ -19453,6 +19550,17 @@
               }
             ],
             "title": "Min Qty"
+          },
+          "notice": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SkuNoticeOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A condition the buyer must see before paying (a first-purchase-only bonus, a level cap), in the request's locale. Absent on most SKUs."
           },
           "price_usd": {
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
@@ -19815,6 +19923,16 @@
               }
             ],
             "title": "Min Qty"
+          },
+          "notice": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SkuNoticeIn"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "price_overrides": {
             "anyOf": [
@@ -39650,6 +39768,22 @@
                 }
               ],
               "title": "Currency"
+            }
+          },
+          {
+            "in": "header",
+            "name": "accept-language",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Accept-Language"
             }
           }
         ],

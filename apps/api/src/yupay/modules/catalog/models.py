@@ -358,6 +358,11 @@ class Sku(Base):
     image_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    # A condition the buyer must see before paying: MLBB's «First Top-Up» bonus comes once
+    # per account, a Free Fire Level Up Package works only below its level. A tile label and
+    # a line of text, per locale — ``{"badge": {"ru": …}, "text": {"ru": …}}``, ``badge``
+    # optional (migration 0106). The storefront shows it on the tile and in the confirm step.
+    notice: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     # ``active`` gates both channels, as on :class:`Brand`. ``visible_b2b`` is
     # the merchant-catalog gate on top of it. Effective B2B visibility is ``brand.visible_b2b AND sku.visible_b2b`` —
     # see the matching column on :class:`Brand`.

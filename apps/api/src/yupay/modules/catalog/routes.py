@@ -154,14 +154,15 @@ async def get_product(
 async def get_sku(
     sku_id: str,
     db: Annotated[AsyncSession, Depends(db_session)],
+    locale: Annotated[str, Depends(resolve_locale)],
     currency: Annotated[str | None, Depends(resolve_currency)] = None,
 ) -> SkuOut:
     """Single SKU lookup."""
     fx = _fx_or_none(currency, db)
     try:
-        sku = await get_sku_by_id(db, sku_id, currency=currency, fx=fx)
+        sku = await get_sku_by_id(db, sku_id, currency=currency, fx=fx, locale=locale)
     except FxUnavailableError:
-        sku = await get_sku_by_id(db, sku_id)
+        sku = await get_sku_by_id(db, sku_id, locale=locale)
     if sku is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="sku not found")
     return sku

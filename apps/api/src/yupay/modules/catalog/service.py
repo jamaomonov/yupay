@@ -27,6 +27,7 @@ from yupay.modules.catalog.schemas import (
     ProductDetailOut,
     ProductSummaryOut,
     PublicFormField,
+    SkuNoticeOut,
     SkuOut,
 )
 from yupay.modules.pricing.fx_guard import RateRejected, guarded_usd_rate
@@ -70,6 +71,20 @@ def _pick_translation(
         getattr(chosen, "description", None),
         getattr(chosen, "instructions", None),
     )
+
+
+def _pick_notice(notice: dict[str, Any] | None, locale: str) -> SkuNoticeOut | None:
+    """The SKU's notice in ``locale``, falling back to Russian; ``None`` without text."""
+    if not notice:
+        return None
+
+    def pick(field: str) -> str | None:
+        by_locale = notice.get(field) or {}
+        value = by_locale.get(locale) or by_locale.get(DEFAULT_LOCALE)
+        return value if isinstance(value, str) and value.strip() else None
+
+    text = pick("text")
+    return SkuNoticeOut(badge=pick("badge"), text=text) if text else None
 
 
 def _pick_seo(translations: list[Any], locale: str) -> tuple[str | None, str | None]:
@@ -679,6 +694,7 @@ async def get_product_by_slug(
                 min_qty=sku.min_qty,
                 max_qty=sku.max_qty,
                 in_stock=sku.in_stock,
+                notice=_pick_notice(sku.notice, locale),
                 display_price=display,
             )
         )
@@ -707,6 +723,7 @@ async def get_sku_by_id(
     *,
     currency: str | None = None,
     fx: FxService | None = None,
+    locale: str = DEFAULT_LOCALE,
 ) -> SkuOut | None:
     """Look up a single active SKU under an active product + brand + category.
     A SKU whose product, brand, or category is hidden must not resolve by id."""
@@ -745,6 +762,7 @@ async def get_sku_by_id(
         min_qty=sku.min_qty,
         max_qty=sku.max_qty,
         in_stock=sku.in_stock,
+        notice=_pick_notice(sku.notice, locale),
         display_price=display,
     )
 

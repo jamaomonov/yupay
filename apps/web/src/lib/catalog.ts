@@ -109,7 +109,17 @@ export interface SkuOut {
   // and defaulted to sellable at every use site, because a build prerendering
   // against the older deployed API would otherwise grey out the whole catalog.
   in_stock?: boolean;
+  // A condition the buyer must see before paying (a one-off bonus, a level
+  // cap), already in the request's locale. Optional for the same prerender
+  // reason; absent or null means none.
+  notice?: SkuNotice | null;
   display_price: PriceOut | null;
+}
+
+export interface SkuNotice {
+  /** One or two words for the tile; absent when the text alone says it. */
+  badge?: string | null;
+  text: string;
 }
 
 export interface ProductSummary {

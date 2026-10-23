@@ -1998,6 +1998,13 @@ export function PurchasePanel({
                           <span className="text-foreground font-mono text-[13.5px] font-semibold tabular-nums">
                             {soldOut ? t("outOfStock") : skuPrice(locale, sku)}
                           </span>
+                          {/* Under the price, not in a corner: a two-column phone
+                              tile has no room beside the image for «До 30 уровня». */}
+                          {sku.notice?.badge && !soldOut && (
+                            <span className="bg-gold/12 text-gold rounded-full px-2 py-0.5 text-[11px] font-semibold leading-tight">
+                              {sku.notice.badge}
+                            </span>
+                          )}
                         </button>
                       );
                     })}
@@ -2022,18 +2029,25 @@ export function PurchasePanel({
               {t("summaryTitle")}
             </h2>
 
-            <div className="border-border/70 mt-4 flex items-center justify-between border-b pb-4">
+            <div className="border-border/70 mt-4 flex items-center justify-between gap-3 border-b pb-4">
               {selSku ? (
                 <>
-                  <span className="text-[15px] font-semibold">
+                  <span className="min-w-0 text-[15px] font-semibold">
                     {selSku.denomination ?? selSku.sku_code}
                   </span>
-                  <span className="font-display text-lg font-bold">{selectedPriceLabel}</span>
+                  <span className="font-display shrink-0 whitespace-nowrap text-lg font-bold">
+                    {selectedPriceLabel}
+                  </span>
                 </>
               ) : (
                 <span className="text-tx-mute text-sm">{t("selectPack")}</span>
               )}
             </div>
+            {selSku?.notice && (
+              <p className="bg-gold/12 text-gold mt-3 rounded-xl px-3 py-2.5 text-[13px] font-semibold leading-snug">
+                {selSku.notice.text}
+              </p>
+            )}
 
             <label className="mt-5 block">
               <span className="text-tx-mute mb-1.5 block text-[13px] font-semibold">
@@ -2388,6 +2402,7 @@ export function PurchasePanel({
         totalLabel={t("confirmTotal")}
         totalValue={selectedPriceLabel}
         warning={accountRequired ? t("confirmWarning") : t("confirmWarningVoucher")}
+        notice={selSku?.notice?.text}
         // A field-less product (a gift card) has nothing to attest to — the
         // old `!hasVerifiableField` alone was true for it too (`.some()` on
         // an empty array), which blocked checkout on a checkbox that
