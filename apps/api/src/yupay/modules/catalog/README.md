@@ -259,8 +259,8 @@ Mobile Legends first (`scripts/seed/2026-10-01_mlbb_seo_titles.sql` — «MLBB»
 
 ## Notices before paying (`skus.notice`)
 
-Some packs do not give everyone what their name suggests: MLBB's «First Top-Up»
-250 + 25 adds its bonus once per account, a Free Fire Level Up Package works only
+Some packs do not give everyone what their name suggests: MLBB's first purchase of
+a tier doubles it (250 + 250), every later one gives the regular 250 + 25, a Free Fire Level Up Package works only
 below its level, a Weekly Membership arrives over seven days. `skus.notice` holds a
 tile label (`badge`, optional, ≤ 20 characters) and a line or two (`text`, ≤ 240),
 each per locale. `SkuOut.notice` returns them in the request's locale, falling back
