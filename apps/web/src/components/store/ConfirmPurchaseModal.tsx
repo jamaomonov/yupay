@@ -142,11 +142,13 @@ export function ConfirmPurchaseModal({
           </label>
         )}
 
+        {/* `sm:flex-1`, not `flex-1`: in the phone's column a zero flex-basis
+            overrides the button's height and squashes it to one line of text. */}
         <div className="mt-5 flex flex-col-reverse gap-2.5 sm:flex-row">
           <button
             type="button"
             onClick={onClose}
-            className={buttonStyles({ variant: "ghost", size: "md", className: "flex-1" })}
+            className={buttonStyles({ variant: "ghost", size: "lg", className: "sm:flex-1" })}
           >
             {cancelLabel}
           </button>
@@ -154,7 +156,7 @@ export function ConfirmPurchaseModal({
             type="button"
             onClick={onConfirm}
             disabled={blocked}
-            className={buttonStyles({ size: "md", className: "flex-1" })}
+            className={buttonStyles({ size: "lg", className: "sm:flex-1" })}
           >
             {confirmLabel}
           </button>

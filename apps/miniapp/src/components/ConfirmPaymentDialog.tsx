@@ -107,7 +107,7 @@ export function ConfirmPaymentDialog({
             onClick={() => {
               onOpenChange(false);
             }}
-            className="border-border flex-1 rounded-xl border py-3 text-sm font-semibold text-white/75"
+            className="border-border min-h-12 flex-1 rounded-xl border px-3 py-3 text-[15px] font-semibold text-white/75"
           >
             {t("topup.confirmCancel")}
           </button>
@@ -118,7 +118,7 @@ export function ConfirmPaymentDialog({
               haptic("press");
               onConfirm();
             }}
-            className="bg-primary text-primary-foreground flex-1 rounded-xl py-3 text-sm font-bold disabled:opacity-45"
+            className="bg-primary text-primary-foreground min-h-12 flex-1 rounded-xl px-3 py-3 text-[15px] font-bold disabled:opacity-45"
           >
             {t("topup.confirmCta")}
           </button>
