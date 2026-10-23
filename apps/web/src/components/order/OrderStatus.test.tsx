@@ -367,7 +367,7 @@ it("offers a guest a way back into paying an order still awaiting payment", asyn
   const link = await screen.findByRole("link", { name: "Pay" });
   expect(link).toHaveAttribute("href", "https://uzumbank.uz/open-service?id=1");
   expect(mockApiFetch).toHaveBeenCalledWith(
-    "/payments/by-order/01a00487-0000-0000-0000-000000000000?email=buyer%40example.com",
+    "/payments/by-order/01a00487-0000-0000-0000-000000000000",
   );
 });
 

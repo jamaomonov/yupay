@@ -244,20 +244,18 @@ export async function buyGift(params: BuyGiftParams): Promise<BuyGiftResult> {
   const trackHref = pathFor(locale, `/orders/${order.id}`);
   const returnUrl = `${window.location.origin}${pathFor(locale, `/orders/${order.id}${emailSuffix}`)}`;
 
-  // Guest payment intents require the email as a query param — the API
-  // rebuilds the guest-token hash from it to verify the Guest bearer (see
-  // `payments/routes.py::_resolve_actor`).
-  const intentsUrl = isLoggedIn
-    ? `${API}/api/v1/payments/intents`
-    : `${API}/api/v1/payments/intents?email=${encodeURIComponent(email)}`;
-
-  const intentRes = await fetch(intentsUrl, {
+  // A guest intent carries the email in `X-Guest-Email` — the API rebuilds the
+  // guest-token hash from it to verify the Guest bearer (see
+  // `payments/routes.py::_resolve_actor`). Never in the URL: a query string
+  // lands in the API's access log.
+  const intentRes = await fetch(`${API}/api/v1/payments/intents`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "Idempotency-Key": crypto.randomUUID(),
       "X-Yupay-Surface": SURFACE,
       ...auth,
+      ...(isLoggedIn ? {} : { "X-Guest-Email": email }),
     },
     body: JSON.stringify({ order_id: order.id, provider, return_url: returnUrl }),
   });

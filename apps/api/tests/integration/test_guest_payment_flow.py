@@ -113,8 +113,12 @@ async def test_guest_pays_and_reads_deliveries(
     order_id = await _guest_order(integration_client, token=token, sku_id=_seed_sku, tag="01")
 
     intent = await integration_client.post(
-        f"/api/v1/payments/intents?email={GUEST_EMAIL}",
-        headers={"Authorization": f"Guest {token}", "Idempotency-Key": "gp-intent-01-padpad"},
+        "/api/v1/payments/intents",
+        headers={
+            "Authorization": f"Guest {token}",
+            "X-Guest-Email": GUEST_EMAIL,
+            "Idempotency-Key": "gp-intent-01-padpad",
+        },
         json={"order_id": order_id, "provider": "mock"},
     )
     assert intent.status_code == 201, intent.text
@@ -143,7 +147,7 @@ async def test_guest_pays_and_reads_deliveries(
     assert len(deliveries.json()["items"]) == 1
 
 
-async def test_guest_intent_requires_email_param(
+async def test_guest_intent_requires_the_email(
     integration_client: AsyncClient, _seed_sku: str
 ) -> None:
     token = await _guest_token(integration_client)
@@ -157,6 +161,21 @@ async def test_guest_intent_requires_email_param(
     assert r.status_code == 422, r.text
 
 
+async def test_guest_intent_still_reads_the_legacy_email_param(
+    integration_client: AsyncClient, _seed_sku: str
+) -> None:
+    # A page loaded before the header switch still sends ``?email=``.
+    token = await _guest_token(integration_client)
+    order_id = await _guest_order(integration_client, token=token, sku_id=_seed_sku, tag="legacy")
+
+    r = await integration_client.post(
+        f"/api/v1/payments/intents?email={GUEST_EMAIL}",
+        headers={"Authorization": f"Guest {token}", "Idempotency-Key": "gp-intent-05-padpad"},
+        json={"order_id": order_id, "provider": "mock"},
+    )
+    assert r.status_code == 201, r.text
+
+
 async def test_guest_intent_rejects_mismatched_email(
     integration_client: AsyncClient, _seed_sku: str
 ) -> None:
@@ -164,8 +183,12 @@ async def test_guest_intent_rejects_mismatched_email(
     order_id = await _guest_order(integration_client, token=token, sku_id=_seed_sku, tag="03")
 
     r = await integration_client.post(
-        "/api/v1/payments/intents?email=someone.else@example.com",
-        headers={"Authorization": f"Guest {token}", "Idempotency-Key": "gp-intent-03-padpad"},
+        "/api/v1/payments/intents",
+        headers={
+            "Authorization": f"Guest {token}",
+            "X-Guest-Email": "someone.else@example.com",
+            "Idempotency-Key": "gp-intent-03-padpad",
+        },
         json={"order_id": order_id, "provider": "mock"},
     )
     assert r.status_code == 401, r.text
@@ -180,8 +203,12 @@ async def test_guest_cannot_touch_foreign_order(
     stranger_email = "other.guest@example.com"
     stranger = await _guest_token(integration_client, email=stranger_email)
     r = await integration_client.post(
-        f"/api/v1/payments/intents?email={stranger_email}",
-        headers={"Authorization": f"Guest {stranger}", "Idempotency-Key": "gp-intent-04-padpad"},
+        "/api/v1/payments/intents",
+        headers={
+            "Authorization": f"Guest {stranger}",
+            "X-Guest-Email": stranger_email,
+            "Idempotency-Key": "gp-intent-04-padpad",
+        },
         json={"order_id": order_id, "provider": "mock"},
     )
     assert r.status_code == 404, r.text

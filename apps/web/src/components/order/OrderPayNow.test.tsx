@@ -317,15 +317,12 @@ it("keeps a guest's access: the email rides the query string and the Guest token
   );
 
   await screen.findByRole("link", { name: "payNow" });
-  // `_resolve_actor` rebuilds the guest-token hash from the `email` param —
-  // without it the API refuses the whole request.
-  expect(mockApiFetch).toHaveBeenCalledWith(
-    "/payments/by-order/order-1?email=guest%40example.com",
-    {
-      anonymous: true,
-      headers: { Authorization: "Guest tok", "X-Guest-Email": "guest@example.com" },
-    },
-  );
+  // `_resolve_actor` rebuilds the guest-token hash from `X-Guest-Email`; the
+  // address stays out of the URL, which lands in the access log.
+  expect(mockApiFetch).toHaveBeenCalledWith("/payments/by-order/order-1", {
+    anonymous: true,
+    headers: { Authorization: "Guest tok", "X-Guest-Email": "guest@example.com" },
+  });
 });
 
 it("shows the card-transfer instructions instead of a pay button for a p2p payment", async () => {

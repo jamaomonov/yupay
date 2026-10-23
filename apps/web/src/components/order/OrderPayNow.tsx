@@ -81,13 +81,10 @@ export function OrderPayNow({
   const pathname = usePathname();
   const params = useSearchParams();
 
-  // Guests must send the email as a query param: `payments/routes.py`'s
-  // `_resolve_actor` rebuilds the guest-token hash from it and refuses the
-  // request without it. Signed-in buyers go on their Bearer alone.
-  const path =
-    email === undefined
-      ? `/payments/by-order/${orderId}`
-      : `/payments/by-order/${orderId}?email=${encodeURIComponent(email)}`;
+  // A guest's email rides in `auth` as `X-Guest-Email`: `payments/routes.py`'s
+  // `_resolve_actor` rebuilds the guest-token hash from it. Never in the path —
+  // a query string lands in the API's access log.
+  const path = `/payments/by-order/${orderId}`;
 
   const payment = useQuery<PaymentOut, ApiError>({
     queryKey: ["payment", "by-order", orderId],

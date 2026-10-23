@@ -22,8 +22,11 @@
 | Storefront visitor id            | Partner-link beacon                           | `affiliate_clicks.visitor_hash` (SHA-256 only); the raw id stays in the browser's local storage | Not PII: a random id we mint, never linked to an account, IP or user agent. Counts visitors to partner links                                                                                                                                                                                                                                           |
 
 **Guest email in transit.** Guest order/deliveries lookups (`GET /orders/{id}`,
-`GET /orders/{id}/deliveries`) send the guest's email as an `X-Guest-Email` header,
-not a `?email=` query parameter (ADR-0038 §7) — it no longer lands in Caddy/proxy
+`GET /orders/{id}/deliveries`) and, since 2026-10-23, the guest payment calls
+(`POST /payments/intents`, `GET /payments/by-order/{id}`) send the guest's email as an
+`X-Guest-Email` header, not a `?email=` query parameter (ADR-0038 §7). The payment routes
+still read `?email=` as a fallback for a page loaded before that switch; it can go once
+no access-log line carries it — it no longer lands in Caddy/proxy
 access logs or browser history from those calls. It still travels over the wire on
 every such request; this is a transport-location fix, not encryption-in-transit
 (TLS already covers that) or an elimination of the value being sent at all.

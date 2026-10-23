@@ -49,7 +49,7 @@ sequenceDiagram
     P->>P: render "Заказ создан" (fallback if the push never lands)
     P->>O: router.push(/orders/{id}?email=…&pay=1)
     Note over O: the tab is now the order page —<br/>whatever happens next, this is what the buyer returns to
-    O->>API: GET /payments/by-order/{id}?email=…
+    O->>API: GET /payments/by-order/{id} (X-Guest-Email)
     API-->>O: PaymentOut {status: pending, intent_url}
     O->>O: spend the one-shot, strip ?pay=1 from the URL
     O->>B: window.location.href = intent_url

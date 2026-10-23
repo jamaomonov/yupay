@@ -90,10 +90,12 @@ async def _resolve_actor(request: Request, db: AsyncSession) -> Actor:
         return Actor(user_id=user.id, email=None)
     if scheme == "Guest":
         claims = authjwt.verify(token, expected_kind="guest")
-        # The route requires the email as a query param so we can rebuild the hash.
-        email = request.query_params.get("email")
+        # The email rebuilds the token's hash. It comes in ``X-Guest-Email``, like the order
+        # reads: a query string lands in the access log, a header does not. ``?email=`` is
+        # still read for a page loaded before the switch.
+        email = request.headers.get("X-Guest-Email") or request.query_params.get("email")
         if not email:
-            raise ValidationError("email query param required for guest payments")
+            raise ValidationError("X-Guest-Email header required for guest payments")
         expected = email_hash(email.strip().lower(), get_settings().auth_email_pepper)
         if claims.email_hash != expected:
             raise UnauthorizedError("guest token / email mismatch")

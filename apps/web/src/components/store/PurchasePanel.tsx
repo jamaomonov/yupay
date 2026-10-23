@@ -1697,9 +1697,7 @@ export function PurchasePanel({
         };
       }
 
-      const intentsUrl = isLoggedIn
-        ? `${API}/api/v1/payments/intents`
-        : `${API}/api/v1/payments/intents?email=${encodeURIComponent(email)}`;
+      const intentsUrl = `${API}/api/v1/payments/intents`;
 
       // Absolute URL the acquirer redirects the customer back to after they
       // pay — the server validates + defaults it, but the order page (with
@@ -1724,6 +1722,9 @@ export function PurchasePanel({
           // sides of checkout declaring the same thing.
           "X-Yupay-Surface": SURFACE,
           ...auth,
+          // A guest's email goes as a header, never in the URL: a query string
+          // lands in the API's access log.
+          ...(isLoggedIn ? {} : { "X-Guest-Email": email }),
         },
         body: JSON.stringify({ order_id: order.id, provider, return_url: returnUrl }),
       });
