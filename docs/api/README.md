@@ -1034,13 +1034,13 @@ the same reason `POST /catalog/brands/{slug}/check-player` and
 `player_check` logs `hash_short` of it and nothing else.
 
 **Its own rate limits, on two axes**, charged in the handler on top of the
-prefix-wide `merchant-api` counter at 600/60 s: `merchant-validate` at 120/60 s
+prefix-wide `merchant-api` counter at 1000/60 s: `merchant-validate` at 200/60 s
 per **address**, and `merchants:validate:{merchant_id}` at
-`merchant_validate_rate_max` (120/60 s) per **merchant**. Stricter because it is
+`merchant_validate_rate_max` (200/60 s) per **merchant**. (600 and 120 until 2026-10-24.) Stricter because it is
 the one endpoint that spends a _supplier's_ quota rather than ours (spec §12:
 "stricter on `validate/*`"), and two axes because that quota follows the
 account: with the address counter alone a six-node egress pool held six budgets
-and the binding ceiling fell back to `merchant_api_key_rate_max` (600), five
+and the binding ceiling fell back to `merchant_api_key_rate_max` (then 600), five
 times what the bucket advertises. Keyed on `merchant_id` and not `key_id` —
 unlike the prefix's per-key counter — because a key rotation may briefly double
 a share of _our_ capacity without hurting anyone, but must not double a claim on

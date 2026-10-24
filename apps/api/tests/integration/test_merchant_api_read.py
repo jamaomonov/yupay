@@ -1086,5 +1086,5 @@ async def test_the_two_documented_rate_limits_are_the_ones_configured() -> None:
 
     settings = get_settings()
     assert settings.auth_ip_guard_window_seconds == 60
-    assert settings.auth_ip_guard_bucket_max["merchant-api"] == 600
-    assert settings.merchant_api_key_rate_max == 600
+    assert settings.auth_ip_guard_bucket_max["merchant-api"] == 1000
+    assert settings.merchant_api_key_rate_max == 1000

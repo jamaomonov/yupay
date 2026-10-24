@@ -263,23 +263,24 @@ class Settings(BaseSettings):
             # credential bucket because the caller is a server, not a person:
             # a reseller's backend legitimately fires a burst of order
             # creations and status polls from ONE address, and ten a minute
-            # would break the integration on day one. 600 matches
-            # ``rate_limit_default`` (the coarse per-IP, per-endpoint limiter
-            # in bootstrap), so neither tier surprises the other. Brute force
+            # would break the integration on day one. Raised from 600 to 1000
+            # on 2026-10-24 (owner): /merchant/v1 is exempt from
+            # ``rate_limit_default`` (the coarse per-IP limiter in bootstrap),
+            # so this is the only per-address ceiling it meets. Brute force
             # is not the threat model here — the credential is a 256-bit
             # secret compared with ``compare_digest`` — throughput is, which
             # is why no ``subject`` is passed on this bucket and the
             # per-merchant axis is ``merchant_api_key_rate_max`` below
             # instead.
-            "merchant-api": 600,
+            "merchant-api": 1000,
             # `POST /merchant/v1/validate/player`, and stricter than the
             # prefix above it on purpose (spec §12: "stricter on validate/* —
             # it spends supplier quota"). Every other endpoint there spends
             # only our own database; this one calls G2B or Waxpeer, whose quota
-            # we buy and whose rate limit is not ours to raise. 120 is two a
-            # second sustained — comfortably above one check per order for a
-            # reseller polling and ordering all day, and a fifth of what the
-            # prefix allows.
+            # we buy and whose rate limit is not ours to raise. 200 (120 until
+            # 2026-10-24) is over three a second sustained — comfortably above
+            # one check per order for a reseller polling and ordering all day,
+            # and a fifth of what the prefix allows.
             #
             # This is the per-*address* half only, and on its own it does not
             # bound what one merchant can spend: a caller behind a multi-node
@@ -292,7 +293,7 @@ class Settings(BaseSettings):
             # failure removes all three protections at once and the supplier's
             # own limiter is what is left. That is a known and accepted
             # property, not an oversight.
-            "merchant-validate": 120,
+            "merchant-validate": 200,
         },
         description=(
             "Per-bucket overrides for auth_ip_guard_max. The default is written for "
@@ -305,7 +306,7 @@ class Settings(BaseSettings):
         ),
     )
     merchant_api_key_rate_max: int = Field(
-        default=600,
+        default=1000,
         description=(
             "Max /merchant/v1 requests per window per API KEY, the merchant axis "
             "of the machine API's two-axis guard (the IP axis is the "
@@ -322,7 +323,7 @@ class Settings(BaseSettings):
     )
 
     merchant_validate_rate_max: int = Field(
-        default=120,
+        default=200,
         description=(
             "Max POST /merchant/v1/validate/player calls per window per MERCHANT "
             "-- the axis that matches what the limit is protecting. The bucket "
@@ -330,7 +331,7 @@ class Settings(BaseSettings):
             "supplier's quota, which a reseller spends per account and not per "
             "egress node: with the IP counter alone, a six-node NAT pool got six "
             "times the budget and the binding constraint fell back to "
-            "merchant_api_key_rate_max (600), five times the number the bucket's "
+            "merchant_api_key_rate_max (then 600), five times the number the bucket's "
             "own comment advertises. Keyed on merchant_id rather than key_id, "
             "unlike merchant_api_key_rate_max: a fair share of OUR request "
             "capacity may briefly double during a key rotation without hurting "

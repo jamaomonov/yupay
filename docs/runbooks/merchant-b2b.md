@@ -941,13 +941,13 @@ gift-card SKU. Tell the merchant to order without a check.
 counters doing its job, and which one matters when you decide what to raise:
 
 - `auth:ipguard:merchant-validate:{ip}`, ceiling `AUTH_IP_GUARD_BUCKET_MAX`
-  (120) — per source address.
+  (200) — per source address.
 - `merchants:validate:{merchant_id}`, ceiling `MERCHANT_VALIDATE_RATE_MAX`
-  (120) — per merchant account, and the one that actually bounds what a
+  (200) — per merchant account, and the one that actually bounds what a
   reseller can spend, since a multi-node egress pool holds one of the first
   kind per address.
 
-Both against the prefix's 600, because this is the one endpoint that spends a
+Both against the prefix's 1000 (600 and 120 until 2026-10-24), because this is the one endpoint that spends a
 supplier's quota rather than ours (spec §12). A merchant checking once per
 order is nowhere near either; one that trips them is validating in a loop.
 Raise the supplier-side quota **before** either ceiling — they protect G2B's
