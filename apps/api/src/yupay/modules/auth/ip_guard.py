@@ -90,10 +90,15 @@ async def hit_counter(key: str, *, limit: int, window: int) -> bool:
     count = 0
     with contextlib.suppress(Exception):  # fail open on Redis trouble
         redis = get_redis()
-        count = await redis.incr(key)
-        if count == 1:
-            await redis.expire(key, window)
-    return count > limit
+        # One MULTI/EXEC, and EXPIRE NX on every hit rather than only the first:
+        # an INCR that landed without its EXPIRE (2026-10-24, a reseller answered
+        # 429 for hours by a counter at 2148 with no TTL) made a window that never
+        # ended. NX keeps a running window's TTL and gives a stuck key one.
+        async with redis.pipeline(transaction=True) as pipe:
+            pipe.incr(key)
+            pipe.expire(key, window, nx=True)
+            count, _ = await pipe.execute()
+    return int(count) > limit
 
 
 async def guard_ip(request: Request, *, bucket: str, subject: str | None = None) -> None:

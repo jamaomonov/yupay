@@ -37,9 +37,12 @@ class _FakeRedis:
         self.store[key] = str(int(self.store.get(key, "0")) + 1)
         return int(self.store[key])
 
-    async def expire(self, key: str, seconds: int) -> bool:
+    async def expire(self, key: str, seconds: int, nx: bool = False) -> bool:
         self._boom()
         return True
+
+    def pipeline(self, transaction: bool = True) -> _FakePipeline:
+        return _FakePipeline(self)
 
     async def set(self, key: str, value: str, ex: int | None = None) -> bool:
         self._boom()
@@ -52,6 +55,29 @@ class _FakeRedis:
         for k in keys:
             n += self.store.pop(k, None) is not None
         return n
+
+
+class _FakePipeline:
+    """Queues ``incr``/``expire`` and runs them on ``execute``, like a MULTI/EXEC."""
+
+    def __init__(self, redis: _FakeRedis) -> None:
+        self._redis = redis
+        self._calls: list[tuple[str, tuple[object, ...], dict[str, object]]] = []
+
+    async def __aenter__(self) -> _FakePipeline:
+        return self
+
+    async def __aexit__(self, *exc: object) -> None:
+        return None
+
+    def incr(self, key: str) -> None:
+        self._calls.append(("incr", (key,), {}))
+
+    def expire(self, key: str, seconds: int, nx: bool = False) -> None:
+        self._calls.append(("expire", (key, seconds), {"nx": nx}))
+
+    async def execute(self) -> list[object]:
+        return [await getattr(self._redis, n)(*a, **kw) for n, a, kw in self._calls]
 
 
 @pytest.fixture

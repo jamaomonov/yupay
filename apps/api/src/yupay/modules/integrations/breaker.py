@@ -82,9 +82,12 @@ class SupplierBreaker:
             return
         with contextlib.suppress(Exception):  # best effort — never block on the guard
             redis = get_redis()
-            count = await redis.incr(self._fail_key)
-            if count == 1:
-                await redis.expire(self._fail_key, _FAILURE_WINDOW_SECONDS)
+            # Atomic, and NX on every hit: an INCR without its EXPIRE would keep
+            # the run forever (the same trap as ``ip_guard.hit_counter``).
+            async with redis.pipeline(transaction=True) as pipe:
+                pipe.incr(self._fail_key)
+                pipe.expire(self._fail_key, _FAILURE_WINDOW_SECONDS, nx=True)
+                count, _ = await pipe.execute()
             if count >= self._threshold:
                 await redis.set(self._open_key, "1", ex=self._cooldown)
                 logger.warning(
