@@ -67,8 +67,12 @@ http://yupay.uz, http://www.yupay.uz {
 		# (googleadservices.com, googleads.g.doubleclick.net, www.google.com,
 		# td.doubleclick.net). Pixels ride ``img-src https:``. A tag that needs
 		# another origin fails closed here and shows up as a CSP report in the
-		# console; add it to this list, not 'unsafe' anything.
-		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://telegram.org https://*.telegram.org https://mc.yandex.ru https://accounts.google.com https://www.googletagmanager.com https://www.googleadservices.com https://googleads.g.doubleclick.net; style-src 'self' 'unsafe-inline' https://telegram.org https://*.telegram.org https://accounts.google.com; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://api.yupay.uz wss://api.yupay.uz https://mc.yandex.ru wss://mc.yandex.ru https://accounts.google.com https://www.googletagmanager.com https://*.google-analytics.com https://*.analytics.google.com https://www.google.com https://googleads.g.doubleclick.net; frame-src https://telegram.org https://*.telegram.org https://mc.yandex.ru https://accounts.google.com https://www.googletagmanager.com https://td.doubleclick.net; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+		# console; add it to this list, not 'unsafe' anything. 2026-10-26: GA4
+		# was posting to the bare analytics.google.com (``*.`` does not cover
+		# the apex) and Ads' conversion linker to ad.doubleclick.net — both
+		# blocked; Cloudflare Web Analytics (injected at the edge) needs
+		# static.cloudflareinsights.com (script) + cloudflareinsights.com.
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://telegram.org https://*.telegram.org https://mc.yandex.ru https://accounts.google.com https://www.googletagmanager.com https://www.googleadservices.com https://googleads.g.doubleclick.net https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://telegram.org https://*.telegram.org https://accounts.google.com; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://api.yupay.uz wss://api.yupay.uz https://mc.yandex.ru wss://mc.yandex.ru https://accounts.google.com https://www.googletagmanager.com https://*.google-analytics.com https://analytics.google.com https://*.analytics.google.com https://www.google.com https://googleads.g.doubleclick.net https://ad.doubleclick.net https://stats.g.doubleclick.net https://cloudflareinsights.com; frame-src https://telegram.org https://*.telegram.org https://mc.yandex.ru https://accounts.google.com https://www.googletagmanager.com https://td.doubleclick.net; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
 	}
 	# Force the canonical apex so SEO does not split between yupay.uz / www.
 	@redirectWww host www.yupay.uz
