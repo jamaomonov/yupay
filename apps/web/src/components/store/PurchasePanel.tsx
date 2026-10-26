@@ -459,12 +459,15 @@ function CheckablePlayerField({
           aria-disabled={blocker !== null}
           disabled={checking}
           onClick={() => void onCheck()}
-          // Neutral on purpose: this is advisory (a failed lookup never blocks
-          // checkout), and in lime it read as the main action while the real
-          // CTA below sat dimmed. The green confirmation pill still marks a
-          // successful check.
-          className={`border-border-2 text-tx-mute hover:border-tx-dim hover:text-foreground hover:bg-muted rounded-btn inline-flex h-[46px] shrink-0 items-center justify-center gap-2 border px-5 text-[14px] font-semibold transition disabled:pointer-events-none disabled:opacity-40 ${
-            blocker !== null ? "opacity-40" : ""
+          // Never a filled lime — that read as the main action while the real
+          // CTA sat dimmed. But once the id is typed it is the next step, so
+          // it gets a lime outline and text; before that it stays a dim grey
+          // (the two states used to differ by opacity alone). The green pill
+          // still marks a successful check.
+          className={`rounded-btn inline-flex h-[46px] shrink-0 items-center justify-center gap-2 border px-5 text-[14px] font-semibold transition disabled:pointer-events-none disabled:opacity-60 ${
+            blocker !== null
+              ? "border-border-2 text-tx-dim"
+              : "border-primary/70 text-primary bg-primary/[0.06] hover:bg-primary/[0.12] hover:border-primary"
           }`}
         >
           {checking && <Loader2 size={16} className="animate-spin" />}
