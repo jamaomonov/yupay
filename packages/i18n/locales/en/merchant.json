@@ -274,6 +274,8 @@
     "checkId": "Check",
     "checking": "Checking…",
     "idValid": "ID found",
+    "idWrongRegion": "“{name}” is an account from another region of the game — a top-up here won't reach it.",
+    "idWrongRegionGo": "Open the right region →",
     "idInvalid": "ID not found — check it again",
     "idError": "Could not check. You can still order without it.",
     "fieldInvalid": "Wrong format",

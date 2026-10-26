@@ -309,10 +309,19 @@ class PlayerCheckOut(BaseModel):
 
     ``openid`` is intentionally omitted — it's an internal G2B id and must not
     leak to the storefront.
+
+    An ``invalid`` with ``reason="wrong_region"`` is an account that exists but
+    lives in another region of the game (``account_regions``, our
+    ``brands.region_code`` values) — a top-up on this page would not reach it.
+    ``name`` is kept then, so the customer recognises the account.
     """
 
     status: Literal["valid", "invalid", "error"]
     name: str | None = None
+    # Left out of the body unless set: every other verdict reads exactly as it
+    # did before these fields existed.
+    reason: Literal["wrong_region"] | None = Field(default=None, exclude_if=lambda v: v is None)
+    account_regions: list[str] | None = Field(default=None, exclude_if=lambda v: v is None)
 
 
 class NewBrandIn(BaseModel):

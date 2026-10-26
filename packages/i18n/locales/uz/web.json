@@ -243,6 +243,8 @@
     "checkNeedsId": "Avval «{label}»ni kiriting",
     "checkNeedsServer": "Avval «{label}»ni kiriting",
     "checkNotFound": "Oʻyinchi topilmadi",
+    "checkWrongRegion": "«{name}» — «{region}» mintaqasi akkaunti. Bu sahifadagi toʻldirish unga yetib bormaydi.",
+    "checkSwitchRegion": "Oʻtish: {region}",
     "checkTryRegion": "Agar akkaunt boshqa mintaqadan boʻlsa — uni yuqoridagi tanlovdan tanlang",
     "regionTitle": "Akkaunt mintaqasi",
     "regionUnchecked": "Bu mintaqa uchun ID tekshirilmaydi. Akkauntingiz «{region}» mintaqasida roʻyxatdan oʻtganiga ishonch hosil qiling.",

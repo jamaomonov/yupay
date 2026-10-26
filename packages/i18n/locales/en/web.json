@@ -243,6 +243,8 @@
     "checkNeedsId": "Enter {label} first",
     "checkNeedsServer": "Enter {label} first",
     "checkNotFound": "Player not found",
+    "checkWrongRegion": "“{name}” is a {region} account. A top-up on this page won't reach it.",
+    "checkSwitchRegion": "Switch to {region}",
     "checkTryRegion": "If the account is from another region, pick it in the switcher above",
     "regionTitle": "Account region",
     "regionUnchecked": "IDs for this region are not checked. Make sure your account is registered in the {region} region.",

@@ -1496,6 +1496,35 @@ it("points a not-found id at the region switcher when the game has regions", asy
   expect(hint.tagName).toBe("P");
 });
 
+it("an account from another region blocks Pay and offers to switch with the id carried", async () => {
+  mockProvidersResponse(ALL_PROVIDERS_ACTIVE);
+  vi.spyOn(playerCheck, "checkPlayer").mockResolvedValue({
+    status: "invalid",
+    name: "Neo",
+    reason: "wrong_region",
+    account_regions: ["cis"],
+  });
+  const go = vi.fn();
+  renderPanel(
+    <PurchasePanel
+      products={[{ ...makeProduct(), required_fields: MLBB_FIELDS }]}
+      locale="ru"
+      hasRegions
+      regionSwitch={{ name: (c) => `region-${c}`, available: ["cis", "bd"], go }}
+    />,
+  );
+  fireEvent.change(screen.getByPlaceholderText("playerIdPlaceholder"), {
+    target: { value: "5927745950" },
+  });
+  fireEvent.change(screen.getByLabelText("ID сервера *"), { target: { value: "6618" } });
+  fireEvent.click(screen.getByRole("button", { name: "check" }));
+
+  expect(await screen.findByText("checkWrongRegion")).toBeInTheDocument();
+  expect(screen.queryByText("checkNotFound")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "checkSwitchRegion" }));
+  expect(go).toHaveBeenCalledWith("cis", expect.objectContaining({ player_id: "5927745950" }));
+});
+
 it("a hand-off from the home page fills the amount, checks the login itself and lands on the form", async () => {
   // The home page's Steam form sends `?steam_login=…&amount=…`. The amount
   // used to arrive and then be wiped by the per-SKU reset on mount, the

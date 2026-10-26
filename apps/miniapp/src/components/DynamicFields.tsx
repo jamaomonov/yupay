@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/sheet";
 import { useT } from "@/lib/i18n";
 import { lookup } from "@/lib/i18n/core";
+import { CATALOGS, type MessageKey } from "@/lib/i18n/messages";
 import {
   canCheck,
   checkUnavailable,
@@ -472,6 +473,35 @@ function TextLikeField({
         <div className="min-w-0 flex-1 leading-tight">
           <div className="truncate text-[14px] font-bold text-white">{checkDone.name}</div>
           <div className="truncate font-mono text-[12px] text-emerald-400">{value}</div>
+        </div>
+        <button
+          type="button"
+          onClick={editAgain}
+          className="shrink-0 text-[13px] font-medium text-white/45 active:opacity-70"
+        >
+          {t("field.checkEdit")}
+        </button>
+      </div>
+    );
+  }
+
+  // A real account, in another region of the game: a top-up here would not
+  // reach it. Blocks Pay like a wrong id; the region comes from the check.
+  const wrongRegion =
+    checkDone?.status === "invalid" && checkDone.reason === "wrong_region"
+      ? checkDone.account_regions?.[0]
+      : undefined;
+  if (wrongRegion !== undefined) {
+    const regionKey = `region.${wrongRegion}`;
+    const regionName =
+      regionKey in CATALOGS.ru
+        ? // Narrowed by the `in` check against the canonical catalog just above.
+          t(regionKey as MessageKey)
+        : wrongRegion.toUpperCase();
+    return (
+      <div className="flex items-start gap-2.5 rounded-2xl border border-amber-400/45 bg-amber-400/[0.06] py-2.5 pl-3 pr-3">
+        <div className="min-w-0 flex-1 text-[13.5px] font-semibold leading-snug text-amber-200">
+          {t("field.checkWrongRegion", { name: checkDone?.name ?? value, region: regionName })}
         </div>
         <button
           type="button"

@@ -10,6 +10,10 @@ export type PlayerCheckStatus = "valid" | "invalid" | "error";
 export interface PlayerCheckResult {
   status: PlayerCheckStatus;
   name: string | null;
+  /** With `invalid`: the account exists, in another region of the game. */
+  reason?: "wrong_region";
+  /** With `reason`: the region codes the account can be topped up in. */
+  account_regions?: string[];
 }
 
 export function checkPlayer(

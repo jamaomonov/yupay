@@ -42,6 +42,7 @@ from yupay.core.errors import NotFoundError, ValidationError
 from yupay.core.logging import get_logger, hash_short
 from yupay.core.redis import get_redis
 from yupay.modules.catalog.models import Brand, Product, Sku
+from yupay.modules.integrations import player_check_region
 from yupay.modules.integrations.breaker import SupplierBreaker
 from yupay.modules.integrations.models import SkuSupplierMapping
 from yupay.modules.integrations.schemas import PlayerCheckOut
@@ -574,6 +575,13 @@ async def _check_g2b_player(
     game_code = await resolve_g2b_game_code(session, brand_id)
     if game_code is None:
         return PlayerCheckOut(status="error")
+    # Read before the transaction ends below: a Free Fire hit names the
+    # account's region, and it has to match this page's.
+    page = (
+        await player_check_region.page_region(session, brand_id)
+        if player_check_region.checks_region(game_code)
+        else None
+    )
 
     redis = get_redis()
     key = _cache_key(game_code, player_id, server_id)
@@ -625,7 +633,7 @@ async def _check_g2b_player(
 
     await breaker.record_success()
 
-    out = _map_response(resp)
+    out = player_check_region.apply(_map_response(resp), resp, page)
     if _worth_caching(out):
         with contextlib.suppress(Exception):  # cache is best-effort
             await redis.set(key, out.model_dump_json(), ex=_CACHE_TTL_SECONDS)

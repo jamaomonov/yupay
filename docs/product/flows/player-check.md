@@ -85,3 +85,28 @@ is the slug convention `<slug>` ↔ `<slug>-ru`.
 See `docs/api/README.md` § `POST /merchant/v1/validate/player` for the
 reseller contract and `docs/runbooks/merchant-b2b.md` for the "keeps
 answering `error`" runbook.
+
+## An account from another region (Free Fire, 2026-10-26)
+
+G2B's Free Fire lookup searches every Garena region at once: asked under
+`freefire_bd` about a CIS account it answers `valid` and names the account's
+real region in the body (`"region": "RU"`). We used to keep only the nickname,
+so an id passed on every regional page and a CIS buyer could pay for a
+Bangladesh pack that never arrives.
+
+`integrations/player_check_region.py` now compares that region with the page's
+(`brands.region_code`). A **known, different** region answers `invalid` with
+`reason: "wrong_region"`, the nickname, and `account_regions` (our region
+codes). Nothing uncertain blocks: no `region` in the body (the CIS code sends
+none), a region string outside the table, or a page the table cannot place
+(`global`, `latam`).
+
+- **Web:** an amber card ««ник» — аккаунт региона «СНГ»» with «Перейти: СНГ»,
+  which switches the region and carries the id over (hand-off → auto-check).
+  Pay stays blocked, as for any `invalid`.
+- **Mini app:** the same card, without a switch (no switcher there).
+- **Reseller API / cabinet:** `invalid` + `reason: "wrong_region"` +
+  `suggested_brands` (the game's brand slugs selling that region). The cabinet
+  links to them and refuses «Заказать» while that verdict stands.
+- **Mobile app:** not updated yet — it shows the plain «не найден», which still
+  blocks.

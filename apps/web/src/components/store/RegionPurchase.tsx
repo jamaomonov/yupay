@@ -7,6 +7,8 @@ import { PurchasePanel } from "./PurchasePanel";
 
 import type { ProductDetail } from "@/lib/catalog";
 
+import { stashHandoff } from "@/lib/handoff";
+
 /** One region of the game, with the products its own brand sells. */
 export interface RegionOption {
   code: string;
@@ -108,7 +110,22 @@ export function RegionPurchase({ regions, locale, children }: RegionPurchaseProp
       </div>
       {/* Keyed by the region's brand: a picked package, typed id or check
           verdict belongs to one region's products and must not carry over. */}
-      <PurchasePanel key={current.slug} products={current.products} locale={locale} hasRegions>
+      <PurchasePanel
+        key={current.slug}
+        products={current.products}
+        locale={locale}
+        hasRegions
+        regionSwitch={{
+          name: regionName,
+          available: regions.map((r) => r.code),
+          // The id rides the hand-off the new region's panel reads on mount,
+          // and is checked there by itself — no retyping.
+          go: (next, carry) => {
+            stashHandoff(window.location.pathname, new URLSearchParams(carry));
+            pick(next);
+          },
+        }}
+      >
         {children}
       </PurchasePanel>
     </>

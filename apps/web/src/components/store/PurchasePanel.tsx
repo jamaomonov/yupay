@@ -224,6 +224,7 @@ function CheckablePlayerField({
   check,
   onCheckResult,
   regionHint,
+  wrongRegion,
   autoCheck,
   t,
 }: {
@@ -265,6 +266,9 @@ function CheckablePlayerField({
   /** The game is sold in more than one region (ADR-0099): a not-found id
    *  may just be an account from another region, so point at the switcher. */
   regionHint: boolean;
+  /** Set when the check found the account in another region: its name, and
+   *  a way to switch the page there with the id carried over. */
+  wrongRegion?: { label: string; go: (() => void) | null } | undefined;
   t: (key: string, values?: Record<string, string>) => string;
 }) {
   // Pick the mobile keyboard from the field's pattern: a letter-bearing
@@ -381,6 +385,38 @@ function CheckablePlayerField({
           >
             {t("checkEdit")}
           </button>
+        </div>
+      </div>
+    );
+  }
+
+  // A real account, in another region: a top-up here would not reach it.
+  if (check?.status === "invalid" && check.reason === "wrong_region" && wrongRegion) {
+    return (
+      <div>
+        <FieldLabel label={label} required={required} />
+        <div className="rounded-btn border border-amber-400/45 bg-amber-400/[0.06] px-3.5 py-3">
+          <div className="text-[13.5px] font-semibold text-amber-200">
+            {t("checkWrongRegion", { name: check.name ?? value, region: wrongRegion.label })}
+          </div>
+          <div className="mt-2.5 flex flex-wrap items-center gap-2">
+            {wrongRegion.go && (
+              <button
+                type="button"
+                onClick={wrongRegion.go}
+                className={buttonStyles({ size: "sm" })}
+              >
+                {t("checkSwitchRegion", { region: wrongRegion.label })}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={edit}
+              className="text-tx-dim hover:text-tx-mute px-2 py-2 text-[13px] font-medium transition"
+            >
+              {t("checkEdit")}
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -1069,6 +1105,7 @@ export function PurchasePanel({
   products,
   locale,
   hasRegions = false,
+  regionSwitch,
   children,
 }: {
   products: ProductDetail[];
@@ -1076,6 +1113,13 @@ export function PurchasePanel({
   /** The game is sold in several regions (a switcher sits above the panel,
    *  ADR-0099). Turns on the "check the region" hint under a not-found id. */
   hasRegions?: boolean;
+  /** From the region switcher: region names, the regions on offer, and how to
+   *  move the page to one with the form carried over. */
+  regionSwitch?: {
+    name: (code: string) => string;
+    available: string[];
+    go: (code: string, carry: Record<string, string>) => void;
+  };
   /** Server-rendered sections (how-to, about, FAQ) placed in the left column
    *  below the pick, so the sticky order sidebar scrolls alongside them. */
   children?: ReactNode;
@@ -1317,6 +1361,24 @@ export function PurchasePanel({
   // key, and plain `??` doesn't fall back on that. Left un-fixed, a
   // Russian-only "где найти" caption used to render as no caption at all for
   // an EN/UZ visitor (also feeds `whereToFindImages` below).
+  // The «аккаунт из другого региона» card's text and button for a verdict.
+  const wrongRegionFor = (
+    check: PlayerCheckResult | null,
+  ): { label: string; go: (() => void) | null } | undefined => {
+    const regions = check?.reason === "wrong_region" ? (check.account_regions ?? []) : [];
+    const first = regions[0];
+    if (first === undefined) return undefined;
+    const target = regions.find((c) => regionSwitch?.available.includes(c));
+    return {
+      label: regionSwitch ? regionSwitch.name(target ?? first) : first.toUpperCase(),
+      go:
+        regionSwitch && target
+          ? () => {
+              regionSwitch.go(target, form);
+            }
+          : null,
+    };
+  };
   const label = (m: Record<string, string> | null | undefined): string => {
     if (!m) return "";
     const byLocale = m[locale];
@@ -2181,6 +2243,7 @@ export function PurchasePanel({
                         setCheckResults((prev) => ({ ...prev, [f.key]: verdict }));
                       }}
                       regionHint={hasRegions}
+                      wrongRegion={wrongRegionFor(currentFieldCheck(f))}
                       autoCheck={handedOff.has(f.key)}
                       t={t}
                     />

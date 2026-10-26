@@ -243,6 +243,8 @@
     "checkNeedsId": "Сначала укажите «{label}»",
     "checkNeedsServer": "Сначала укажите «{label}»",
     "checkNotFound": "Игрок с таким ID не найден",
+    "checkWrongRegion": "«{name}» — аккаунт региона «{region}». Пополнение на этой странице до него не дойдёт.",
+    "checkSwitchRegion": "Перейти: {region}",
     "checkTryRegion": "Если аккаунт другого региона — выберите его в переключателе выше",
     "regionTitle": "Регион аккаунта",
     "regionUnchecked": "Для этого региона ID не проверяется. Убедитесь, что ваш аккаунт зарегистрирован в регионе «{region}».",

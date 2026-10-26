@@ -736,6 +736,23 @@ class MerchantPlayerCheckOut(BaseModel):
             "not a placeholder — some providers have no display name to give."
         ),
     )
+    reason: Literal["wrong_region"] | None = Field(
+        default=None,
+        exclude_if=lambda v: v is None,
+        description=(
+            "Set with `invalid` when the account exists but lives in another region of "
+            "the game (Free Fire today): a top-up on this brand would not reach it. "
+            "Order on one of `suggested_brands` instead."
+        ),
+    )
+    suggested_brands: list[str] | None = Field(
+        default=None,
+        exclude_if=lambda v: v is None,
+        description=(
+            "With `reason=wrong_region`: the brand slugs of this game that sell the "
+            "account's region."
+        ),
+    )
 
 
 class MerchantTransactionOut(BaseModel):

@@ -513,6 +513,19 @@
             "description": "The account nickname, where the provider returns one. `null` is an absence, not a placeholder \u2014 some providers have no display name to give.",
             "title": "Name"
           },
+          "reason": {
+            "anyOf": [
+              {
+                "const": "wrong_region",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Set with `invalid` when the account exists but lives in another region of the game (Free Fire today): a top-up on this brand would not reach it. Order on one of `suggested_brands` instead.",
+            "title": "Reason"
+          },
           "status": {
             "description": "Switch on this. Never read \u201cnot `invalid`\u201d as approval.\n\n- `valid` \u2014 the provider resolved the id.\n- `invalid` \u2014 the provider answered and the id does not exist. The one answer that means your customer mistyped something.\n- `error` \u2014 **we could not check.** Says nothing about the id. Retry, or order without a check.\n- `unsupported` \u2014 no product of this brand declares a player check and none will grow one. Never worth retrying.",
             "enum": [
@@ -523,6 +536,21 @@
             ],
             "title": "Status",
             "type": "string"
+          },
+          "suggested_brands": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "With `reason=wrong_region`: the brand slugs of this game that sell the account's region.",
+            "title": "Suggested Brands"
           }
         },
         "required": [

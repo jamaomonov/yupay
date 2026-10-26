@@ -859,3 +859,90 @@ async def test_the_players_identifier_is_never_logged(
 
     assert r.status_code == 200, r.text
     assert secret_id not in " ".join(repr(entry) for entry in captured)
+
+
+# ---------- an account from another region of the game ----------
+
+
+@pytest.fixture
+async def ff_bd_brand(db_session: AsyncSession) -> tuple[str, str]:
+    """Free Fire as sold: the CIS page is the game's main brand, Bangladesh a
+    region under it, checked against G2B's ``freefire_bd``."""
+    category, brand, product, sku = _tree(7, required_fields=_G2B_FIELD)
+    cis = Brand(
+        id=new_id(),
+        slug="brand-validate-ff",
+        category_id=category.id,
+        sort_order=70,
+        active=True,
+        visible_b2b=True,
+        region_code="cis",
+        translations=[BrandTranslation(locale="ru", name="Free Fire")],
+    )
+    db_session.add_all([category, cis])
+    await db_session.commit()
+    brand.region_parent_id = cis.id
+    brand.region_code = "bd"
+    db_session.add_all([brand, product, sku])
+    await db_session.commit()
+    db_session.add(
+        SkuSupplierMapping(
+            sku_id=sku.id,
+            supplier_slug="g2b",
+            kind="game",
+            external_product_id="freefire_bd",
+            external_variant_id="100",
+            is_active=True,
+        )
+    )
+    await db_session.commit()
+    return brand.slug, cis.slug
+
+
+@respx.mock
+async def test_an_account_from_another_region_is_refused_with_where_to_order(
+    integration_client: AsyncClient,
+    credentials: tuple[str, str],
+    ff_bd_brand: tuple[str, str],
+) -> None:
+    """G2B finds a Free Fire id in every region and names the real one; a CIS
+    account on the Bangladesh brand would be paid for and never credited."""
+    bd_slug, cis_slug = ff_bd_brand
+    respx.post(url__regex=CHECK_PLAYER_URL).mock(
+        return_value=httpx.Response(200, json={"valid": "valid", "name": "Neo", "region": "RU"})
+    )
+
+    r = await _validate(
+        integration_client, credentials, {"brand": bd_slug, "player_id": "5927745950"}
+    )
+
+    assert r.status_code == 200, r.text
+    assert r.json() == {
+        "status": "invalid",
+        "name": "Neo",
+        "reason": "wrong_region",
+        "suggested_brands": [cis_slug],
+    }
+
+
+@respx.mock
+async def test_an_account_of_this_region_or_an_unknown_one_still_passes(
+    integration_client: AsyncClient,
+    credentials: tuple[str, str],
+    ff_bd_brand: tuple[str, str],
+) -> None:
+    """Only a known, different region refuses — anything uncertain passes."""
+    bd_slug, _ = ff_bd_brand
+    route = respx.post(url__regex=CHECK_PLAYER_URL)
+    route.side_effect = [
+        httpx.Response(200, json={"valid": "valid", "name": "Neo", "region": "BD"}),
+        httpx.Response(200, json={"valid": "valid", "name": "Neo", "region": "XX"}),
+    ]
+
+    same = await _validate(integration_client, credentials, {"brand": bd_slug, "player_id": "111"})
+    unknown = await _validate(
+        integration_client, credentials, {"brand": bd_slug, "player_id": "222"}
+    )
+
+    assert same.json() == {"status": "valid", "name": "Neo"}
+    assert unknown.json() == {"status": "valid", "name": "Neo"}

@@ -172,10 +172,16 @@ export default function BrandPage() {
   const balance = profile ? toCents(profile.balance_usd) : null;
   const after = balance !== null && total !== null ? balance - total : null;
   const affordable = after !== null && after >= 0n;
-  const formOk = fields.every((field) => {
-    const value = data[field.key] ?? "";
-    return (!field.required || value.trim() !== "") && matches(field, value);
-  });
+  // An account from another region of the game: the order would be paid and
+  // never credited, so it is the one verdict that stops «Заказать». The check
+  // is cleared whenever the id changes, so this always speaks for the id typed.
+  const wrongRegion = check !== null && check !== "busy" && check.reason === "wrong_region";
+  const formOk =
+    !wrongRegion &&
+    fields.every((field) => {
+      const value = data[field.key] ?? "";
+      return (!field.required || value.trim() !== "") && matches(field, value);
+    });
 
   function pick(sku: Sku) {
     setSelected(sku);
@@ -500,11 +506,26 @@ export default function BrandPage() {
                                 : "text-tx-dim"
                           }`}
                         >
-                          {check.status === "valid"
-                            ? `✓ ${t("idValid")}${check.name ? ` · ${check.name}` : ""}`
-                            : check.status === "invalid"
-                              ? t("idInvalid")
-                              : t("idError")}
+                          {check.reason === "wrong_region" ? (
+                            <>
+                              {t("idWrongRegion", { name: check.name ?? value })}
+                              {check.suggested_brands?.map((slug) => (
+                                <Link
+                                  key={slug}
+                                  href={`/${routeLocale}/cabinet/catalog/${slug}`}
+                                  className="text-primary-ink ml-1.5 font-semibold underline underline-offset-2"
+                                >
+                                  {t("idWrongRegionGo")}
+                                </Link>
+                              ))}
+                            </>
+                          ) : check.status === "valid" ? (
+                            `✓ ${t("idValid")}${check.name ? ` · ${check.name}` : ""}`
+                          ) : check.status === "invalid" ? (
+                            t("idInvalid")
+                          ) : (
+                            t("idError")
+                          )}
                         </span>
                       )}
                   </label>

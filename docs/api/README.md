@@ -1118,3 +1118,11 @@ Two answers still get past `app_error_handler`, both deliberately:
   dependency runs — so on `/merchant/v1` they arrive without authentication
   having been attempted, and outside the published error table by
   construction. The merchant README says so in its error section.
+
+### Player check: `wrong_region` (2026-10-26)
+
+`POST /catalog/brands/{slug}/check-player` and `POST /merchant/v1/validate/player`
+may answer `invalid` with `reason: "wrong_region"` — the account exists but in
+another region of the game. The storefront body adds `account_regions`; the
+merchant body adds `suggested_brands`. Both fields are omitted otherwise, so every
+other verdict reads exactly as before. See `docs/product/flows/player-check.md`.

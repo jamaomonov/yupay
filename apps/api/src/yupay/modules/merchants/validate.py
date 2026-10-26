@@ -68,7 +68,7 @@ from yupay.core.config import get_settings
 from yupay.core.errors import RateLimitedError
 from yupay.modules.auth.ip_guard import hit_counter
 from yupay.modules.catalog.models import Brand, Product, Sku
-from yupay.modules.integrations import player_check
+from yupay.modules.integrations import player_check, player_check_region
 from yupay.modules.merchants import quote
 from yupay.modules.merchants.machine_schemas import MerchantPlayerCheckOut
 
@@ -202,6 +202,15 @@ async def check_player(
     result = await player_check.check_player_for_brand_id(
         db, brand_id=brand_id, player_id=player_id, server_id=server_id
     )
+    if result.reason == "wrong_region":
+        return MerchantPlayerCheckOut(
+            status=result.status,
+            name=result.name,
+            reason=result.reason,
+            suggested_brands=await player_check_region.sibling_slugs(
+                db, brand_id, result.account_regions or []
+            ),
+        )
     return MerchantPlayerCheckOut(status=result.status, name=result.name)
 
 

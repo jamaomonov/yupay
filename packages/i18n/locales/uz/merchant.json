@@ -274,6 +274,8 @@
     "checkId": "Tekshirish",
     "checking": "Tekshirilmoqda…",
     "idValid": "ID topildi",
+    "idWrongRegion": "«{name}» — oʻyinning boshqa mintaqasi akkaunti, bu yerdagi toʻldirish unga yetib bormaydi.",
+    "idWrongRegionGo": "Kerakli mintaqani ochish →",
     "idInvalid": "ID topilmadi — qayta tekshiring",
     "idError": "Tekshirib boʻlmadi. Tekshiruvsiz ham buyurtma berish mumkin.",
     "fieldInvalid": "Notoʻgʻri format",

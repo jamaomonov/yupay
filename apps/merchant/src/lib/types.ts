@@ -91,6 +91,10 @@ export interface CatalogSummary {
 export interface PlayerCheck {
   status: "valid" | "invalid" | "error" | "unsupported";
   name: string | null;
+  /** With `invalid`: the account exists, in another region of the game. */
+  reason?: "wrong_region";
+  /** With `reason`: this game's brands that sell the account's region. */
+  suggested_brands?: string[];
 }
 
 export interface PlacedOrder {
