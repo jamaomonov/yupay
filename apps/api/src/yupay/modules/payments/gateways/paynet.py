@@ -15,10 +15,9 @@ So this class never accepts the generic ``/webhooks/payments/{provider}``
 route, and never refunds directly: a Paynet reversal is initiated on their side
 and reconciles through ``CancelTransaction``.
 
-**The link format is configuration, not code.** Paynet supplies the exact
-template — host, parameter names, and whether the amount is in soʻm or tiyin —
-after integration, and published third-party notes disagree with each other on
-all three. ``paynet_pay_url_template`` is therefore a format string with named
+**The link format is configuration, not code.** Paynet gave it to us late
+(2026-10-26: ``https://app.paynet.uz/?m=54389&i={account}``) and may change it
+again, so ``paynet_pay_url_template`` is a format string with named
 placeholders: correcting it is an env change and a restart, not a release.
 """
 

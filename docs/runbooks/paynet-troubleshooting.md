@@ -13,7 +13,6 @@ In `secrets/api.env` on the VPS:
 PAYNET_USERNAME=paynet
 PAYNET_PASSWORD=<the password we issued to Paynet>
 PAYNET_SERVICE_ID=<the number in Table 3 of the contract annex>
-PAYNET_PAY_URL_TEMPLATE=<the link format Paynet supplies>
 ```
 
 then `docker compose -f docker-compose.prod.yml up -d --force-recreate api`.
@@ -23,10 +22,11 @@ With either credential empty the method does not appear at checkout and the
 endpoint answers 401 to everything — a half-configured deployment cannot take
 money it has no way to settle.
 
-## The link format is expected to be wrong at first
+## The link format
 
-`PAYNET_PAY_URL_TEMPLATE` is a format string, not a URL, precisely because
-Paynet hands over the real one after integration. Placeholders:
+The default is `https://app.paynet.uz/?m=54389&i={account}` (Paynet,
+2026-10-26). `PAYNET_PAY_URL_TEMPLATE` overrides it and is a format string,
+not a URL. Placeholders:
 
 | Placeholder      | Value                       |
 | ---------------- | --------------------------- |
@@ -105,17 +105,12 @@ letting a counterparty rewrite our credential store buys nothing.
 - **No merchant-initiated refund.** The admin refund button refuses on a Paynet
   payment; a reversal starts on their side and arrives as `CancelTransaction`.
   Same as Payme.
-- **The deep link Paynet gave us cannot carry an order.** They answered
-  `https://app.paynet.uz/?m=merchant_id` (2026-09-22): merchant only, no
-  account, no amount. The payer would have to type our `order.id` — a UUID —
-  into their app. `PAYNET_PAY_URL_TEMPLATE` therefore stays unset, the gateway
-  stays `available=False`, and Paynet does not appear at checkout. Unblocking
-  it needs Paynet either to accept the account as a link parameter or to agree
-  a short public order number, which is a schema change on our side. **Paynet
-  said 2026-09-22 they will send the exact format after integration**, so this
-  waits on them rather than on us — do not invent a template meanwhile, and do
-  not treat the gateway's `available=False` as a bug. See the module README,
-  "The link format is expected to be wrong at first".
+- **The deep link is `https://app.paynet.uz/?m=54389&i={account}`**
+  (Paynet, 2026-10-26; the code default). `m` is our merchant id in their app,
+  `i` the order id, no amount in the link. Until then the default was a guessed
+  link and Paynet sat on checkout with it — the template was never empty. If
+  `PAYNET_PAY_URL_TEMPLATE` is set in `secrets/api.env` it overrides the
+  default; leave it unset unless Paynet changes the format.
 - **`transactionState` stays a JSON number** (`1`, `2`, `3`) — settled
   2026-09-22. Paynet's answer, _"не нужно менять пусть остается строкой"_,
   read both ways at once: it says "leave it" and "as a string", and it is not

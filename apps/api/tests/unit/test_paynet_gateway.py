@@ -1,9 +1,8 @@
 """The Paynet deep link: the half of the integration that leaves our side.
 
-The link's exact shape is the one thing Paynet has not given us yet — host,
-parameter names, and whether the amount rides in soʻm or tiyin. So the template
-is configuration, and what is worth pinning here is that it *stays*
-configuration: the builder must honour whatever placeholders an operator puts
+Paynet gave us the link's shape late (2026-10-26) and may change it again, so
+the template is configuration, and what is worth pinning here is that it
+*stays* configuration: the builder must honour whatever placeholders an operator puts
 in, and must fail with a sentence rather than a ``KeyError`` when they put in
 one we do not supply.
 """
@@ -35,14 +34,11 @@ class _Order:
         self.total_charged = Decimal(total)
 
 
-def test_the_default_template_carries_service_amount_and_order(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    del monkeypatch
+def test_the_default_template_is_the_one_paynet_gave_us() -> None:
+    # 2026-10-26: merchant 54389 in their app, the order id as ``i``; the app
+    # asks GetInformation for the amount.
     url = build_pay_url(order_id="order-1", amount_tiyin=13_000_000)
-    assert "provider_id=7" in url
-    assert "amount=13000000" in url
-    assert "account=order-1" in url
+    assert url == "https://app.paynet.uz/?m=54389&i=order-1"
 
 
 def test_an_operator_can_switch_the_amount_to_major_units(
@@ -71,7 +67,7 @@ async def test_the_intent_carries_the_link_and_the_exact_tiyin() -> None:
     assert intent.status == "pending"
     assert intent.extra_metadata == {"amount_tiyin": 13_000_000}
     assert intent.intent_url is not None
-    assert "account=01a0a39a-59cc-7ec2-8d6f-73f2e43b0a46" in intent.intent_url
+    assert intent.intent_url.endswith("&i=01a0a39a-59cc-7ec2-8d6f-73f2e43b0a46")
 
 
 async def test_a_non_uzs_order_is_refused() -> None:

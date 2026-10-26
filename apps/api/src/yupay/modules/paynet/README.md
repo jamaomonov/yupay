@@ -172,26 +172,16 @@ still reports state 2.
 Either credential empty → the gateway reports `available=False` (the method
 disappears from checkout) and the endpoint answers 401 to everything.
 
-**The link template is configuration on purpose.** Paynet supplies the exact
-host and parameter names after integration, and the published third-party notes
-disagree about all of them, including whether the amount rides in soʻm or
-tiyin. Placeholders: `{service_id}`, `{account}` (our order id), `{amount}`
-(tiyin) and `{amount_major}` (soʻm) — the template picks the unit. Correcting
-the format is an env edit and a restart, not a release.
+**The link template is configuration on purpose.** Placeholders: `{service_id}`,
+`{account}` (our order id), `{amount}` (tiyin) and `{amount_major}` (soʻm).
+Correcting the format is an env edit and a restart, not a release.
 
-**The format Paynet gave us does not fit that shape, and the template is still
-unset.** Asked for the deep link they answered `https://app.paynet.uz/?m=merchant_id`
-(2026-09-22) — merchant only, no account and no amount. Filled in as
-`https://app.paynet.uz/?m=<id>` it opens our page in their app and then asks
-the payer to type the account themselves, and our account is `order.id`, a
-36-character UUID. Nobody types that off a phone screen. Payme and Click do not
-have the problem because their checkout links carry the account; Paynet's does
-not. Two ways out and both need Paynet: either the link accepts the account
-(and ideally the amount) as parameters, or the account field becomes something
-a human can read out, which would mean giving orders a short public number —
-a schema change, not a config one. Until one of them lands, the template stays
-empty and the gateway keeps reporting `available=False`, which is the correct
-failure: better absent from checkout than present and unusable.
+**The format is `https://app.paynet.uz/?m=54389&i={account}`** — Paynet's
+answer of 2026-10-26 and the default. `m` is our merchant id in their app
+(54389, not the UWS `service_id`), `i` the order id; the amount is not in the
+link, the app reads it from `GetInformation`. Before that date the default was a
+guessed `paynet.uz/payment?provider_id=…` link, and because the default was
+never empty the method was already on checkout with it.
 
 ## Files
 

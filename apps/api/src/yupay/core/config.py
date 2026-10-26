@@ -975,14 +975,13 @@ class Settings(BaseSettings):
     #: order lookup. The password is still the control; this is depth.
     paynet_service_id: int = Field(default=5878)
     #: The deep link that opens the Paynet app with the order pre-filled.
-    #: A format string, NOT a fixed URL: Paynet supplies the exact host and
-    #: parameter names after integration, and the published third-party notes
-    #: disagree on both. Placeholders: {service_id}, {account} (our order id),
-    #: {amount} (tiyin) and {amount_major} (soʻm) — the template picks the
-    #: unit. Correcting the format is an env edit and a restart.
-    paynet_pay_url_template: str = Field(
-        default="https://paynet.uz/payment?provider_id={service_id}&amount={amount}&account={account}"
-    )
+    #: A format string, NOT a fixed URL. Placeholders: {service_id}, {account}
+    #: (our order id), {amount} (tiyin) and {amount_major} (soʻm). The default
+    #: is the format Paynet gave us on 2026-10-26: ``m`` is our merchant id in
+    #: their app (54389, not the UWS service id), ``i`` the order id; the app
+    #: reads the amount from GetInformation. Changing it is an env edit and a
+    #: restart.
+    paynet_pay_url_template: str = Field(default="https://app.paynet.uz/?m=54389&i={account}")
 
     # --- acquirer: Payme (Paycom) Merchant API ---
     payme_merchant_id: str = Field(default="")
