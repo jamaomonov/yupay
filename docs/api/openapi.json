@@ -5189,6 +5189,10 @@
             "title": "Delivered",
             "type": "integer"
           },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
           "logo_url": {
             "anyOf": [
               {
@@ -5215,6 +5219,7 @@
           "logo_url",
           "orders",
           "delivered",
+          "failed",
           "spend_usd"
         ],
         "title": "CabinetStatsBrandOut",
@@ -5357,6 +5362,10 @@
             ],
             "title": "Brand Name"
           },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
           "logo_url": {
             "anyOf": [
               {
@@ -5399,6 +5408,7 @@
           "sku_name",
           "sku_code",
           "orders",
+          "failed",
           "spend_usd"
         ],
         "title": "CabinetStatsSkuOut",

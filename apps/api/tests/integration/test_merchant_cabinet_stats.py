@@ -86,6 +86,7 @@ async def test_stats_count_net_spend_and_rank_brands_for_this_merchant_only(
             "logo_url": None,
             "orders": 2,
             "delivered": totals["delivered"],
+            "failed": totals["failed"],
             "spend_usd": "16.54",
         }
     ]

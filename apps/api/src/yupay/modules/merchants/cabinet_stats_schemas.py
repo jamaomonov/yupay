@@ -49,6 +49,7 @@ class CabinetStatsBrandOut(BaseModel):
     logo_url: str | None
     orders: int
     delivered: int
+    failed: int
     spend_usd: UsdAmount
 
 
@@ -60,6 +61,7 @@ class CabinetStatsSkuOut(BaseModel):
     sku_name: str | None
     sku_code: str
     orders: int
+    failed: int
     spend_usd: UsdAmount
 
 

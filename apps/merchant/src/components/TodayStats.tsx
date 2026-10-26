@@ -4,6 +4,7 @@ import { useTranslations } from "next-intl";
 
 import type { Summary } from "@/lib/types";
 
+import { OutcomeSplit } from "@/components/OutcomeSplit";
 import { dollars, toCents } from "@/lib/money";
 
 /**
@@ -26,7 +27,15 @@ export function TodayStats({ today, balance }: { today: Summary | null; balance?
       }`}
     >
       {balance !== undefined && <Stat value={balance} label={tCabinet("balance")} accent />}
-      <Stat value={today === null ? "—" : String(today.orders)} label={t("statToday")} />
+      <Stat
+        value={today === null ? "—" : String(today.orders)}
+        label={t("statToday")}
+        extra={
+          today === null ? undefined : (
+            <OutcomeSplit delivered={today.delivered} failed={today.failed} className="mt-1" />
+          )
+        }
+      />
       <Stat value={successRate(today)} label={t("statSuccess")} hint={t("statSuccessHint")} />
       <Stat
         value={
@@ -35,6 +44,7 @@ export function TodayStats({ today, balance }: { today: Summary | null; balance?
             : `${dollars(toCents(today.spend_usd))}${today.spend_capped ? "+" : ""}`
         }
         label={t("statSpend")}
+        hint={t("statSpendHint")}
       />
     </dl>
   );
@@ -52,11 +62,14 @@ function Stat({
   label,
   hint,
   accent,
+  extra,
 }: {
   value: string;
   label: string;
   hint?: string;
   accent?: boolean;
+  /** Under the number, before the label — e.g. the success/failure split. */
+  extra?: React.ReactNode;
 }) {
   return (
     // `dt` first and `dd` second, as a definition list requires, with the
@@ -70,10 +83,13 @@ function Stat({
         {label}
         {hint !== undefined && <span className="text-tx-dim/70 block text-[11px]">{hint}</span>}
       </dt>
-      <dd
-        className={`font-mono text-xl font-extrabold sm:text-2xl ${accent ? "text-primary-ink" : ""}`}
-      >
-        {value}
+      <dd>
+        <span
+          className={`font-mono text-xl font-extrabold sm:text-2xl ${accent ? "text-primary-ink" : ""}`}
+        >
+          {value}
+        </span>
+        {extra}
       </dd>
     </div>
   );

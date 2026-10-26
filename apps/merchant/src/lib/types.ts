@@ -319,6 +319,7 @@ export interface StatsBrand {
   logo_url: string | null;
   orders: number;
   delivered: number;
+  failed: number;
   spend_usd: string;
 }
 
@@ -328,6 +329,7 @@ export interface StatsSku {
   sku_name: string | null;
   sku_code: string;
   orders: number;
+  failed: number;
   spend_usd: string;
 }
 

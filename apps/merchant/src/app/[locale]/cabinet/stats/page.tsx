@@ -10,6 +10,7 @@ import type { Stats } from "@/lib/types";
 import { EmptyState } from "@/components/EmptyState";
 import { ListSkeleton } from "@/components/ListSkeleton";
 import { LoadError } from "@/components/LoadError";
+import { OutcomeSplit } from "@/components/OutcomeSplit";
 import { PageHeading } from "@/components/PageHeading";
 import { StatsChart } from "@/components/stats/StatsChart";
 import { TopList } from "@/components/stats/TopList";
@@ -144,6 +145,7 @@ export default function StatsPage() {
 
 function StatsBody({ stats, locale }: { stats: Stats; locale: string }) {
   const t = useTranslations("merchant.stats");
+  const tOutcome = useTranslations("merchant.outcome");
   const { totals, previous } = stats;
 
   if (totals.orders === 0) {
@@ -164,12 +166,21 @@ function StatsBody({ stats, locale }: { stats: Stats; locale: string }) {
           label={t("kpiSpend")}
           value={dollars(toCents(totals.spend_usd))}
           delta={moneyChange(totals.spend_usd, previous?.spend_usd)}
+          hint={t("kpiSpendHint")}
           accent
         />
         <Kpi
           label={t("kpiOrders")}
           value={String(totals.orders)}
           delta={change(totals.orders, previous?.orders)}
+          extra={
+            <OutcomeSplit
+              delivered={totals.delivered}
+              failed={totals.failed}
+              inFlight={totals.in_flight}
+              className="mt-1"
+            />
+          }
         />
         <Kpi
           label={t("kpiAverage")}
@@ -185,9 +196,6 @@ function StatsBody({ stats, locale }: { stats: Stats; locale: string }) {
       </dl>
 
       <ul className="text-tx-mute flex flex-wrap gap-x-5 gap-y-1 text-xs">
-        <li>{t("lineDelivered", { count: totals.delivered })}</li>
-        <li>{t("lineFailed", { count: totals.failed })}</li>
-        {totals.in_flight > 0 && <li>{t("lineInFlight", { count: totals.in_flight })}</li>}
         {toCents(totals.refunded_usd) > 0n && (
           <li>{t("lineRefunded", { amount: dollars(toCents(totals.refunded_usd)) })}</li>
         )}
@@ -201,12 +209,14 @@ function StatsBody({ stats, locale }: { stats: Stats; locale: string }) {
           icon={Trophy}
           title={t("topBrands")}
           empty={t("empty")}
+          failedLabel={(count) => tOutcome("failed", { count })}
           rows={stats.brands.map((b, i) => ({
             key: `${b.brand_name ?? ""}-${String(i)}`,
             title: b.brand_name ?? "—",
             brandName: b.brand_name,
             logoUrl: b.logo_url,
             orders: t("ordersCount", { count: b.orders }),
+            failed: b.failed,
             spendUsd: b.spend_usd,
           }))}
         />
@@ -214,6 +224,7 @@ function StatsBody({ stats, locale }: { stats: Stats; locale: string }) {
           icon={Layers}
           title={t("topSkus")}
           empty={t("empty")}
+          failedLabel={(count) => tOutcome("failed", { count })}
           rows={stats.skus.map((s) => ({
             key: s.sku_code,
             title: s.sku_name ?? s.sku_code,
@@ -221,6 +232,7 @@ function StatsBody({ stats, locale }: { stats: Stats; locale: string }) {
             brandName: s.brand_name,
             logoUrl: s.logo_url,
             orders: t("ordersCount", { count: s.orders }),
+            failed: s.failed,
             spendUsd: s.spend_usd,
           }))}
         />
@@ -239,17 +251,26 @@ function Kpi({
   delta,
   accent,
   points,
+  hint,
+  extra,
 }: {
   label: string;
   value: string;
   delta: number | null;
   accent?: boolean;
   points?: boolean;
+  /** Fine print under the label. */
+  hint?: string;
+  /** Under the number — the success/failure split. */
+  extra?: React.ReactNode;
 }) {
   const t = useTranslations("merchant.stats");
   return (
     <div className="border-border bg-card flex flex-col-reverse rounded-xl border px-4 py-4 sm:px-5">
-      <dt className="text-tx-dim mt-1 text-xs sm:text-[12.5px]">{label}</dt>
+      <dt className="text-tx-dim mt-1 text-xs sm:text-[12.5px]">
+        {label}
+        {hint !== undefined && <span className="text-tx-dim/70 block text-[11px]">{hint}</span>}
+      </dt>
       <dd>
         <span
           className={`font-mono text-xl font-extrabold sm:text-2xl ${accent ? "text-primary-ink" : ""}`}
@@ -268,6 +289,7 @@ function Kpi({
             {points ? t("pp") : "%"}
           </span>
         )}
+        {extra}
       </dd>
     </div>
   );

@@ -473,6 +473,7 @@
     "statSuccess": "delivered",
     "statSuccessHint": "of the ones that finished",
     "statSpend": "spent today",
+    "statSpendHint": "failed excluded",
     "openOrder": "Open the order",
     "emptyHint": "Place the first one from the catalog — or send it over the API.",
     "artifactCode": "Code",
@@ -651,9 +652,6 @@
     "kpiSuccess": "Successful",
     "vsBefore": "Against the previous period of the same length",
     "pp": " pp",
-    "lineDelivered": "Delivered: {count}",
-    "lineFailed": "Failed: {count}",
-    "lineInFlight": "In progress: {count}",
     "lineRefunded": "Returned to deposit: {amount}",
     "lineChannels": "Via API: {api} · from the cabinet: {cabinet}",
     "chartTitle": "Over time",
@@ -662,6 +660,14 @@
     "metricOrders": "Orders",
     "ordersCount": "{count, plural, one {# order} other {# orders}}",
     "topBrands": "Top brands",
-    "topSkus": "Top products"
+    "topSkus": "Top products",
+    "kpiSpendHint": "failed excluded"
+  },
+  "outcome": {
+    "delivered": "{count} successful",
+    "failed": "{count} failed",
+    "inFlight": "{count} in progress",
+    "deliveredHint": "Delivered",
+    "failedHint": "Not delivered — their money is back on your deposit"
   }
 }

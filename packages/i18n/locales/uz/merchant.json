@@ -473,6 +473,7 @@
     "statSuccess": "yetkazildi",
     "statSuccessHint": "tugaganlaridan",
     "statSpend": "bugun sarflandi",
+    "statSpendHint": "muvaffaqiyatsizlarsiz",
     "openOrder": "Buyurtmani ochish",
     "emptyHint": "Birinchisini katalogdan rasmiylashtiring — yoki API orqali yuboring.",
     "artifactCode": "Kod",
@@ -651,9 +652,6 @@
     "kpiSuccess": "Muvaffaqiyatli",
     "vsBefore": "Oldingi xuddi shunday davrga nisbatan",
     "pp": " p.p.",
-    "lineDelivered": "Bajarildi: {count}",
-    "lineFailed": "Bajarilmadi: {count}",
-    "lineInFlight": "Jarayonda: {count}",
     "lineRefunded": "Depozitga qaytarildi: {amount}",
     "lineChannels": "API orqali: {api} · kabinetdan: {cabinet}",
     "chartTitle": "Vaqt boʻyicha",
@@ -662,6 +660,14 @@
     "metricOrders": "Buyurtmalar",
     "ordersCount": "{count, plural, other {# ta buyurtma}}",
     "topBrands": "Top brendlar",
-    "topSkus": "Top mahsulotlar"
+    "topSkus": "Top mahsulotlar",
+    "kpiSpendHint": "muvaffaqiyatsizlarsiz"
+  },
+  "outcome": {
+    "delivered": "{count} muvaffaqiyatli",
+    "failed": "{count} muvaffaqiyatsiz",
+    "inFlight": "{count} jarayonda",
+    "deliveredHint": "Bajarildi",
+    "failedHint": "Bajarilmadi — puli depozitga qaytdi"
   }
 }

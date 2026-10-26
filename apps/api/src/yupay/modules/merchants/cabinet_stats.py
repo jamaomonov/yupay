@@ -268,6 +268,7 @@ async def _tops(
                 Brand.logo_url,
                 func.count(),
                 func.count().filter(rows.c.status == "delivered"),
+                func.count().filter(rows.c.status == "failed"),
                 spend,
             )
             .group_by(Brand.id, name, Brand.logo_url)
@@ -278,7 +279,7 @@ async def _tops(
     sku_rows = (
         await db.execute(
             joined.add_columns(name, Brand.logo_url, Sku.denomination, Sku.sku_code, func.count())
-            .add_columns(spend)
+            .add_columns(func.count().filter(rows.c.status == "failed"), spend)
             .group_by(Sku.id, name, Brand.logo_url)
             .order_by(spend.desc(), func.count().desc())
             .limit(TOP)
@@ -286,9 +287,14 @@ async def _tops(
     ).all()
     brands = [
         CabinetStatsBrandOut(
-            brand_name=b, logo_url=logo, orders=n, delivered=ok, spend_usd=Decimal(money)
+            brand_name=b,
+            logo_url=logo,
+            orders=n,
+            delivered=ok,
+            failed=bad,
+            spend_usd=Decimal(money),
         )
-        for b, logo, n, ok, money in brand_rows
+        for b, logo, n, ok, bad, money in brand_rows
     ]
     skus = [
         CabinetStatsSkuOut(
@@ -297,9 +303,10 @@ async def _tops(
             sku_name=denom,
             sku_code=code,
             orders=n,
+            failed=bad,
             spend_usd=Decimal(money),
         )
-        for b, logo, denom, code, n, money in sku_rows
+        for b, logo, denom, code, n, bad, money in sku_rows
     ]
     return brands, skus
 

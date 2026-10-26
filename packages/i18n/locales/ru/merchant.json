@@ -473,6 +473,7 @@
     "statSuccess": "успешных",
     "statSuccessHint": "из завершённых",
     "statSpend": "потрачено сегодня",
+    "statSpendHint": "без неуспешных",
     "openOrder": "Открыть заказ",
     "emptyHint": "Первый заказ можно оформить из каталога — или отправить его по API.",
     "artifactCode": "Код",
@@ -651,9 +652,6 @@
     "kpiSuccess": "Успешных",
     "vsBefore": "К предыдущему такому же периоду",
     "pp": " п.п.",
-    "lineDelivered": "Выполнено: {count}",
-    "lineFailed": "Не выполнено: {count}",
-    "lineInFlight": "В работе: {count}",
     "lineRefunded": "Возвращено на депозит: {amount}",
     "lineChannels": "Через API: {api} · из кабинета: {cabinet}",
     "chartTitle": "По времени",
@@ -662,6 +660,14 @@
     "metricOrders": "Заказы",
     "ordersCount": "{count, plural, one {# заказ} few {# заказа} many {# заказов} other {# заказа}}",
     "topBrands": "Топ брендов",
-    "topSkus": "Топ товаров"
+    "topSkus": "Топ товаров",
+    "kpiSpendHint": "без неуспешных"
+  },
+  "outcome": {
+    "delivered": "{count} успешно",
+    "failed": "{count} неуспешно",
+    "inFlight": "{count} в работе",
+    "deliveredHint": "Выполнены",
+    "failedHint": "Не выполнены — деньги за них вернулись на депозит"
   }
 }

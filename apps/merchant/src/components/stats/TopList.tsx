@@ -12,6 +12,8 @@ export interface TopRow {
   brandName: string | null;
   logoUrl: string | null;
   orders: string;
+  /** Shown in red beside the count when above zero. */
+  failed: number;
   spendUsd: string;
 }
 
@@ -19,6 +21,8 @@ interface TopListProps {
   icon: LucideIcon;
   title: string;
   empty: string;
+  /** «{count} неуспешно», already translated by the caller. */
+  failedLabel: (count: number) => string;
   rows: TopRow[];
 }
 
@@ -27,7 +31,7 @@ interface TopListProps {
  * against the leader's, not against the total: it compares rows, and the
  * leader always reads as full.
  */
-export function TopList({ icon: Icon, title, empty, rows }: TopListProps) {
+export function TopList({ icon: Icon, title, empty, failedLabel, rows }: TopListProps) {
   const lead = rows.reduce((best, row) => {
     const cents = toCents(row.spendUsd);
     return cents > best ? cents : best;
@@ -61,7 +65,17 @@ export function TopList({ icon: Icon, title, empty, rows }: TopListProps) {
                   </div>
                   <div className="text-tx-dim mt-0.5 flex justify-between gap-3 text-xs">
                     <span className="min-w-0 truncate">{row.subtitle ?? ""}</span>
-                    <span className="shrink-0">{row.orders}</span>
+                    <span className="shrink-0">
+                      {row.orders}
+                      {row.failed > 0 && (
+                        // Glyph and number only: the words squeezed the brand name
+                        // into an ellipsis on a phone. The title carries them.
+                        <span className="text-danger" title={failedLabel(row.failed)}>
+                          {" "}
+                          · ✕ {row.failed}
+                        </span>
+                      )}
+                    </span>
                   </div>
                   <div className="bg-card-2 mt-1.5 h-1 overflow-hidden rounded-full">
                     <div

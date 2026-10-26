@@ -542,6 +542,9 @@ When a reseller says a number is wrong:
 - The arrows compare with the same-length window right before; all time has
   none.
 - Brand names are the `ru` translation, like the Orders list.
+- Every order count carries its split — «✓ 7 успешно · ✕ 1 неуспешно · 1 в работе» —
+  on the dashboard, Orders and Statistics; the tops mark failed orders «✕ N». Spend
+  never includes a failed order that came back.
 
 ### "Today" on the dashboard is the browser's day, not ours
 
