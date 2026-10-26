@@ -62,7 +62,10 @@ export function CustomerPage() {
   const toast = useToast();
   const query = useQuery<CustomerOverviewOut, ApiError>({
     queryKey: qk.customerOverview(userId),
-    queryFn: () => apiGet<CustomerOverviewOut>(`/api/v1/admin/customers/${userId}/overview`),
+    queryFn: () =>
+      apiGet<CustomerOverviewOut>(
+        `/api/v1/admin/customers/${userId}/overview?limit=${String(OVERVIEW_LIMIT)}`,
+      ),
     enabled: Boolean(userId),
     refetchInterval: 30_000,
   });
@@ -176,7 +179,12 @@ export function CustomerPage() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <section className="space-y-6 lg:col-span-2">
           <Stats stats={data.stats} />
-          <RecentOrders rows={data.recent_orders} onOpen={goOrder} />
+          <RecentOrders
+            rows={data.recent_orders}
+            total={data.stats.total_orders}
+            userId={userId}
+            onOpen={goOrder}
+          />
           <RecentPayments rows={data.recent_payments} onOpen={goOrder} />
           <OpenTasks rows={data.open_fulfillment_tasks} onOpen={goOrder} />
           <CustomerSkins userId={userId} />
@@ -468,11 +476,19 @@ function Stat({
   );
 }
 
+/** Rows per section of the overview. At the API's default of 10 a regular customer's
+ *  older orders and payments vanished, and the count read «10» as if that were all. */
+const OVERVIEW_LIMIT = 30;
+
 function RecentOrders({
   rows,
+  total,
+  userId,
   onOpen,
 }: {
   rows: CustomerOrderSummary[];
+  total: number;
+  userId: string;
   onOpen: (orderId: string) => void;
 }) {
   const refs = useAdminRefs(
@@ -512,7 +528,10 @@ function RecentOrders({
     },
   ];
   return (
-    <Section title="Последние заказы" count={rows.length}>
+    <Section
+      title="Последние заказы"
+      count={total > rows.length ? `${String(rows.length)} из ${String(total)}` : rows.length}
+    >
       <DataTable
         rows={rows}
         columns={columns}
@@ -522,6 +541,16 @@ function RecentOrders({
           onOpen(o.id);
         }}
       />
+      {total > rows.length && (
+        <div className="mt-2 text-right">
+          <Link
+            to={`/orders?q=${encodeURIComponent(userId)}`}
+            className="text-xs text-[var(--accent)] hover:underline"
+          >
+            Все заказы ({total.toString()}) →
+          </Link>
+        </div>
+      )}
     </Section>
   );
 }
@@ -568,7 +597,10 @@ function RecentPayments({
     { key: "created", header: "Создан", render: (p) => formatDate(p.created_at) },
   ];
   return (
-    <Section title="Последние платежи" count={rows.length}>
+    <Section
+      title={rows.length >= OVERVIEW_LIMIT ? "Последние платежи — не все" : "Последние платежи"}
+      count={rows.length}
+    >
       <DataTable
         rows={rows}
         columns={columns}
@@ -761,7 +793,8 @@ function Section({
   children,
 }: {
   title: string;
-  count: number;
+  /** A number, or «30 из 45» when the section shows only part of it. */
+  count: number | string;
   tone?: "warn";
   children: React.ReactNode;
 }) {
@@ -774,10 +807,12 @@ function Section({
         <span
           className={[
             "text-xs",
-            tone === "warn" && count > 0 ? "text-[var(--danger)]" : "text-[var(--text-secondary)]",
+            tone === "warn" && typeof count === "number" && count > 0
+              ? "text-[var(--danger)]"
+              : "text-[var(--text-secondary)]",
           ].join(" ")}
         >
-          {count.toString()}
+          {String(count)}
         </span>
       </div>
       {children}
