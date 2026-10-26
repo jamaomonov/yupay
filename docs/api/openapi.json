@@ -5171,6 +5171,291 @@
         "title": "CabinetSetPasswordIn",
         "type": "object"
       },
+      "CabinetStatsBrandOut": {
+        "description": "One brand's share of the window.",
+        "properties": {
+          "brand_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Name"
+          },
+          "delivered": {
+            "title": "Delivered",
+            "type": "integer"
+          },
+          "logo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logo Url"
+          },
+          "orders": {
+            "title": "Orders",
+            "type": "integer"
+          },
+          "spend_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Spend Usd",
+            "type": "string"
+          }
+        },
+        "required": [
+          "brand_name",
+          "logo_url",
+          "orders",
+          "delivered",
+          "spend_usd"
+        ],
+        "title": "CabinetStatsBrandOut",
+        "type": "object"
+      },
+      "CabinetStatsOut": {
+        "description": "Everything the Statistics screen draws for one window.",
+        "properties": {
+          "api_orders": {
+            "title": "Api Orders",
+            "type": "integer"
+          },
+          "brands": {
+            "items": {
+              "$ref": "#/components/schemas/CabinetStatsBrandOut"
+            },
+            "title": "Brands",
+            "type": "array"
+          },
+          "cabinet_orders": {
+            "title": "Cabinet Orders",
+            "type": "integer"
+          },
+          "granularity": {
+            "enum": [
+              "hour",
+              "day",
+              "month"
+            ],
+            "title": "Granularity",
+            "type": "string"
+          },
+          "previous": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CabinetStatsTotalsOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "series": {
+            "items": {
+              "$ref": "#/components/schemas/CabinetStatsPointOut"
+            },
+            "title": "Series",
+            "type": "array"
+          },
+          "since": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Since"
+          },
+          "skus": {
+            "items": {
+              "$ref": "#/components/schemas/CabinetStatsSkuOut"
+            },
+            "title": "Skus",
+            "type": "array"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/CabinetStatsTotalsOut"
+          },
+          "until": {
+            "format": "date-time",
+            "title": "Until",
+            "type": "string"
+          }
+        },
+        "required": [
+          "since",
+          "until",
+          "granularity",
+          "totals",
+          "previous",
+          "series",
+          "brands",
+          "skus",
+          "api_orders",
+          "cabinet_orders"
+        ],
+        "title": "CabinetStatsOut",
+        "type": "object"
+      },
+      "CabinetStatsPointOut": {
+        "description": "One bucket of the chart, gaps filled with zeros.",
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "delivered": {
+            "title": "Delivered",
+            "type": "integer"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "orders": {
+            "title": "Orders",
+            "type": "integer"
+          },
+          "spend_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Spend Usd",
+            "type": "string"
+          }
+        },
+        "required": [
+          "at",
+          "orders",
+          "delivered",
+          "failed",
+          "spend_usd"
+        ],
+        "title": "CabinetStatsPointOut",
+        "type": "object"
+      },
+      "CabinetStatsSkuOut": {
+        "description": "One pack's share of the window.",
+        "properties": {
+          "brand_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Name"
+          },
+          "logo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logo Url"
+          },
+          "orders": {
+            "title": "Orders",
+            "type": "integer"
+          },
+          "sku_code": {
+            "title": "Sku Code",
+            "type": "string"
+          },
+          "sku_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sku Name"
+          },
+          "spend_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Spend Usd",
+            "type": "string"
+          }
+        },
+        "required": [
+          "brand_name",
+          "logo_url",
+          "sku_name",
+          "sku_code",
+          "orders",
+          "spend_usd"
+        ],
+        "title": "CabinetStatsSkuOut",
+        "type": "object"
+      },
+      "CabinetStatsTotalsOut": {
+        "description": "Counts and money for every order placed in a window.",
+        "properties": {
+          "avg_order_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Avg Order Usd",
+            "type": "string"
+          },
+          "cancelled": {
+            "title": "Cancelled",
+            "type": "integer"
+          },
+          "delivered": {
+            "title": "Delivered",
+            "type": "integer"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "in_flight": {
+            "title": "In Flight",
+            "type": "integer"
+          },
+          "orders": {
+            "title": "Orders",
+            "type": "integer"
+          },
+          "refunded_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Refunded Usd",
+            "type": "string"
+          },
+          "spend_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Spend Usd",
+            "type": "string"
+          }
+        },
+        "required": [
+          "orders",
+          "delivered",
+          "failed",
+          "in_flight",
+          "cancelled",
+          "spend_usd",
+          "refunded_usd",
+          "avg_order_usd"
+        ],
+        "title": "CabinetStatsTotalsOut",
+        "type": "object"
+      },
       "CabinetSummaryOut": {
         "description": "``GET /merchant/cabinet/summary`` \u2014 the dashboard's three numbers.",
         "properties": {
@@ -44130,6 +44415,100 @@
           }
         },
         "summary": "Open a merchant account and its first operator",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
+    "/merchant/cabinet/stats": {
+      "get": {
+        "description": "The Statistics screen. No ``since`` means all time.\n\n``since`` and ``tz`` come from the browser for the summary's reason: it\nknows when its own day started. Aggregated in SQL, so \u00aball time\u00bb costs the\nsame handful of queries as a day (``cabinet_stats``).",
+        "operationId": "stats_merchant_cabinet_stats_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "until",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Until"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tz",
+            "required": false,
+            "schema": {
+              "default": "UTC",
+              "title": "Tz",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CabinetStatsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Orders, spend and the top brands over a window",
         "tags": [
           "merchant-cabinet"
         ]

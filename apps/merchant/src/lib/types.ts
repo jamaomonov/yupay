@@ -292,3 +292,55 @@ export interface P2PStatus {
   enabled: boolean;
   fx_rate: string | null;
 }
+
+/** `GET /stats` — one window's counts and money, from the ledger. */
+export interface StatsTotals {
+  orders: number;
+  delivered: number;
+  failed: number;
+  in_flight: number;
+  cancelled: number;
+  spend_usd: string;
+  refunded_usd: string;
+  avg_order_usd: string;
+}
+
+export interface StatsPoint {
+  /** Bucket start on the browser's clock, as an aware ISO timestamp. */
+  at: string;
+  orders: number;
+  delivered: number;
+  failed: number;
+  spend_usd: string;
+}
+
+export interface StatsBrand {
+  brand_name: string | null;
+  logo_url: string | null;
+  orders: number;
+  delivered: number;
+  spend_usd: string;
+}
+
+export interface StatsSku {
+  brand_name: string | null;
+  logo_url: string | null;
+  sku_name: string | null;
+  sku_code: string;
+  orders: number;
+  spend_usd: string;
+}
+
+export interface Stats {
+  since: string | null;
+  until: string;
+  granularity: "hour" | "day" | "month";
+  totals: StatsTotals;
+  /** The same-length window just before; `null` for all time. */
+  previous: StatsTotals | null;
+  series: StatsPoint[];
+  brands: StatsBrand[];
+  skus: StatsSku[];
+  api_orders: number;
+  cabinet_orders: number;
+}

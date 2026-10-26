@@ -524,6 +524,25 @@ read the header at all and every download saves under a generic name with no
 indication of what is in it. If somebody reports "my statement downloaded as
 transactions.csv", that is this.
 
+### The Statistics screen (`/cabinet/stats`)
+
+`GET /merchant/cabinet/stats?since=&until=&tz=` backs it: presets 24 h / 7 d /
+30 d / all time, or a date range. No `since` means all time. Unlike the
+dashboard summary it has **no window cap and no 500-order cap** — it groups the
+merchant's deposit postings by order in one SQL pass (`cabinet_stats.py`), so
+all time costs the same handful of queries as a day. Money is the summary's
+rule: charge minus every refund booked against the order.
+
+When a reseller says a number is wrong:
+
+- The chart's bars are cut on the browser's `tz` (hourly up to 48 h, daily up
+  to 92 days, monthly beyond). An unknown zone is `422 bad_timezone`.
+- «Средний чек» averages only orders that cost something, so a failed order
+  that came back in full does not pull it down.
+- The arrows compare with the same-length window right before; all time has
+  none.
+- Brand names are the `ru` translation, like the Orders list.
+
 ### "Today" on the dashboard is the browser's day, not ours
 
 `GET /merchant/cabinet/summary` takes a required `since` and the browser sends

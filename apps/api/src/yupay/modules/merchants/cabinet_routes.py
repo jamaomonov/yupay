@@ -40,6 +40,7 @@ from yupay.modules.merchants import (
     cabinet_export,
     cabinet_notify,
     cabinet_orders,
+    cabinet_stats,
     cabinet_summary,
     credentials,
     deposit,
@@ -62,6 +63,7 @@ from yupay.modules.merchants.cabinet_schemas import (
     CabinetTransactionOut,
     CabinetTransactionsOut,
 )
+from yupay.modules.merchants.cabinet_stats_schemas import CabinetStatsOut
 from yupay.modules.merchants.machine_schemas import (
     MerchantBrandOut,
     MerchantCatalogOut,
@@ -140,6 +142,35 @@ async def summary(user: CurrentUser, db: Db, since: AwareDatetime) -> CabinetSum
     merchant = await merchant_of(db, user)
     return await cabinet_summary.build(
         db, merchant_id=merchant.id, since=since, now=datetime.now(UTC)
+    )
+
+
+@router.get(
+    "/stats",
+    response_model=CabinetStatsOut,
+    summary="Orders, spend and the top brands over a window",
+)
+async def stats(
+    user: CurrentUser,
+    db: Db,
+    since: AwareDatetime | None = None,
+    until: AwareDatetime | None = None,
+    tz: str = "UTC",
+) -> CabinetStatsOut:
+    """The Statistics screen. No ``since`` means all time.
+
+    ``since`` and ``tz`` come from the browser for the summary's reason: it
+    knows when its own day started. Aggregated in SQL, so «all time» costs the
+    same handful of queries as a day (``cabinet_stats``).
+    """
+    merchant = await merchant_of(db, user)
+    return await cabinet_stats.build(
+        db,
+        merchant_id=merchant.id,
+        since=since,
+        until=until,
+        tz_name=tz[:64],
+        now=datetime.now(UTC),
     )
 
 

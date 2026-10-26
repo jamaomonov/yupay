@@ -24,7 +24,7 @@ apps/api  ──▶  FastAPI.openapi()  ──▶  docs/api/openapi.json
 - Every resource id is a UUID. An id that cannot be one (`/orders/abc`, `?order_id=1`) is
   `404 not-found`, from one app-wide handler (`core.errors.invalid_uuid_handler`) — it
   was a 500 on every route that took an id until 2026-10-21. A timestamp query param that
-  must name a moment (`/merchant/cabinet/summary?since=`) is `AwareDatetime`: no zone → 422.
+  must name a moment (`/merchant/cabinet/summary?since=`, `/merchant/cabinet/stats?since=&until=`) is `AwareDatetime`: no zone → 422.
 - All write endpoints accept an `Idempotency-Key` header (>=16 chars). Enforced today on
   `POST /orders`, `POST /payments/intents`, `POST /admin/payments/{id}/refund`,
   `POST /admin/payments/{id}/refund-to-wallet`, and every `/admin/blog` mutation —

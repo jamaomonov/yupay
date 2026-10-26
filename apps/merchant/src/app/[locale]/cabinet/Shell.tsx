@@ -2,6 +2,7 @@
 
 import {
   ArrowLeftRight,
+  BarChart3,
   BookOpen,
   LayoutDashboard,
   LayoutGrid,
@@ -37,6 +38,7 @@ import { pathFor, withoutLocale } from "@/lib/locale-href";
  * each screen repeats its own icon in the heading so a click visibly landed. */
 const ACCOUNT: { key: string; path: string; icon: LucideIcon }[] = [
   { key: "navOrders", path: "/cabinet/orders", icon: Package },
+  { key: "navStats", path: "/cabinet/stats", icon: BarChart3 },
   { key: "navTransactions", path: "/cabinet/transactions", icon: ArrowLeftRight },
   { key: "navSettings", path: "/cabinet/settings", icon: Settings },
 ];
@@ -207,7 +209,11 @@ function CabinetChrome({ children }: { children: React.ReactNode }) {
             },
           ]}
           moreLabel={t("navMore")}
-          moreActive={here.startsWith("/cabinet/settings") || here.startsWith("/cabinet/webhooks")}
+          moreActive={
+            here.startsWith("/cabinet/stats") ||
+            here.startsWith("/cabinet/settings") ||
+            here.startsWith("/cabinet/webhooks")
+          }
           onMore={() => {
             setMoreOpen(true);
           }}
@@ -220,6 +226,11 @@ function CabinetChrome({ children }: { children: React.ReactNode }) {
             title={profile?.title ?? ""}
             email={profile?.email ?? ""}
             links={[
+              {
+                href: pathFor(locale, "/cabinet/stats"),
+                label: t("navStats"),
+                icon: BarChart3,
+              },
               {
                 href: pathFor(locale, "/cabinet/settings"),
                 label: t("navSettings"),
