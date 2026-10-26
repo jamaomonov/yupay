@@ -47,6 +47,7 @@ import { usePreferBalance } from "@/lib/prefer-balance";
 import { prefillFromQuery } from "@/lib/purchase-prefill";
 import { formatUzs, pathFor } from "@/lib/seo";
 import { packagePrice, starLayers, visibleStarPackages } from "@/lib/star-packages";
+import { useStickyFit } from "@/lib/useStickyFit";
 import {
   amountError,
   boundToUnits,
@@ -1127,6 +1128,9 @@ export function PurchasePanel({
   } | null>(null);
   // The mobile sticky pay bar scrolls here when the form isn't complete yet.
   const asideRef = useRef<HTMLElement>(null);
+  // Below the 88px header when it fits; otherwise low enough that the pay
+  // button stays on screen (desktop only — the aside is not sticky on mobile).
+  const asideTop = useStickyFit(asideRef, 100);
 
   // Hide the mobile pay bar whenever the real order form (the aside) or the
   // page footer is on screen: the bar is a shortcut to a CTA that's scrolled
@@ -2022,14 +2026,15 @@ export function PurchasePanel({
             alongside the secondary content below. */}
         <aside
           ref={asideRef}
-          className="scroll-mt-[88px] lg:sticky lg:top-[100px] lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:self-start"
+          style={{ top: asideTop }}
+          className="scroll-mt-[88px] lg:sticky lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:self-start"
         >
-          <div className="border-border rounded-xl border bg-[linear-gradient(135deg,hsl(var(--card)),hsl(var(--bg)))] p-6">
+          <div className="border-border rounded-xl border bg-[linear-gradient(135deg,hsl(var(--card)),hsl(var(--bg)))] p-6 lg:p-5">
             <h2 className="font-display text-lg font-bold tracking-[-0.02em]">
               {t("summaryTitle")}
             </h2>
 
-            <div className="border-border/70 mt-4 flex items-center justify-between gap-3 border-b pb-4">
+            <div className="border-border/70 mt-4 flex items-center justify-between gap-3 border-b pb-4 lg:mt-3 lg:pb-3">
               {selSku ? (
                 <>
                   <span className="min-w-0 text-[15px] font-semibold">
@@ -2044,12 +2049,12 @@ export function PurchasePanel({
               )}
             </div>
             {selSku?.notice && (
-              <p className="bg-gold/12 text-gold mt-3 rounded-xl px-3 py-2.5 text-[13px] font-semibold leading-snug">
+              <p className="bg-gold/12 text-gold mt-3 rounded-xl px-3 py-2.5 text-[13px] font-semibold leading-snug lg:py-2 lg:text-[12.5px]">
                 {selSku.notice.text}
               </p>
             )}
 
-            <label className="mt-5 block">
+            <label className="mt-5 block lg:mt-4">
               <span className="text-tx-mute mb-1.5 block text-[13px] font-semibold">
                 {t("emailLabel")} <span className="text-primary">*</span>
               </span>
@@ -2065,12 +2070,12 @@ export function PurchasePanel({
                   setEmailTouched(true);
                   setEmail(e.target.value);
                 }}
-                className="border-border bg-card focus:border-primary rounded-btn h-[46px] w-full border px-3.5 text-[15px] outline-none transition"
+                className="border-border bg-card focus:border-primary rounded-btn h-[46px] w-full border px-3.5 text-[15px] outline-none transition lg:h-[42px]"
               />
             </label>
 
             {fields.length > 0 && (
-              <div className="mt-5 flex flex-col gap-4">
+              <div className="mt-5 flex flex-col gap-4 lg:mt-4 lg:gap-3">
                 {fields.map((f) =>
                   f.check && fieldsProduct ? (
                     <CheckablePlayerField
@@ -2127,7 +2132,7 @@ export function PurchasePanel({
               </div>
             )}
 
-            <div className="mt-5">
+            <div className="mt-5 lg:mt-4">
               <span className="text-tx-mute mb-2 block text-[13px] font-semibold">
                 {t("paymentTitle")}
               </span>
@@ -2155,14 +2160,14 @@ export function PurchasePanel({
                   markPicked();
                   setMethodId(WALLET_METHOD_ID);
                 }}
-                className={`focus-visible:ring-primary focus-visible:ring-offset-bg rounded-btn mb-2 flex w-full items-center gap-3 border px-3 py-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed ${
+                className={`focus-visible:ring-primary focus-visible:ring-offset-bg rounded-btn mb-2 flex w-full items-center gap-3 border px-3 py-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed lg:py-2 ${
                   payingFromBalance && walletState.state === "ready"
                     ? "border-primary bg-primary/10"
                     : "border-border bg-card hover:border-border-2"
                 }`}
               >
                 <span
-                  className={`bg-muted flex h-9 w-9 shrink-0 items-center justify-center rounded-md ${
+                  className={`bg-muted flex h-9 w-9 shrink-0 items-center justify-center rounded-md lg:h-8 lg:w-8 ${
                     walletState.state === "ready" || walletState.state === "guest"
                       ? "text-primary"
                       : "text-tx-dim"
@@ -2233,7 +2238,7 @@ export function PurchasePanel({
                         markPicked();
                         setMethodId(m.id);
                       }}
-                      className={`focus-visible:ring-primary focus-visible:ring-offset-bg rounded-btn relative flex flex-col items-center justify-center gap-1 overflow-hidden border px-3 py-3 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed ${
+                      className={`focus-visible:ring-primary focus-visible:ring-offset-bg rounded-btn relative flex flex-col items-center justify-center gap-1 overflow-hidden border px-3 py-3 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed lg:py-2 ${
                         disabled
                           ? "border-border bg-card"
                           : active
@@ -2256,7 +2261,7 @@ export function PurchasePanel({
                         </span>
                       )}
                       <span
-                        className={`flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-md ${
+                        className={`flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-md lg:h-8 lg:w-8 ${
                           disabled ? "opacity-60 grayscale" : ""
                         }`}
                       >
@@ -2301,7 +2306,7 @@ export function PurchasePanel({
               onClick={() => {
                 setConfirmOpen(true);
               }}
-              className={buttonStyles({ size: "lg", className: "mt-6 w-full" })}
+              className={buttonStyles({ size: "lg", className: "mt-6 w-full lg:mt-4" })}
             >
               {loading ? (
                 <Loader2 size={18} className="animate-spin" />
@@ -2384,7 +2389,7 @@ export function PurchasePanel({
                 Steam form asking for a login — and interpolating the label
                 instead produced "по Логин Steam", because a Russian
                 prepositional phrase needs a case the label doesn't carry. */}
-            <div className="border-border/70 text-tx-mute mt-5 flex items-start gap-2.5 border-t pt-5 text-[12px] leading-relaxed">
+            <div className="border-border/70 text-tx-mute mt-5 flex items-start gap-2.5 border-t pt-5 text-[12px] leading-relaxed lg:mt-3 lg:pt-3 lg:text-[11.5px] lg:leading-snug">
               {accountRequired ? t("securityNote") : t("securityNoteVoucher")}
             </div>
           </div>
