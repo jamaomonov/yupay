@@ -440,13 +440,16 @@ export default async function BrandPage({
             to 2.6:1 — still a crop, but half of what it was, and the subject
             of game key art is centred. Nothing overlaps the copy at any width,
             by construction rather than by tuning a gradient. */}
-        <div className="border-border bg-card relative overflow-hidden rounded-xl border">
+        <div
+          className={`border-border bg-card relative overflow-hidden rounded-xl border ${heroImg ? "lg:grid lg:grid-cols-[minmax(0,1fr)_400px] lg:items-center" : ""}`}
+        >
           {heroImg ? (
-            // A fixed band, not the image's ratio: at 16:9 / 2.6:1 the art
-            // filled the first screen and the packs started below the fold
-            // (design review 2026-10-26). 132px on a phone, 220px on desktop
-            // — key art is centred, so a crop keeps its subject.
-            <div className="relative h-[132px] w-full overflow-hidden sm:h-[190px] lg:h-[220px]">
+            // Short, so the packs make the first screen (design review
+            // 2026-10-26). On a phone a band cropped from the top, where key
+            // art keeps its faces. On desktop a band that wide cut every head
+            // off (a 4.7:1 slice of a 16:9 frame), so there the art moves to
+            // the right column whole, at its own 16:9, beside the copy.
+            <div className="relative h-[150px] w-full overflow-hidden sm:h-[200px] lg:order-2 lg:m-4 lg:ml-0 lg:aspect-video lg:h-auto lg:w-auto lg:rounded-lg">
               <Image
                 src={heroImg}
                 alt={brand.name}
@@ -459,18 +462,18 @@ export default async function BrandPage({
                 // flight — which is exactly what Lighthouse reports here.
                 fetchPriority="high"
                 unoptimized={!isOptimizable(heroImg)}
-                sizes="(max-width: 1024px) 100vw, 1040px"
+                sizes="(max-width: 1024px) 100vw, 400px"
                 className="object-cover"
-                // Slightly above centre: game key art puts faces in the upper
-                // half, and a centred crop of a 16:9 into 2.6:1 cuts them.
-                style={{ objectPosition: "50% 42%" }}
+                // Toward the top: key art puts faces in its upper third, and a
+                // centred crop of 16:9 into a band cuts them. Whole on desktop.
+                style={{ objectPosition: "50% 22%" }}
               />
               {/* Only a bottom fade now. The copy is below the image, so this
                   is here to land the band on the card rather than to rescue
                   text from the artwork. */}
               <div
                 aria-hidden
-                className="absolute inset-0"
+                className="absolute inset-0 lg:hidden"
                 style={{
                   background:
                     "linear-gradient(0deg, hsl(var(--card)) 1%, hsl(var(--card)/0.22) 38%, transparent 72%)",
@@ -491,7 +494,9 @@ export default async function BrandPage({
           )}
           {/* Pulled up so the logo breaks the band's edge — without it the
               picture and the copy read as two unrelated blocks stacked. */}
-          <div className="relative z-10 -mt-7 flex flex-col gap-3 p-4 pt-0 sm:-mt-9 sm:gap-4 sm:p-6 sm:pt-0">
+          <div
+            className={`relative z-10 -mt-7 flex flex-col gap-3 p-4 pt-0 sm:-mt-9 sm:gap-4 sm:p-6 sm:pt-0 ${heroImg ? "lg:order-1 lg:mt-0 lg:p-8" : ""}`}
+          >
             <div className="flex items-center gap-3 sm:gap-4">
               {brand.logo_url && (
                 <span className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-black/40 shadow-[0_12px_32px_rgba(0,0,0,0.55)] backdrop-blur sm:h-16 sm:w-16">
