@@ -155,8 +155,12 @@ still reports state 2.
 - A cancel is **refused with `306`** once any single `FulfillmentTask` for the
   order has succeeded. A multi-item order can rest at `fulfilling` with one code
   already handed over, which the coarse order-status check misses; clawing the
-  money back would hand the customer the goods for free. Such a case is settled
-  by a human.
+  money back would hand the customer the goods for free. **Unless an operator
+  allowed it:** when the goods did not really arrive (a dead code, currency the
+  supplier reported as credited), the order page's «Разрешить возврат через
+  Paynet» (`POST /admin/payments/{id}/allow-provider-cancel`, reason required)
+  stamps `extra_metadata.cancel_allowed` on the payment, and the next cancel from
+  Paynet's cabinet runs the ordinary reversal (`payments/provider_cancel.py`).
 - `refund()` on the gateway always raises: a Paynet reversal is initiated on
   their side and reconciles through `CancelTransaction`.
 

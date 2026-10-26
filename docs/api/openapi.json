@@ -2269,6 +2269,23 @@
         "title": "AdminUserLedgerOut",
         "type": "object"
       },
+      "AllowCancelIn": {
+        "additionalProperties": false,
+        "description": "Body of admin's ``POST /admin/payments/{id}/allow-provider-cancel``.",
+        "properties": {
+          "reason": {
+            "maxLength": 500,
+            "minLength": 3,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "AllowCancelIn",
+        "type": "object"
+      },
       "AnalyticsChannel": {
         "description": "Which half of the business a figure is about.\n\nRetail and B2B have genuinely different economics \u2014 a reseller buys at a\nwholesale price with a thinner markup \u2014 so a blended margin flatters one\nand libels the other. Every figure on the business tab can be scoped to\none of them, or left across both.",
         "enum": [
@@ -33740,6 +33757,91 @@
           }
         },
         "summary": "Admin Get Payment",
+        "tags": [
+          "admin:payments"
+        ]
+      }
+    },
+    "/api/v1/admin/payments/{payment_id}/allow-provider-cancel": {
+      "post": {
+        "description": "Lift the ``306`` on a delivered order for one payment.\n\nIdempotent by state: a second call on an allowed payment changes nothing.\nMoves no money itself \u2014 the refund happens when the provider's cancel\narrives. See ``payments.provider_cancel``.",
+        "operationId": "admin_allow_provider_cancel_api_v1_admin_payments__payment_id__allow_provider_cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "payment_id",
+            "required": true,
+            "schema": {
+              "title": "Payment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AllowCancelIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentAdminOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Let the provider cancel a delivered payment (Paynet cabinet refund)",
         "tags": [
           "admin:payments"
         ]

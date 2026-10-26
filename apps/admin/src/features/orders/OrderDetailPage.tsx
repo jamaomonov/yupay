@@ -17,6 +17,7 @@ import {
   PackageCheck,
   RefreshCw,
   Truck,
+  Undo2,
   Wallet,
 } from "lucide-react";
 import { useRef, useState } from "react";
@@ -222,6 +223,30 @@ export function OrderDetailPage() {
     onSuccess: () => {
       toast.success("Деньги возвращены на баланс");
       void qc.invalidateQueries({ queryKey: ["admin", "orders"] });
+      void qc.invalidateQueries({ queryKey: ["admin", "payments"] });
+      void qc.invalidateQueries({ queryKey: qk.order(orderId) });
+    },
+    onError: (err) => {
+      toast.error(extractApiMessage(err));
+    },
+  });
+
+  // Paynet refuses a cancel from its cabinet once the goods shipped (306). For
+  // a dead code or currency that never arrived the operator lifts that for
+  // one payment; the cancel in Paynet's cabinet then refunds the card.
+  const allowProviderCancel = useMutation<
+    PaymentAdminOut,
+    ApiError,
+    { id: string; reason: string; key: string }
+  >({
+    mutationFn: ({ id, reason, key }) =>
+      apiPost<PaymentAdminOut>(
+        `/api/v1/admin/payments/${id}/allow-provider-cancel`,
+        { reason },
+        { "Idempotency-Key": key },
+      ),
+    onSuccess: () => {
+      toast.success("Разрешено. Оформите отмену в кабинете Paynet");
       void qc.invalidateQueries({ queryKey: ["admin", "payments"] });
       void qc.invalidateQueries({ queryKey: qk.order(orderId) });
     },
@@ -463,6 +488,19 @@ export function OrderDetailPage() {
                 id: p.id,
                 reason: reason.trim(),
                 key: `admin-refund-wallet-${crypto.randomUUID()}`,
+              });
+            }}
+            allowingCancel={allowProviderCancel.isPending}
+            onAllowProviderCancel={(p) => {
+              const reason = window.prompt(
+                `Разрешить Paynet вернуть ${formatMoney(p.amount, p.currency)} на карту, хотя товар выдан. Почему товар не дошёл?`,
+                "",
+              );
+              if (reason === null || reason.trim() === "") return;
+              allowProviderCancel.mutate({
+                id: p.id,
+                reason: reason.trim(),
+                key: `admin-allow-cancel-${crypto.randomUUID()}`,
               });
             }}
             settling={settle.isPending}
@@ -945,6 +983,8 @@ function PaymentsCard({
   onRefundToWallet,
   onSettle,
   settling,
+  onAllowProviderCancel,
+  allowingCancel,
   failed,
   onRetryLoad,
 }: {
@@ -957,6 +997,9 @@ function PaymentsCard({
   onRefundToWallet: (payment: PaymentAdminOut) => void;
   onSettle: (payment: PaymentAdminOut) => void;
   settling: boolean;
+  /** Lift Paynet's «товар уже выдан» refusal for this payment. */
+  onAllowProviderCancel: (payment: PaymentAdminOut) => void;
+  allowingCancel: boolean;
   /** The payments query failed — "no payments" would be a lie mid-support-call. */
   failed?: boolean | undefined;
   onRetryLoad?: (() => void) | undefined;
@@ -1031,6 +1074,29 @@ function PaymentsCard({
                     )}
                   </div>
                 )}
+                {/* Paynet refunds only from its own cabinet, and refuses once the
+                    goods shipped unless we allowed it here. */}
+                {p.provider === "paynet" &&
+                  p.status === "succeeded" &&
+                  (p.extra_metadata.cancel_allowed ? (
+                    <p className="mt-2 text-xs text-[var(--text-secondary)]">
+                      Возврат через Paynet разрешён — оформите отмену в кабинете Paynet.
+                    </p>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        onAllowProviderCancel(p);
+                      }}
+                      disabled={allowingCancel}
+                      className="mt-2"
+                    >
+                      <Undo2 className="size-3.5" />
+                      Разрешить возврат через Paynet
+                    </Button>
+                  ))}
                 {/* The acquirer charged but never called back — the order would
                     otherwise sit unpaid until it expires. */}
                 {(p.status === "pending" || p.status === "requires_action") && (

@@ -156,3 +156,12 @@ rule that reads it is `orders.provider_limit`; settlement calls it through `orde
 late-payment path) until an operator releases it — `credit_held_wallet_topup`, reached from the
 fulfilment «release» route. A refund of such a top-up skips the balance reversal
 (`wallet.topup_was_credited`). Runbook: `docs/runbooks/order-held-for-review.md`.
+
+## Provider cancel after delivery (2026-10-26)
+
+`provider_cancel.py`: Paynet's `CancelTransaction` answers `306` once the goods shipped. An
+operator can lift that for one payment — `POST /admin/payments/{id}/allow-provider-cancel`
+with a reason (the order page's «Разрешить возврат через Paynet») stamps
+`extra_metadata.cancel_allowed` and an `admin.provider_cancel_allowed` order event. The cancel
+from Paynet's cabinet then runs `reverse_provider_payment` as usual. Paynet only; no money moves
+until the provider calls. Runbook: `docs/runbooks/paynet-troubleshooting.md`.

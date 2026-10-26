@@ -35,6 +35,7 @@ from yupay.core.ids import new_id
 from yupay.core.logging import get_logger
 from yupay.modules.fulfillment.models import FulfillmentTask
 from yupay.modules.orders.models import Order
+from yupay.modules.payments import provider_cancel
 from yupay.modules.payments import service as pay_svc
 from yupay.modules.payments.models import Payment
 from yupay.modules.paynet.errors import (
@@ -266,9 +267,11 @@ async def cancel_transaction(
     Paynet's own tester expects it). Nothing is reversed twice — the stored
     row is untouched, and ``CheckTransaction`` still reports state 2.
 
-    **Refused once any goods have shipped.** A single succeeded fulfilment task
-    is proof the customer holds a code; clawing the money back would hand them
-    the goods for free. Such a case is settled by a human.
+    **Refused once any goods have shipped** — a single succeeded fulfilment
+    task is proof the customer holds a code, and clawing the money back would
+    hand them the goods for free — **unless an operator allowed it** on the
+    order page (:mod:`yupay.modules.payments.provider_cancel`): a dead code or
+    currency that never arrived is refunded to the card this way.
 
     Args:
         db: Active session.
@@ -290,13 +293,13 @@ async def cancel_transaction(
         raise transaction_already_cancelled()
 
     order = (await db.execute(select(Order).where(Order.id == txn.order_id))).scalar_one()
-    if order.status in _DELIVERED_STATUSES or await _any_goods_delivered(db, txn.order_id):
-        log.warning("paynet.cancel_refused_delivered", order_id=order.id, status=order.status)
-        raise cancel_refused_delivered()
-
     payment = await db.get(Payment, txn.payment_id) if txn.payment_id else None
     if payment is None:  # pragma: no cover - written together, SET NULL only on delete
         raise transaction_not_found()
+    delivered = order.status in _DELIVERED_STATUSES or await _any_goods_delivered(db, txn.order_id)
+    if delivered and not provider_cancel.cancel_allowed(payment):
+        log.warning("paynet.cancel_refused_delivered", order_id=order.id, status=order.status)
+        raise cancel_refused_delivered()
     # Refunded to the YuPay balance already (a CS2 skin, plan 3a): the money never
     # left us, so a card refund on top would pay the customer twice.
     if pay_svc.refunded_to_wallet(payment):

@@ -134,6 +134,15 @@ class RefundToWalletIn(BaseModel):
     reason: str | None = Field(default=None, max_length=500)
 
 
+class AllowCancelIn(BaseModel):
+    """Body of admin's ``POST /admin/payments/{id}/allow-provider-cancel``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: Why the goods did not reach the customer — the audit trail's only answer.
+    reason: str = Field(min_length=3, max_length=500)
+
+
 class SettleIn(BaseModel):
     """Body of admin's ``POST /admin/payments/{id}/settle``.
 

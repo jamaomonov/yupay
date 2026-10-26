@@ -494,6 +494,67 @@ async def test_cancel_is_refused_once_the_goods_are_delivered(
     assert response.json()["error"]["code"] == 306
 
 
+async def test_an_operator_can_allow_cancelling_a_delivered_order(
+    integration_client: AsyncClient, db_session: AsyncSession, admin_headers: dict[str, str]
+) -> None:
+    """A dead code or currency that never arrived: the order page lifts the 306
+    for that one payment, and the cancel from Paynet's cabinet refunds it."""
+    order_id = await _seed_order(db_session)
+    await _perform(integration_client, order_id, transaction_id=90_012)
+    order = (await db_session.execute(select(Order).where(Order.id == order_id))).scalar_one()
+    order.status = "delivered"
+    await db_session.commit()
+    payment = (
+        await db_session.execute(select(Payment).where(Payment.order_id == order_id))
+    ).scalar_one()
+    allow_url = f"/api/v1/admin/payments/{payment.id}/allow-provider-cancel"
+    cancel = _rpc("CancelTransaction", {"serviceId": SERVICE_ID, "transactionId": 90_012})
+
+    before = (await integration_client.post(UWS_URL, json=cancel, headers=_auth())).json()
+    no_reason = await integration_client.post(
+        allow_url, json={"reason": ""}, headers={**admin_headers, "Idempotency-Key": "a" * 16}
+    )
+    allowed = [
+        await integration_client.post(
+            allow_url,
+            json={"reason": "код не активируется"},
+            headers={**admin_headers, "Idempotency-Key": f"allow-cancel-{i}-{payment.id}"},
+        )
+        for i in range(2)
+    ]
+    after = (await integration_client.post(UWS_URL, json=cancel, headers=_auth())).json()
+
+    assert before["error"]["code"] == 306
+    assert no_reason.status_code == 422
+    assert [r.status_code for r in allowed] == [200, 200], allowed[0].text
+    assert allowed[0].json()["extra_metadata"]["cancel_allowed"]["reason"] == "код не активируется"
+    assert allowed[1].json()["extra_metadata"] == allowed[0].json()["extra_metadata"]
+    assert after["result"]["transactionState"] == 2
+    await db_session.refresh(payment)
+    await db_session.refresh(order)
+    assert (payment.status, order.status) == ("refunded", "refunded")
+
+
+async def test_only_a_succeeded_paynet_payment_can_be_unlocked(
+    integration_client: AsyncClient, db_session: AsyncSession, admin_headers: dict[str, str]
+) -> None:
+    order_id = await _seed_order(db_session)
+    await _perform(integration_client, order_id, transaction_id=90_013)
+    payment = (
+        await db_session.execute(select(Payment).where(Payment.order_id == order_id))
+    ).scalar_one()
+    payment.provider = "payme"
+    await db_session.commit()
+
+    response = await integration_client.post(
+        f"/api/v1/admin/payments/{payment.id}/allow-provider-cancel",
+        json={"reason": "код не активируется"},
+        headers={**admin_headers, "Idempotency-Key": f"allow-cancel-{payment.id}"},
+    )
+    assert response.status_code == 409
+    assert response.json()["reason"] == "provider"
+
+
 # --- GetStatement -----------------------------------------------------------
 
 

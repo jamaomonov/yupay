@@ -26,6 +26,7 @@ from yupay.modules.orders.service import Actor
 from yupay.modules.payments import (
     provider_admin,
     provider_analytics,
+    provider_cancel,
     provider_state,
     review_limits,
 )
@@ -36,6 +37,7 @@ from yupay.modules.payments.schemas import (
     AdminProviderDetailOut,
     AdminProviderListOut,
     AdminProviderSummary,
+    AllowCancelIn,
     PaymentAdminListOut,
     PaymentAdminOut,
     PaymentIntentIn,
@@ -425,6 +427,31 @@ async def admin_refund_payment_to_wallet(
         idempotency_key=key,
     )
     return PaymentAdminOut.model_validate(payment)
+
+
+@admin_router.post(
+    "/{payment_id}/allow-provider-cancel",
+    response_model=PaymentAdminOut,
+    summary="Let the provider cancel a delivered payment (Paynet cabinet refund)",
+)
+async def admin_allow_provider_cancel(
+    payment_id: str,
+    body: AllowCancelIn,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    admin: Annotated[User, Depends(require_admin)],
+    idempotency_key: Annotated[str | None, Header(alias=IDEMPOTENCY_HEADER)] = None,
+) -> PaymentAdminOut:
+    """Lift the ``306`` on a delivered order for one payment.
+
+    Idempotent by state: a second call on an allowed payment changes nothing.
+    Moves no money itself — the refund happens when the provider's cancel
+    arrives. See ``payments.provider_cancel``.
+    """
+    _require_idempotency_key(idempotency_key)
+    await provider_cancel.allow_cancel(
+        db, payment_id=payment_id, admin_id=admin.id, reason=body.reason.strip()
+    )
+    return PaymentAdminOut.model_validate(await svc.get_payment(db, payment_id))
 
 
 # ---------- webhook log ----------
