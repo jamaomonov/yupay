@@ -33,8 +33,10 @@ export async function BrandTile({
 }: {
   brand: BrandSummary;
   locale: string;
-  /** `feature` is the oversized bento cell; everything else is `default`. */
-  variant?: "feature" | "default";
+  /** `feature` is the oversized bento cell; `grid` is the catalogue's
+   *  two-across phone tile (smaller type and insets below `sm`); everything
+   *  else is `default`. */
+  variant?: "feature" | "default" | "grid";
   /** Grid placement and height, supplied by whichever layout hosts the tile. */
   className?: string;
 }) {
@@ -42,6 +44,7 @@ export async function BrandTile({
   const img = brand.hero_image_url ?? brand.logo_url;
   const accent = brand.accent_color ?? "#AAFF33";
   const featured = variant === "feature";
+  const grid = variant === "grid";
 
   return (
     <Link
@@ -57,7 +60,9 @@ export async function BrandTile({
           sizes={
             featured
               ? "(max-width: 768px) 100vw, 540px"
-              : "(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 300px"
+              : grid
+                ? "(max-width: 1024px) 50vw, 300px"
+                : "(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 300px"
           }
           className="object-cover transition duration-500 group-hover:scale-[1.04]"
         />
@@ -76,7 +81,9 @@ export async function BrandTile({
         </span>
       )}
 
-      <div className="absolute inset-x-5 bottom-5 z-10">
+      <div
+        className={`absolute z-10 ${grid ? "inset-x-3 bottom-3 sm:inset-x-5 sm:bottom-5" : "inset-x-5 bottom-5"}`}
+      >
         {/* Real ratings only — `count > 0` is enforced by the API shape, and
             nothing here invents an average. */}
         {brand.rating && brand.rating.count > 0 && (
@@ -89,12 +96,18 @@ export async function BrandTile({
         <div className="flex items-end justify-between gap-3">
           <div
             className={`font-display font-extrabold leading-none tracking-[-0.025em] text-white [text-shadow:0_2px_10px_rgba(0,0,0,0.6)] ${
-              featured ? "text-[32px] sm:text-[48px]" : "text-[26px]"
+              featured
+                ? "text-[32px] sm:text-[48px]"
+                : grid
+                  ? "text-[17px] sm:text-[26px]"
+                  : "text-[26px]"
             }`}
           >
             {brand.name}
           </div>
-          <div className="border-white/18 group-hover:bg-primary rounded-btn flex h-10 w-10 shrink-0 items-center justify-center border bg-black/45 backdrop-blur transition">
+          <div
+            className={`border-white/18 group-hover:bg-primary rounded-btn h-10 w-10 shrink-0 items-center justify-center border bg-black/45 backdrop-blur transition ${grid ? "hidden sm:flex" : "flex"}`}
+          >
             <ArrowRight
               size={16}
               strokeWidth={2.4}

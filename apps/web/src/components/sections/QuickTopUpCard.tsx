@@ -9,7 +9,7 @@ import { useId, useState } from "react";
 
 import { buttonStyles } from "@/lib/button";
 import { stashHandoff } from "@/lib/handoff";
-import { formatUzs } from "@/lib/seo";
+import { formatUzs, numberLocale } from "@/lib/seo";
 import { amountError, parseAmount, unitAmountError } from "@/lib/variable-amount";
 
 /** The two products the home hero sells from its own form. */
@@ -85,7 +85,9 @@ export function QuickTopUpCard({ offer, locale }: { offer: TopUpOffer; locale: s
   const total =
     parsed !== null && amountErr === null && offer.rateUzs !== null ? parsed * offer.rateUzs : null;
   const bound = (n: number) =>
-    offer.kind === "stars" ? n.toLocaleString(locale) : `$${n.toLocaleString("en-US")}`;
+    offer.kind === "stars"
+      ? n.toLocaleString(numberLocale(locale))
+      : `$${n.toLocaleString("en-US")}`;
 
   function submit(): void {
     setTouched(true);

@@ -21,8 +21,14 @@ import { useAuth } from "@/lib/auth";
 import { buttonStyles } from "@/lib/button";
 import { ApiError, getAccessToken, SURFACE } from "@/lib/client";
 import { collectClientHints } from "@/lib/client-hints";
+import { displayDenomination } from "@/lib/denomination";
 import { mintGuestToken } from "@/lib/guest";
-import { rememberGuestEmail, saveGuestOrder } from "@/lib/guest-orders";
+import {
+  lastCheckoutEmail,
+  rememberCheckoutEmail,
+  rememberGuestEmail,
+  saveGuestOrder,
+} from "@/lib/guest-orders";
 import { takeHandoff } from "@/lib/handoff";
 import { isOptimizable } from "@/lib/image";
 import { IntentRefused, PENDING_ORDER_REUSE_MS, parseIntentFailure } from "@/lib/intent-failure";
@@ -45,7 +51,7 @@ import {
 } from "@/lib/player-check-state";
 import { usePreferBalance } from "@/lib/prefer-balance";
 import { prefillFromQuery } from "@/lib/purchase-prefill";
-import { formatUzs, pathFor } from "@/lib/seo";
+import { formatUzs, numberLocale, pathFor } from "@/lib/seo";
 import { packagePrice, starLayers, visibleStarPackages } from "@/lib/star-packages";
 import { useStickyFit } from "@/lib/useStickyFit";
 import {
@@ -390,7 +396,7 @@ function CheckablePlayerField({
             <X size={17} strokeWidth={3} />
           </span>
           <div className="min-w-0 flex-1 leading-tight">
-            <div className="truncate text-[13.5px] font-semibold text-red-300">
+            <div className="text-pretty text-[13.5px] font-semibold text-red-300">
               {t("checkNotFound")}
             </div>
             <div className="text-tx-dim truncate font-mono text-[12px]">{value}</div>
@@ -411,7 +417,21 @@ function CheckablePlayerField({
   // Idle / loading / our-or-provider fault: show the input + check button.
   return (
     <div>
-      <FieldLabel label={label} required={required} htmlFor={fieldId} />
+      <FieldLabel
+        label={label}
+        required={required}
+        htmlFor={fieldId}
+        help={
+          hasHelp
+            ? {
+                text: t("whereToFindGeneric"),
+                onOpen: () => {
+                  setHelpOpen(true);
+                },
+              }
+            : undefined
+        }
+      />
       <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center">
         <div className="relative min-w-0 flex-1">
           <input
@@ -427,21 +447,8 @@ function CheckablePlayerField({
             onChange={(e) => {
               onChange(e.target.value);
             }}
-            className={`border-border-2 bg-card focus:border-primary/60 placeholder:text-tx-dim rounded-btn h-[46px] w-full border pl-4 text-[15px] outline-none transition ${hasHelp ? "pr-11" : "pr-4"}`}
+            className="border-border-2 bg-card focus:border-primary/60 placeholder:text-tx-dim rounded-btn h-[46px] w-full border px-4 text-[15px] outline-none transition"
           />
-          {hasHelp && (
-            <button
-              type="button"
-              onClick={() => {
-                setHelpOpen(true);
-              }}
-              aria-label={t("whereToFind")}
-              aria-haspopup="dialog"
-              className="bg-muted text-tx-mute hover:text-primary hover:bg-primary/10 absolute right-1.5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full transition"
-            >
-              <Info size={15} />
-            </button>
-          )}
         </div>
         <button
           type="button"
@@ -541,17 +548,12 @@ function PlainField({
           {required && <span className="text-primary"> *</span>}
         </label>
         {hasHelp && (
-          <button
-            type="button"
-            onClick={() => {
+          <HelpLink
+            text={t("whereToFindGeneric")}
+            onOpen={() => {
               setHelpOpen(true);
             }}
-            aria-haspopup="dialog"
-            className="text-tx-dim hover:text-primary inline-flex shrink-0 items-center gap-1 text-[12px] font-medium transition"
-          >
-            <Info size={12} />
-            {t("whereToFindGeneric")}
-          </button>
+          />
         )}
       </div>
       {type === "select" ? (
@@ -563,7 +565,7 @@ function PlainField({
           onChange={(e) => {
             onChange(e.target.value);
           }}
-          className="border-border bg-card focus:border-primary rounded-btn h-[46px] w-full border px-3.5 text-[15px] outline-none transition"
+          className="border-border-2 bg-card focus:border-primary rounded-btn h-[46px] w-full border px-3.5 text-[15px] outline-none transition"
         >
           <option value="">—</option>
           {options.map((o) => (
@@ -584,7 +586,7 @@ function PlainField({
           onChange={(e) => {
             onChange(e.target.value);
           }}
-          className="border-border bg-card focus:border-primary rounded-btn h-[46px] w-full border px-3.5 text-[15px] outline-none transition"
+          className="border-border-2 bg-card focus:border-primary rounded-btn h-[46px] w-full border px-3.5 text-[15px] outline-none transition"
         />
       )}
       {hasHelp && (
@@ -616,24 +618,50 @@ function FieldLabel({
   label,
   required,
   htmlFor,
+  help,
 }: {
   label: string;
   required: boolean;
   htmlFor?: string;
+  /** «Где найти?» on the caption's row — the one help affordance a field has. */
+  help?: { text: string; onOpen: () => void } | undefined;
 }) {
-  const className = "text-tx-dim mb-2 block text-[12px] font-semibold uppercase tracking-[0.08em]";
+  // Same caption as `PlainField`: the id field used to shout in spaced caps
+  // while the server field under it spoke in sentence case.
+  const className = "text-tx-mute text-[13px] font-semibold";
   const content = (
     <>
       {label}
       {required && <span className="text-primary"> *</span>}
     </>
   );
-  return htmlFor ? (
-    <label htmlFor={htmlFor} className={className}>
-      {content}
-    </label>
-  ) : (
-    <span className={className}>{content}</span>
+  return (
+    <div className="mb-1.5 flex items-center justify-between gap-2">
+      {htmlFor ? (
+        <label htmlFor={htmlFor} className={className}>
+          {content}
+        </label>
+      ) : (
+        <span className={className}>{content}</span>
+      )}
+      {help && <HelpLink text={help.text} onOpen={help.onOpen} />}
+    </div>
+  );
+}
+
+/** «Где найти?» — small to the eye, 44px tall to the thumb (the negative
+ *  margin keeps the row height of the 18px text). */
+function HelpLink({ text, onOpen }: { text: string; onOpen: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-haspopup="dialog"
+      className="text-tx-dim hover:text-primary -my-[13px] inline-flex min-h-[44px] shrink-0 items-center gap-1 px-1 text-[12.5px] font-medium transition"
+    >
+      <Info size={13} />
+      {text}
+    </button>
   );
 }
 
@@ -658,12 +686,16 @@ function FieldLabel({
  * rate, so the product isn't sellable right now and we render that instead
  * of a price of zero.
  */
+/** The Steam field's one-tap sums, in dollars. */
+const QUICK_USD = [5, 10, 20, 50];
+
 function VariableAmountCard({
   sku,
   value,
   selected,
   onChange,
   onFocus,
+  onPick,
   locale,
   t,
 }: {
@@ -673,6 +705,8 @@ function VariableAmountCard({
   selected: boolean;
   onChange: (v: string) => void;
   onFocus: () => void;
+  /** A quick sum: selects this SKU and sets the amount in one go. */
+  onPick: (usd: number) => void;
   locale: string;
   t: (key: string, values?: Record<string, string>) => string;
 }) {
@@ -705,7 +739,7 @@ function VariableAmountCard({
     parsed !== null ? (perUsd !== null ? toUsd(parsed, perUsd) : parsed) * rateUzs : null;
   /** A bound as the customer reads it: a plain unit count, or a dollar sum. */
   const bound = (n: number) =>
-    unit ? n.toLocaleString(locale) : formatMoney(n.toFixed(2), "USD", locale);
+    unit ? n.toLocaleString(numberLocale(locale)) : formatMoney(n.toFixed(2), "USD", locale);
   const errorMessage =
     error === "below"
       ? t("amountBelow", { min: unit ? `${bound(min)} ${unit}` : bound(min) })
@@ -770,13 +804,36 @@ function VariableAmountCard({
           </span>
         )}
       </div>
+      {/* One tap for the sums people actually buy; a typed amount still wins.
+          Dollars only — a Stars field has its own package tiles. */}
+      {unit === null && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {QUICK_USD.filter((n) => n >= min && n <= max).map((n) => (
+            <button
+              key={n}
+              type="button"
+              aria-pressed={selected && parsed === n}
+              onClick={() => {
+                onPick(n);
+              }}
+              className={`rounded-btn h-11 min-w-[64px] border px-4 text-[15px] font-bold tabular-nums transition ${
+                selected && parsed === n
+                  ? "border-primary bg-primary/10 text-foreground"
+                  : "border-border-2 text-tx-mute hover:border-tx-dim hover:text-foreground"
+              }`}
+            >
+              ${n}
+            </button>
+          ))}
+        </div>
+      )}
       {/* The only two numbers under the field: how far it can go, and what the
           typed amount costs. No rate, no fee, no margin copy — see the
           component docstring. */}
       <div className="text-tx-dim mt-2 flex items-center justify-between gap-3 text-[12px]">
         <span>{t("amountRange", { min: bound(min), max: bound(max) })}</span>
         {total !== null && (
-          <span className="text-foreground shrink-0 font-mono text-[13px] font-semibold tabular-nums">
+          <span className="text-foreground shrink-0 text-[14px] font-bold tabular-nums">
             {formatUzs(locale, Math.round(total))}
           </span>
         )}
@@ -838,7 +895,7 @@ function UnitPackCard({
   const parsed = parseAmount(value);
   const error = parsed !== null ? unitAmountError(parsed, min, max) : null;
   const total = parsed !== null ? packagePrice(parsed, Number(rate.amount)) : null;
-  const bound = (n: number) => n.toLocaleString(locale);
+  const bound = (n: number) => n.toLocaleString(numberLocale(locale));
   const errorMessage =
     error === "below"
       ? t("amountBelow", { min: `${bound(min)} ${unit}` })
@@ -886,7 +943,7 @@ function UnitPackCard({
       <div className="text-tx-dim mt-2 flex items-center justify-between gap-3 text-[12px]">
         <span>{t("amountRange", { min: bound(min), max: bound(max) })}</span>
         {total !== null && (
-          <span className="text-foreground shrink-0 font-mono text-[13px] font-semibold tabular-nums">
+          <span className="text-foreground shrink-0 text-[14px] font-bold tabular-nums">
             {formatUzs(locale, Math.round(total))}
           </span>
         )}
@@ -991,7 +1048,7 @@ function UnitPackTiles({
           >
             <StarStack src={img} layers={starLayers(n)} />
             <span className="font-display block text-[14px] font-semibold tracking-[-0.01em]">
-              {n.toLocaleString(locale)} {sku.amount_unit}
+              {n.toLocaleString(numberLocale(locale))} {sku.amount_unit}
             </span>
             {price !== null && (
               <span className="text-foreground font-mono text-[13.5px] font-semibold tabular-nums">
@@ -1062,7 +1119,9 @@ export function PurchasePanel({
   const [emailTouched, setEmailTouched] = useState(false);
   useEffect(() => {
     if (emailTouched || email !== "") return;
-    const fromAccount = user?.delivery_email ?? user?.email ?? "";
+    // The account's address first; else the one this browser's last checkout
+    // used, so a returning guest does not type it again.
+    const fromAccount = user?.delivery_email ?? user?.email ?? lastCheckoutEmail();
     if (fromAccount) setEmail(fromAccount);
   }, [user, email, emailTouched]);
   // The dollar amount typed for a variable-amount SKU. Raw string, not a
@@ -1327,7 +1386,7 @@ export function PurchasePanel({
    *  where quoting "$0.77" back at someone buying Stars is a non-answer. */
   const boundLabel = (usd: number, edge: "min" | "max"): string =>
     perUsd !== null
-      ? `${boundToUnits(usd, perUsd, edge).toLocaleString(locale)} ${selSku?.amount_unit ?? ""}`
+      ? `${boundToUnits(usd, perUsd, edge).toLocaleString(numberLocale(locale))} ${selSku?.amount_unit ?? ""}`
       : formatMoney(usd.toFixed(2), "USD", locale);
 
   // Same shape as the variable-amount block above, but for a genuine unit SKU
@@ -1494,6 +1553,14 @@ export function PurchasePanel({
     !loading;
   // Tell the user *why* the pay button is inactive instead of leaving a dimmed
   // button with no explanation.
+  // Everything still empty, named — not only the first gap. «Введите email»
+  // alone sent the buyer back to the form once per field.
+  const missingLabels = [
+    ...fields
+      .filter((f) => f.required && (form[f.key]?.trim() ?? "") === "")
+      .map((f) => label(f.label)),
+    ...(deliveryEmailOk ? [] : [t("payHintEmailShort")]),
+  ];
   const payHint = !selSku
     ? t("selectPack")
     : selSkuVariable && variableRate === null
@@ -1513,25 +1580,23 @@ export function PurchasePanel({
                   ? t("amountRequired")
                   : selSkuUnit && qtyErr === "below"
                     ? t("amountBelow", {
-                        min: `${qtyMin.toLocaleString(locale)} ${selSku.amount_unit ?? ""}`,
+                        min: `${qtyMin.toLocaleString(numberLocale(locale))} ${selSku.amount_unit ?? ""}`,
                       })
                     : selSkuUnit && qtyErr === "above"
                       ? t("amountAbove", {
-                          max: `${qtyMax.toLocaleString(locale)} ${selSku.amount_unit ?? ""}`,
+                          max: `${qtyMax.toLocaleString(numberLocale(locale))} ${selSku.amount_unit ?? ""}`,
                         })
                       : selSkuUnit && qtyErr === "precision"
                         ? t("amountWhole")
-                        : !deliveryEmailOk
-                          ? t("payHintEmail")
-                          : !fieldsOk
-                            ? t("payHintFields")
-                            : !fieldsVerified
-                              ? t("payHintVerify")
-                              : payingFromBalance && walletState.state === "short"
-                                ? t("payFromBalanceShort", {
-                                    amount: formatUzs(locale, walletState.missing),
-                                  })
-                                : null;
+                        : missingLabels.length > 0
+                          ? t("payHintMissing", { list: missingLabels.join(", ") })
+                          : !fieldsVerified
+                            ? t("payHintVerify")
+                            : payingFromBalance && walletState.state === "short"
+                              ? t("payFromBalanceShort", {
+                                  amount: formatUzs(locale, walletState.missing),
+                                })
+                              : null;
 
   // The price shown in the summary header, the pay button, and the mobile
   // sticky bar. A variable-amount SKU has no fixed `skuPrice` — its total
@@ -1553,6 +1618,17 @@ export function PurchasePanel({
             ? formatUzs(locale, Math.round(qtyTotal))
             : "—"
         : skuPrice(locale, selSku);
+  // What the summary calls the pick. A typed amount names itself — «$10 →
+  // Steam Wallet», not the SKU's «Любая сумма», which said nothing about what
+  // was about to be bought.
+  const typedAmount = selSkuVariable ? parsedAmount : selSkuUnit ? parsedQty : null;
+  const selectedName = !selSku
+    ? ""
+    : typedAmount !== null && selSku.amount_unit
+      ? `${typedAmount.toLocaleString(numberLocale(locale))} ${selSku.amount_unit}`
+      : typedAmount !== null && selSkuVariable
+        ? `$${typedAmount.toLocaleString(numberLocale(locale))} → ${selProduct?.name ?? ""}`
+        : displayDenomination(selSku.denomination ?? selSku.sku_code);
   // `selectedPriceLabel` holds the full "temporarily unavailable" sentence
   // when the FX trust gate rejected the rate — that sentence belongs on the
   // card/hint, never glued onto "Оплатить" or the mobile summary line.
@@ -1713,6 +1789,7 @@ export function PurchasePanel({
       // app opening the default one), where nothing is stored; the order page
       // takes it out of the address bar on arrival.
       if (!isLoggedIn) rememberGuestEmail(order.id, email);
+      rememberCheckoutEmail(email);
       const trackHref = pathFor(locale, `/orders/${order.id}`);
       const returnUrl = `${window.location.origin}${pathFor(locale, `/orders/${order.id}${emailSuffix}`)}`;
 
@@ -1918,6 +1995,13 @@ export function PurchasePanel({
                     onFocus={() => {
                       setSkuId(variableSku.id);
                     }}
+                    onPick={(n) => {
+                      // Marked as this SKU's amount first, so the switch-clears-
+                      // the-amount effect does not wipe the sum just picked.
+                      amountSkuId.current = variableSku.id;
+                      setSkuId(variableSku.id);
+                      setAmountInput(String(n));
+                    }}
                     locale={locale}
                     t={t}
                   />
@@ -1951,67 +2035,77 @@ export function PurchasePanel({
                   <div
                     className={`grid grid-cols-2 gap-3 sm:grid-cols-3 ${variableSku || unitSku ? "mt-3" : ""}`}
                   >
-                    {fixedSkus.map((sku) => {
-                      const active = sku.id === skuId;
-                      const img = sku.image_url ?? product.image_url;
-                      // Gift cards run out. `in_stock` is absent on an older
-                      // API, so anything but an explicit `false` stays sellable
-                      // — a missing field must never empty the shelf.
-                      const soldOut = sku.in_stock === false;
-                      return (
-                        <button
-                          key={sku.id}
-                          type="button"
-                          aria-pressed={active}
-                          disabled={soldOut}
-                          onClick={() => {
-                            setSkuId(sku.id);
-                          }}
-                          className={`focus-visible:ring-primary focus-visible:ring-offset-bg relative flex flex-col items-start gap-2 rounded-lg border p-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
-                            soldOut
-                              ? "border-border bg-card cursor-not-allowed opacity-45"
-                              : active
-                                ? "border-primary bg-primary/10"
-                                : "border-border bg-card hover:border-border-2"
-                          }`}
-                        >
-                          <span className="rounded-btn relative h-12 w-12 overflow-hidden">
-                            {img && (
-                              <Image
-                                src={img}
-                                alt=""
-                                fill
-                                unoptimized={!isOptimizable(img)}
-                                sizes="48px"
-                                className="object-contain"
-                              />
-                            )}
-                          </span>
-                          {/* The price is what a buyer scans a 12-card grid for; it used to be
+                    {/* Sold-out packs go last: mixed in, a dimmed tile reads as
+                        a gap in the ladder. `sort` is stable, so the rest keep
+                        the catalogue's order. */}
+                    {[...fixedSkus]
+                      .sort((a, b) => Number(a.in_stock === false) - Number(b.in_stock === false))
+                      .map((sku) => {
+                        const active = sku.id === skuId;
+                        const img = sku.image_url ?? product.image_url;
+                        // Gift cards run out. `in_stock` is absent on an older
+                        // API, so anything but an explicit `false` stays sellable
+                        // — a missing field must never empty the shelf.
+                        const soldOut = sku.in_stock === false;
+                        return (
+                          <button
+                            key={sku.id}
+                            type="button"
+                            aria-pressed={active}
+                            disabled={soldOut}
+                            onClick={() => {
+                              setSkuId(sku.id);
+                            }}
+                            className={`focus-visible:ring-primary focus-visible:ring-offset-bg relative flex flex-col items-start gap-2 rounded-lg border p-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
+                              soldOut
+                                ? "border-border bg-card cursor-not-allowed opacity-45"
+                                : active
+                                  ? "border-primary bg-primary/10"
+                                  : "border-border bg-card hover:border-border-2"
+                            }`}
+                          >
+                            <span className="rounded-btn relative h-12 w-12 overflow-hidden">
+                              {img && (
+                                <Image
+                                  src={img}
+                                  alt=""
+                                  fill
+                                  unoptimized={!isOptimizable(img)}
+                                  sizes="48px"
+                                  className="object-contain"
+                                />
+                              )}
+                            </span>
+                            {/* The price is what a buyer scans a 12-card grid for; it used to be
                               12px muted mono under a 15px bold name. Names also
                               clamp to two lines, so "Advanced Battle Pass
                               Activation Card" no longer makes its row 370px tall
                               while "100 Bonds" makes the next one 250px, which
                               left the prices at different heights per row. */}
-                          <span
-                            title={sku.denomination ?? sku.sku_code}
-                            className="font-display line-clamp-2 min-h-[2.4em] text-[14px] font-semibold leading-tight tracking-[-0.01em]"
-                          >
-                            {sku.denomination ?? sku.sku_code}
-                          </span>
-                          <span className="text-foreground font-mono text-[13.5px] font-semibold tabular-nums">
-                            {soldOut ? t("outOfStock") : skuPrice(locale, sku)}
-                          </span>
-                          {/* Under the price, not in a corner: a two-column phone
-                              tile has no room beside the image for «До 30 уровня». */}
-                          {sku.notice?.badge && !soldOut && (
-                            <span className="bg-gold/12 text-gold rounded-full px-2 py-0.5 text-[11px] font-semibold leading-tight">
-                              {sku.notice.badge}
+                            <span
+                              title={sku.denomination ?? sku.sku_code}
+                              className="font-display line-clamp-2 min-h-[2.5em] text-[14px] font-semibold leading-tight tracking-[-0.01em]"
+                            >
+                              {displayDenomination(sku.denomination ?? sku.sku_code)}
                             </span>
-                          )}
-                        </button>
-                      );
-                    })}
+                            {/* Straight under a two-line name box, so prices line
+                              up across a row however the names wrap; Inter, not
+                              mono, and as large as the name — it is what the
+                              grid is scanned for. */}
+                            <span className="text-foreground text-[16px] font-bold tabular-nums">
+                              {soldOut ? t("outOfStock") : skuPrice(locale, sku)}
+                            </span>
+                            {/* At the tile's foot, not in a corner: a two-column
+                              phone tile has no room beside the image for «До 30
+                              уровня», and here it cannot push the price. */}
+                            {sku.notice?.badge && !soldOut && (
+                              <span className="bg-gold/12 text-gold mt-auto rounded-full px-2 py-0.5 text-[12px] font-semibold leading-tight">
+                                {sku.notice.badge}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
                   </div>
                 )}
               </div>
@@ -2037,9 +2131,7 @@ export function PurchasePanel({
             <div className="border-border/70 mt-4 flex items-center justify-between gap-3 border-b pb-4 lg:mt-3 lg:pb-3">
               {selSku ? (
                 <>
-                  <span className="min-w-0 text-[15px] font-semibold">
-                    {selSku.denomination ?? selSku.sku_code}
-                  </span>
+                  <span className="min-w-0 text-[15px] font-semibold">{selectedName}</span>
                   <span className="font-display shrink-0 whitespace-nowrap text-lg font-bold">
                     {selectedPriceLabel}
                   </span>
@@ -2053,26 +2145,6 @@ export function PurchasePanel({
                 {selSku.notice.text}
               </p>
             )}
-
-            <label className="mt-5 block lg:mt-4">
-              <span className="text-tx-mute mb-1.5 block text-[13px] font-semibold">
-                {t("emailLabel")} <span className="text-primary">*</span>
-              </span>
-              <input
-                type="email"
-                inputMode="email"
-                autoComplete="email"
-                required
-                aria-required="true"
-                value={email}
-                placeholder={t("emailPlaceholder")}
-                onChange={(e) => {
-                  setEmailTouched(true);
-                  setEmail(e.target.value);
-                }}
-                className="border-border bg-card focus:border-primary rounded-btn h-[46px] w-full border px-3.5 text-[15px] outline-none transition lg:h-[42px]"
-              />
-            </label>
 
             {fields.length > 0 && (
               <div className="mt-5 flex flex-col gap-4 lg:mt-4 lg:gap-3">
@@ -2286,6 +2358,30 @@ export function PurchasePanel({
               </div>
             </div>
 
+            {/* Last, after the things that decide the order: an address asked
+                for first was the form's main hurdle for a 50-diamond buy. It
+                starts filled in from the account or this browser's last
+                checkout. */}
+            <label className="mt-5 block lg:mt-4">
+              <span className="text-tx-mute mb-1.5 block text-[13px] font-semibold">
+                {t("emailLabel")} <span className="text-primary">*</span>
+              </span>
+              <input
+                type="email"
+                inputMode="email"
+                autoComplete="email"
+                required
+                aria-required="true"
+                value={email}
+                placeholder={t("emailPlaceholder")}
+                onChange={(e) => {
+                  setEmailTouched(true);
+                  setEmail(e.target.value);
+                }}
+                className="border-border-2 bg-card focus:border-primary rounded-btn h-[46px] w-full border px-3.5 text-[15px] outline-none transition lg:h-[42px]"
+              />
+            </label>
+
             {/* Rendered before a package is picked too, with an empty cart: a
                 buyer holding a code should not have to guess whether this
                 checkout takes one. The field says what it is waiting for. */}
@@ -2434,33 +2530,31 @@ export function PurchasePanel({
           }`}
         >
           <div className="mx-auto flex max-w-[1200px] items-center justify-between gap-4">
-            <div className="min-w-0">
-              {/* When the order can't be paid yet, this line says what is
-                  missing instead of a generic caption — the same reason the
-                  real button already shows below the form. */}
+            <div className="min-w-0 flex-1">
+              {/* The pack, not what is still missing: «Введите email» here
+                  greeted the customer before they had touched the form. The
+                  form itself says what is missing, under the pay button. */}
               <div className="text-tx-mute truncate text-[11px] font-semibold">
-                {canPay || !payHint ? t("summaryTitle") : payHint}
+                {selectedName || t("summaryTitle")}
               </div>
-              <div className="font-display truncate text-lg font-bold leading-tight">
+              {/* Never cut: «32 040 с…» on a 360px phone hid the one number
+                  this bar exists to show. */}
+              <div className="font-display whitespace-nowrap text-lg font-bold leading-tight">
                 {priceUnavailable ? "—" : selectedPriceLabel}
               </div>
             </div>
-            {/* The bar used to paint a full-lime "Оплатить" whichever state the
-                form was in, while the actual pay button below sat dimmed. The
-                loudest element on the screen promised payment and then merely
-                scrolled — read as a failed charge. It now looks like what it
-                does: pays when it can, otherwise takes you to the form. */}
+            {/* Lime in both states — it is the page's main action either way —
+                but the label says what it does: «Оплатить» pays, «Перейти к
+                оплате» only scrolls to the form. A lime «Оплатить» that merely
+                scrolled once read as a failed charge; the label is the fix,
+                not a ghost button nobody noticed. */}
             <button
               type="button"
               onClick={() => {
                 if (canPay) setConfirmOpen(true);
                 else asideRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
               }}
-              className={buttonStyles({
-                size: "lg",
-                variant: canPay ? "primary" : "ghost",
-                className: "shrink-0",
-              })}
+              className={buttonStyles({ size: "lg", className: "shrink-0 px-5" })}
             >
               {loading ? (
                 <Loader2 size={18} className="animate-spin" />

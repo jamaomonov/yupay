@@ -23,7 +23,7 @@ import {
   selectActiveMethodId,
   type ProvidersOut,
 } from "@/lib/payment-providers";
-import { formatUzs, pathFor } from "@/lib/seo";
+import { formatUzs, numberLocale, pathFor } from "@/lib/seo";
 import {
   createWalletTopUp,
   QUICK_AMOUNTS,
@@ -236,7 +236,7 @@ export default function WalletTopUpPage({ params }: { params: Promise<{ locale: 
             >
               {/* The field above establishes the currency; repeating "UZS" on
                   every chip is what pushed them onto three rows at 360px. */}
-              {v.toLocaleString(locale)}
+              {v.toLocaleString(numberLocale(locale))}
             </button>
           ))}
         </div>

@@ -9,7 +9,7 @@ import type { SkinItem } from "@/lib/skins";
 import { buttonStyles } from "@/lib/button";
 import { skinsEnabled } from "@/lib/features";
 import { isOptimizable } from "@/lib/image";
-import { intlLocale } from "@/lib/seo";
+import { numberLocale } from "@/lib/seo";
 import { pathFor } from "@/lib/seo";
 import { steamImageSize } from "@/lib/skin-float";
 import { categoryPath, weaponPath } from "@/lib/skin-landing";
@@ -121,7 +121,7 @@ export async function CS2SkinsBand({ locale }: { locale: string }) {
 
           <ul className="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-[13px] font-semibold">
             <li className="text-foreground tabular-nums">
-              {t("count", { count: new Intl.NumberFormat(intlLocale(locale)).format(rounded) })}
+              {t("count", { count: new Intl.NumberFormat(numberLocale(locale)).format(rounded) })}
             </li>
             <li className="text-tx-mute flex items-center gap-1.5">
               <Zap className="text-primary h-4 w-4" aria-hidden />

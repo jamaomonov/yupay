@@ -17,6 +17,17 @@ import { alternates, GEO_META, localeUrl, ogLocale, pathFor, ROBOTS } from "@/li
 
 export const revalidate = 300;
 
+/** What most buyers come for, first; everything else keeps the API's order. */
+const POPULAR = ["mobile-legends", "pubg-mobile", "free-fire", "steam", "roblox"];
+
+function byPopularity(brands: BrandSummary[]): BrandSummary[] {
+  const rank = (slug: string) => {
+    const i = POPULAR.indexOf(slug);
+    return i === -1 ? POPULAR.length : i;
+  };
+  return [...brands].sort((a, b) => rank(a.slug) - rank(b.slug));
+}
+
 const PAY = [
   { src: "/payment/click-dark.svg", name: "Click", w: 157, h: 40 },
   { src: "/payment/payme.png", name: "Payme", w: 454, h: 179 },
@@ -192,14 +203,22 @@ export default async function StorePage({ params }: { params: Promise<{ locale: 
           locale={locale}
           chips={chips}
           emptyLabel={t("empty")}
-          items={allBrands.map((brand) => ({
+          searchLabel={t("searchLabel")}
+          items={byPopularity(allBrands).map((brand) => ({
             key: brand.slug,
             category: brand.category_slug,
+            name: brand.name,
             // The key lives on the tile itself: `StoreFilter` renders it as the
             // direct grid child, because `BrandTile` is an `<a>` and an `<a>`
             // only gets its height once the grid blockifies it.
             node: (
-              <BrandTile key={brand.slug} brand={brand} locale={locale} className="h-[240px]" />
+              <BrandTile
+                key={brand.slug}
+                brand={brand}
+                locale={locale}
+                variant="grid"
+                className="h-[150px] sm:h-[240px]"
+              />
             ),
           }))}
         />

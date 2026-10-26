@@ -15,6 +15,8 @@ export interface StoreFilterItem {
   key: string;
   /** Which chip shows this tile. */
   category: string;
+  /** What the search box matches against. */
+  name: string;
   /**
    * The tile, already rendered on the server AND already carrying its React
    * key. It is rendered as the direct grid child — never wrapped.
@@ -61,13 +63,17 @@ export function StoreFilter({
   chips,
   items,
   emptyLabel,
+  searchLabel,
 }: {
   locale: string;
   chips: StoreChip[];
   items: StoreFilterItem[];
   emptyLabel: string;
+  /** Placeholder and accessible name of the search box. */
+  searchLabel: string;
 }) {
   const [active, setActive] = useState("all");
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
     const cat = new URLSearchParams(window.location.search).get("cat");
@@ -76,12 +82,34 @@ export function StoreFilter({
     setActive(cat && items.some((i) => i.category === cat) ? cat : "all");
   }, [items]);
 
-  const visible = active === "all" ? items : items.filter((i) => i.category === active);
+  // A search looks across every category: someone typing «pubg» while
+  // «Подарочные карты» is picked still means PUBG.
+  const needle = query.trim().toLocaleLowerCase();
+  const visible = needle
+    ? items.filter((i) => i.name.toLocaleLowerCase().includes(needle))
+    : active === "all"
+      ? items
+      : items.filter((i) => i.category === active);
 
   return (
     <>
+      {/* Pinned under the header on a phone: 55 games are a long scroll, and
+          the box is the way out of it. */}
+      <div className="bg-bg/90 sticky top-[64px] z-20 -mx-6 mt-8 px-6 py-2 backdrop-blur sm:static sm:mx-0 sm:bg-transparent sm:px-0 sm:py-0 sm:backdrop-blur-none">
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+          }}
+          placeholder={searchLabel}
+          aria-label={searchLabel}
+          className="border-border-2 bg-card focus:border-primary rounded-btn h-12 w-full border px-4 text-[16px] outline-none transition sm:max-w-[420px]"
+        />
+      </div>
+
       {chips.length > 1 && (
-        <div className="mt-10 flex flex-wrap gap-2.5">
+        <div className="mt-4 flex flex-wrap gap-2.5 sm:mt-6">
           {chips.map((f) => {
             const isActive = f.slug === active;
             const href =
@@ -107,7 +135,7 @@ export function StoreFilter({
       )}
 
       {visible.length > 0 ? (
-        <div className="mt-7 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-5 grid grid-cols-2 gap-3 sm:mt-7 sm:gap-4 lg:grid-cols-3">
           {visible.map((item) => item.node)}
         </div>
       ) : (

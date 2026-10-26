@@ -7,7 +7,7 @@ import type { FeaturedReview } from "@/lib/reviews";
 import { ReviewAvatar } from "@/components/store/ReviewAvatar";
 import { isOptimizable } from "@/lib/image";
 import { getFeaturedReviews } from "@/lib/reviews";
-import { intlLocale } from "@/lib/seo";
+import { numberLocale } from "@/lib/seo";
 
 /** Below this many there is nothing to scroll: the cards sit in a plain row. */
 const MARQUEE_MIN = 6;
@@ -139,7 +139,7 @@ export async function TrustReviews({ locale }: { locale: string }) {
   const items = data?.items ?? [];
   const stats = data?.stats ?? null;
   const rating = stats && stats.count > 0 ? stats.avg : null;
-  const fmt = new Intl.NumberFormat(intlLocale(locale), {
+  const fmt = new Intl.NumberFormat(numberLocale(locale), {
     minimumFractionDigits: 1,
     maximumFractionDigits: 2,
   });

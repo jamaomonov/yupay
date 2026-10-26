@@ -201,6 +201,7 @@
     },
     "eyebrow": "Katalog",
     "title": "Oʻzbekistonda oʻyin va obunalarni toʻldirish",
+    "searchLabel": "Oʻyin yoki xizmatni topish",
     "subtitle": "Xizmatni tanlang, ID kiriting — va hisobingizga avtomatik tushadi. Click, Payme yoki Uzum bilan toʻlang, narxlar soʻmda. Parolsiz.",
     "payWith": "Toʻlov",
     "maintenance": "Texnik ishlar",
@@ -229,6 +230,8 @@
     "selectPack": "Yuqoridan paket tanlang",
     "payHintEmail": "Chek uchun email kiriting",
     "payHintFields": "Toʻldirish maʼlumotlarini kiriting",
+    "payHintMissing": "Toʻldirish kerak: {list}",
+    "payHintEmailShort": "email",
     "payHintVerify": "ID yonidagi «Tekshirish»ni bosing",
     "emailLabel": "Email — chek va buyurtma havolasi shu yerga keladi",
     "emailPlaceholder": "you@example.com",
@@ -244,7 +247,7 @@
     "regionTitle": "Akkaunt mintaqasi",
     "regionUnchecked": "Bu mintaqa uchun ID tekshirilmaydi. Akkauntingiz «{region}» mintaqasida roʻyxatdan oʻtganiga ishonch hosil qiling.",
     "regions": {
-      "global": "Global",
+      "global": "Boshqa davlatlar",
       "ru": "Rossiya",
       "ph": "Filippin",
       "my": "Malayziya",
@@ -405,8 +408,8 @@
     "guideCtaButtonVoucher": "{name} sotib olish",
     "methodP2p": "Kartaga oʻtkazma",
     "regionsHome": {
-      "global": "Global (O'zbekiston)",
-      "cis": "O'zbekiston va MDH"
+      "global": "Oʻzbekiston",
+      "cis": "Oʻzbekiston va MDH"
     }
   },
   "gifts": {

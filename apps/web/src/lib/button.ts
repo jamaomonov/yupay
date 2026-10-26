@@ -21,8 +21,10 @@ const SIZES: Record<Size, string> = {
 };
 
 const VARIANTS: Record<Variant, string> = {
+  // Disabled is its own colour, not lime at half opacity: that read as a
+  // muddy olive — neither off nor on (design review 2026-10-26).
   primary:
-    "bg-primary text-primary-foreground font-bold shadow-[0_12px_30px_-10px_hsl(var(--primary)/0.45)] hover:-translate-y-0.5 hover:shadow-[0_16px_36px_-10px_hsl(var(--primary)/0.6)]",
+    "bg-primary text-primary-foreground font-bold shadow-[0_12px_30px_-10px_hsl(var(--primary)/0.45)] hover:-translate-y-0.5 hover:shadow-[0_16px_36px_-10px_hsl(var(--primary)/0.6)] disabled:bg-muted disabled:text-tx-dim disabled:opacity-100 disabled:shadow-none",
   ghost: "border border-border-2 text-foreground font-semibold hover:border-tx-dim hover:bg-muted",
   onLime: "bg-bg text-primary font-bold hover:-translate-y-0.5",
 };

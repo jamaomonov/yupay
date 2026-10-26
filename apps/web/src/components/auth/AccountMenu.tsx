@@ -83,12 +83,20 @@ export function AccountMenu({ locale }: Props) {
     return (
       <div className="flex items-center gap-2">
         {hasGuestOrders && (
+          // Icon-only below 420px: with the label, logo + «Мои заказы» +
+          // «Войти» + the burger did not fit a 360–390px phone and the burger
+          // slid off the screen. The name stays as the accessible label.
           <Link
             href={pathFor(locale, "/account/orders")}
-            className={buttonStyles({ variant: "ghost", size: "md" })}
+            aria-label={t("orders")}
+            className={buttonStyles({
+              variant: "ghost",
+              size: "md",
+              className: "max-[419px]:w-11 max-[419px]:px-0",
+            })}
           >
             <Package size={16} />
-            {t("orders")}
+            <span className="max-[419px]:hidden">{t("orders")}</span>
           </Link>
         )}
         {/* Ghost, as this file's own docstring has always said. In primary it

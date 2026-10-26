@@ -90,3 +90,26 @@ export function guestEmailFor(orderId: string): string | null {
   if (typeof stored === "string" && stored !== "") return stored;
   return listGuestOrders().find((o) => o.orderId === orderId)?.email ?? null;
 }
+
+const LAST_EMAIL_KEY = "yupay.checkout.email";
+
+/** Remember the address a checkout went out with, so the next one starts filled
+ *  in. This browser only; a blocked storage just means typing it again. */
+export function rememberCheckoutEmail(email: string): void {
+  if (typeof window === "undefined" || email === "") return;
+  try {
+    window.localStorage.setItem(LAST_EMAIL_KEY, email);
+  } catch {
+    /* storage blocked */
+  }
+}
+
+/** The address the last checkout in this browser used, or `""`. */
+export function lastCheckoutEmail(): string {
+  if (typeof window === "undefined") return "";
+  try {
+    return window.localStorage.getItem(LAST_EMAIL_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}

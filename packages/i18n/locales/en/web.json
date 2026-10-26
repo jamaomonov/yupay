@@ -201,6 +201,7 @@
     },
     "eyebrow": "Catalog",
     "title": "Game & subscription top-ups in Uzbekistan",
+    "searchLabel": "Find a game or service",
     "subtitle": "Pick a service, enter the ID — and get credited automatically. Pay with Click, Payme or Uzum, prices in som. No password handover.",
     "payWith": "Pay with",
     "maintenance": "Maintenance",
@@ -229,6 +230,8 @@
     "selectPack": "Pick a pack above",
     "payHintEmail": "Enter an email for the receipt",
     "payHintFields": "Fill in the top-up details",
+    "payHintMissing": "Still to fill in: {list}",
+    "payHintEmailShort": "email",
     "payHintVerify": "Press \"Check\" next to the ID",
     "emailLabel": "Email — your receipt and order link go here",
     "emailPlaceholder": "you@example.com",
@@ -244,7 +247,7 @@
     "regionTitle": "Account region",
     "regionUnchecked": "IDs for this region are not checked. Make sure your account is registered in the {region} region.",
     "regions": {
-      "global": "Global",
+      "global": "Other countries",
       "ru": "Russia",
       "ph": "Philippines",
       "my": "Malaysia",
@@ -405,7 +408,7 @@
     "guideCtaButtonVoucher": "Buy {name}",
     "methodP2p": "Card transfer",
     "regionsHome": {
-      "global": "Global (Uzbekistan)",
+      "global": "Uzbekistan",
       "cis": "Uzbekistan & CIS"
     }
   },

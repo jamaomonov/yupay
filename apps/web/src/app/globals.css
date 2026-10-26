@@ -46,8 +46,13 @@
   --card: 230 45% 8%; /* #0A0D1A */
   --card-2: 232 41% 12%; /* #11142A */
   --muted: 228 32% 12%; /* #141829 */
-  --border: 228 38% 16%; /* #1A1F38 */
-  --border-2: 232 36% 23%; /* #242952 */
+  /* Raised 2026-10-26 (design review): #1A1F38 on --card was ~1.2:1, so tiles
+     dissolved into the page, and inputs (--border-2) sat at ~1.4:1. Still
+     short of WCAG's 3:1 for non-text contrast on the plain border — a 3:1
+     line on this background reads as a grid, not a card — but inputs, on
+     --border-2, now separate clearly. */
+  --border: 228 34% 20%; /* #222845 */
+  --border-2: 232 31% 33%; /* #3A3F6E */
 
   --foreground: 0 0% 100%;
   --tx-mute: 222 33% 70%; /* #9DA8C8 — 7.4:1 on --muted, the darkest surface */

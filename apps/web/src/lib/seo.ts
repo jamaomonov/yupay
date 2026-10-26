@@ -188,8 +188,19 @@ export function intlLocale(locale: string): "ru-RU" | "uz-UZ" | "en-US" {
   return locale === "ru" ? "ru-RU" : locale === "uz" ? "uz-UZ" : "en-US";
 }
 
+/**
+ * The tag for formatting a NUMBER (not a date) in a storefront locale. Uzbek
+ * groups thousands with a space, but Chrome ships no full `uz` number data and
+ * falls back to English — «32,040 soʻm» on production (design review
+ * 2026-10-26). Russian formatting is the same convention (space groups, comma
+ * decimals) and is in every browser, so `uz` numbers borrow it.
+ */
+export function numberLocale(locale: string): "ru-RU" | "en-US" {
+  return locale === "ru" || locale === "uz" ? "ru-RU" : "en-US";
+}
+
 export function formatUzs(locale: string, amount: number): string {
-  const number = new Intl.NumberFormat(intlLocale(locale), { maximumFractionDigits: 0 }).format(
+  const number = new Intl.NumberFormat(numberLocale(locale), { maximumFractionDigits: 0 }).format(
     amount,
   );
   return `${number} ${uzsWord(locale)}`;

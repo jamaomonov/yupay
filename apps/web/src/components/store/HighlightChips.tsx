@@ -31,7 +31,9 @@ export function HighlightChips({
           className={`inline-flex items-center gap-2 whitespace-nowrap rounded-full border px-3.5 py-2 text-[13px] ${chip}`}
         >
           <span className="bg-primary size-[5px] shrink-0 rounded-full" aria-hidden="true" />
-          {h}
+          {/* Sentence case whatever the admin typed: «без пароля» on one game
+              and «Без пароля» on the next read as two different promises. */}
+          {h.charAt(0).toLocaleUpperCase() + h.slice(1)}
         </span>
       ))}
     </>

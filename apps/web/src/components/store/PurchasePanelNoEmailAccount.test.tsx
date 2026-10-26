@@ -165,6 +165,8 @@ it("refuses to pay with a half-typed address rather than letting the server 422"
   await waitFor(() => {
     expect(screen.getByRole("button", { name: /^pay ·/i })).toBeDisabled();
   });
-  // Said twice on purpose: once under the button, once at the field itself.
-  expect(screen.getAllByText("payHintEmail").length).toBeGreaterThan(0);
+  // Under the button, named among what is still missing.
+  expect(
+    screen.getByText(`payHintMissing:${JSON.stringify({ list: "payHintEmailShort" })}`),
+  ).toBeInTheDocument();
 });

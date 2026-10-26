@@ -1,3 +1,5 @@
+import { numberLocale } from "@/lib/seo";
+
 /**
  * Grouping for the money field, so a customer reads the amount instead of
  * counting zeros.
@@ -53,7 +55,7 @@ export function pastedDigits(raw: string): string {
 export function groupDigits(digits: string, locale: string): string {
   const cleaned = toDigits(digits).replace(/^0+(?=\d)/, "");
   if (cleaned === "") return "";
-  const intlLocale = locale === "ru" ? "ru-RU" : locale === "uz" ? "uz-UZ" : "en-US";
+  const intlLocale = numberLocale(locale);
   // `Number` is exact well past the 5 000 000 ceiling this field allows.
   return new Intl.NumberFormat(intlLocale, { maximumFractionDigits: 0 }).format(Number(cleaned));
 }

@@ -11,7 +11,7 @@
 
 import { apiFetch } from "@/lib/client";
 import { collectClientHints } from "@/lib/client-hints";
-import { uzsWord } from "@/lib/seo";
+import { numberLocale, uzsWord } from "@/lib/seo";
 import { type WalletBalance } from "@/lib/wallet-balance";
 
 /** The charge currency for every acquirer the storefront offers. */
@@ -219,7 +219,7 @@ export const QUICK_AMOUNTS: Record<string, number[]> = {
  * movement would have rendered as "25 UZS". Rows carry their currency; use it.
  */
 export function formatLedgerAmount(locale: string, amount: number, currency: string): string {
-  const intlLocale = locale === "ru" ? "ru-RU" : locale === "uz" ? "uz-UZ" : "en-US";
+  const intlLocale = numberLocale(locale);
   const maximumFractionDigits = currency === "UZS" ? 0 : 2;
   if (currency === "UZS") {
     // Same fix as `formatUzs`: `Intl`'s `style:"currency"` prints the bare

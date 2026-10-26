@@ -761,7 +761,7 @@ it("renders a checkable field's where-to-find images too, capped list included",
 
   renderPanel(<PurchasePanel products={[product]} locale="ru" />);
 
-  fireEvent.click(screen.getByRole("button", { name: "whereToFind" }));
+  fireEvent.click(screen.getByRole("button", { name: "whereToFindGeneric" }));
 
   const images = await screen.findAllByRole("img");
   // Rendering all six (the cap is the backend's business, not this

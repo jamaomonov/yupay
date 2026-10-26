@@ -60,8 +60,10 @@ export function RegionPurchase({ regions, locale, children }: RegionPurchaseProp
     window.history.replaceState(window.history.state, "", url);
   }
 
-  // The game's main region reads where our customers are
-  // ("Глобальный (Узбекистан)"), where a home label exists.
+  // The game's main region is named after where our customers are —
+  // «Узбекистан», «Узбекистан и СНГ» — and a plain global server is «Другие
+  // страны»: «Глобальный (Узбекистан)» beside «Глобальный» on Free Fire left a
+  // buyer two plausible chips for one account (design review 2026-10-26).
   function regionName(c: string): string {
     const home = `regionsHome.${c}`;
     if (c === first?.code && t.has(home)) return t(home);
@@ -87,7 +89,7 @@ export function RegionPurchase({ regions, locale, children }: RegionPurchaseProp
                 onClick={() => {
                   pick(r.code);
                 }}
-                className={`focus-visible:ring-primary focus-visible:ring-offset-bg rounded-full border px-4 py-2 text-[13px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
+                className={`focus-visible:ring-primary focus-visible:ring-offset-bg min-h-[44px] rounded-full border px-4 py-2 text-[13px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
                   active
                     ? "border-primary bg-primary/10 text-foreground"
                     : "border-border bg-card text-tx-mute hover:border-border-2"

@@ -1,3 +1,4 @@
+import { formatMoney } from "@yupay/utils";
 import { AlertTriangle, ChevronRight, Clock, ShieldCheck } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
@@ -5,8 +6,6 @@ import { notFound, permanentRedirect } from "next/navigation";
 import { hasLocale } from "next-intl";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { Suspense } from "react";
-
-import { formatMoney } from "@yupay/utils";
 
 import type { Metadata } from "next";
 
@@ -24,6 +23,8 @@ import { Stars } from "@/components/store/Stars";
 import { WriteReviewPanel } from "@/components/store/WriteReviewPanel";
 import { routing } from "@/i18n/routing";
 import { brandPath, CS2_SKINS_BRAND } from "@/lib/brand-href";
+import { isVoucherBrand } from "@/lib/brand-kind";
+import { brandPageDescription, brandPageTitle, brandReviewsLd, priceFaqRow } from "@/lib/brand-seo";
 import {
   type BrandDetail,
   getBrandDetail,
@@ -31,8 +32,6 @@ import {
   getProductDetail,
   type ProductDetail,
 } from "@/lib/catalog";
-import { isVoucherBrand } from "@/lib/brand-kind";
-import { brandPageDescription, brandPageTitle, brandReviewsLd, priceFaqRow } from "@/lib/brand-seo";
 import { isOptimizable } from "@/lib/image";
 import { getBrandReviews, type ReviewPage } from "@/lib/reviews";
 import {
@@ -399,7 +398,7 @@ export default async function BrandPage({
   );
 
   return (
-    <main className="relative min-h-screen pb-28 pt-[120px]">
+    <main className="relative min-h-screen pb-28 pt-[92px] sm:pt-[110px]">
       {/* A Product with neither an offer nor a rating is invalid for Google (Search
           Console reports it as an error): skip it while no price can be shown. */}
       {(offers || reviews.stats.count > 0) && <JsonLd data={productLd} />}
@@ -410,7 +409,7 @@ export default async function BrandPage({
       <div className="mx-auto max-w-[1100px] px-6 sm:px-10">
         <nav
           aria-label={tn("breadcrumbLabel")}
-          className="text-tx-dim mb-6 flex flex-wrap items-center gap-x-1.5 font-mono text-[11px]"
+          className="text-tx-dim mb-2 flex flex-wrap items-center gap-x-1.5 font-mono text-[11px] sm:mb-4"
         >
           <Link
             href={pathFor(locale)}
@@ -443,7 +442,11 @@ export default async function BrandPage({
             by construction rather than by tuning a gradient. */}
         <div className="border-border bg-card relative overflow-hidden rounded-xl border">
           {heroImg ? (
-            <div className="relative aspect-[16/9] w-full overflow-hidden sm:aspect-[2.6/1]">
+            // A fixed band, not the image's ratio: at 16:9 / 2.6:1 the art
+            // filled the first screen and the packs started below the fold
+            // (design review 2026-10-26). 132px on a phone, 220px on desktop
+            // — key art is centred, so a crop keeps its subject.
+            <div className="relative h-[132px] w-full overflow-hidden sm:h-[190px] lg:h-[220px]">
               <Image
                 src={heroImg}
                 alt={brand.name}
@@ -488,10 +491,10 @@ export default async function BrandPage({
           )}
           {/* Pulled up so the logo breaks the band's edge — without it the
               picture and the copy read as two unrelated blocks stacked. */}
-          <div className="relative z-10 -mt-7 flex flex-col gap-4 p-6 pt-0 sm:-mt-9 sm:p-8 sm:pt-0">
-            <div className="flex items-center gap-4">
+          <div className="relative z-10 -mt-7 flex flex-col gap-3 p-4 pt-0 sm:-mt-9 sm:gap-4 sm:p-6 sm:pt-0">
+            <div className="flex items-center gap-3 sm:gap-4">
               {brand.logo_url && (
-                <span className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-black/40 shadow-[0_12px_32px_rgba(0,0,0,0.55)] backdrop-blur">
+                <span className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-black/40 shadow-[0_12px_32px_rgba(0,0,0,0.55)] backdrop-blur sm:h-16 sm:w-16">
                   <Image
                     src={brand.logo_url}
                     alt=""
@@ -503,21 +506,26 @@ export default async function BrandPage({
                 </span>
               )}
               {/* Name next to the logo — big and white (the H1). */}
-              <h1 className="font-display text-[clamp(1.9rem,3.2vw,2.75rem)] font-bold leading-none tracking-[-0.025em] text-white">
+              <h1 className="font-display text-[clamp(1.6rem,3.2vw,2.5rem)] font-bold leading-none tracking-[-0.025em] text-white">
                 {brand.name}
               </h1>
             </div>
             {/* Short description — normal sentence case, muted, tight measure. */}
+            {/* Not on a phone: two clamped lines cut mid-phrase with no way
+                to open them, and the full text is in «Об услуге» below. */}
             {brand.short_description && (
-              <p className="line-clamp-2 max-w-[58ch] text-pretty text-[15px] leading-[1.55] text-white/75 sm:line-clamp-none">
+              <p className="hidden max-w-[70ch] text-pretty text-[14.5px] leading-[1.5] text-white/75 sm:line-clamp-2">
                 {brand.short_description}
               </p>
             )}
-            <div className="flex flex-wrap items-center gap-2">
+            {/* One scrolling row on a phone instead of three wrapped ones. */}
+            <div className="-mx-4 flex items-center gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0 [&::-webkit-scrollbar]:hidden [&>*]:shrink-0">
               {startingChip && (
                 <span className="border-border-2 inline-flex items-baseline gap-2 rounded-full border bg-black/50 px-3.5 py-2 backdrop-blur">
                   <span className="text-tx-mute text-[12px]">{t("from")}</span>
-                  <span className="font-mono text-[14px] font-bold text-white">{startingChip}</span>
+                  <span className="text-[14px] font-bold tabular-nums text-white">
+                    {startingChip}
+                  </span>
                 </span>
               )}
               {/* Real rating at the decision point — renders only when there
@@ -549,7 +557,7 @@ export default async function BrandPage({
         {/* Pick sits right under the hero; the how-to / about / FAQ sections are
             passed into the left column so the sticky order sidebar scrolls with
             them — one aligned 2-column grid (see PurchasePanel). */}
-        <div className="mt-8">
+        <div className="mt-5 sm:mt-6">
           {regionOptions.length > 0 ? (
             <RegionPurchase regions={regionOptions} locale={locale}>
               {sections}
