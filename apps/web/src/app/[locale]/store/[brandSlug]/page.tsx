@@ -441,15 +441,15 @@ export default async function BrandPage({
             of game key art is centred. Nothing overlaps the copy at any width,
             by construction rather than by tuning a gradient. */}
         <div
-          className={`border-border bg-card relative overflow-hidden rounded-xl border ${heroImg ? "lg:grid lg:grid-cols-[minmax(0,1fr)_400px] lg:items-center" : ""}`}
+          className={`border-border bg-card relative overflow-hidden rounded-xl border ${heroImg ? "lg:flex lg:min-h-[330px] lg:items-end" : ""}`}
         >
           {heroImg ? (
             // Short, so the packs make the first screen (design review
             // 2026-10-26). On a phone a band cropped from the top, where key
-            // art keeps its faces. On desktop a band that wide cut every head
-            // off (a 4.7:1 slice of a 16:9 frame), so there the art moves to
-            // the right column whole, at its own 16:9, beside the copy.
-            <div className="relative h-[150px] w-full overflow-hidden sm:h-[200px] lg:order-2 lg:m-4 lg:ml-0 lg:aspect-video lg:h-auto lg:w-auto lg:rounded-lg">
+            // art keeps its faces. On desktop the art fills the whole card
+            // (330px tall, so heads stay in) and the copy sits over its left
+            // side on a dark fade — the owner's pick of four mock-ups.
+            <div className="relative h-[150px] w-full overflow-hidden sm:h-[200px] lg:absolute lg:inset-0 lg:h-full">
               <Image
                 src={heroImg}
                 alt={brand.name}
@@ -462,15 +462,23 @@ export default async function BrandPage({
                 // flight — which is exactly what Lighthouse reports here.
                 fetchPriority="high"
                 unoptimized={!isOptimizable(heroImg)}
-                sizes="(max-width: 1024px) 100vw, 400px"
+                sizes="(max-width: 1024px) 100vw, 1100px"
                 className="object-cover"
                 // Toward the top: key art puts faces in its upper third, and a
-                // centred crop of 16:9 into a band cuts them. Whole on desktop.
+                // centred crop of 16:9 into a band cuts them.
                 style={{ objectPosition: "50% 22%" }}
               />
-              {/* Only a bottom fade now. The copy is below the image, so this
-                  is here to land the band on the card rather than to rescue
-                  text from the artwork. */}
+              {/* Desktop: a fade from the left (and the bottom) the copy
+                  reads on. Phone: only a bottom fade landing the band on the
+                  card, since the copy sits below it there. */}
+              <div
+                aria-hidden
+                className="absolute inset-0 hidden lg:block"
+                style={{
+                  background:
+                    "linear-gradient(90deg, hsl(var(--card)) 0%, hsl(var(--card)/0.85) 30%, hsl(var(--card)/0.2) 62%, transparent 80%), linear-gradient(0deg, hsl(var(--card)/0.9) 0%, transparent 45%)",
+                }}
+              />
               <div
                 aria-hidden
                 className="absolute inset-0 lg:hidden"
@@ -495,7 +503,7 @@ export default async function BrandPage({
           {/* Pulled up so the logo breaks the band's edge — without it the
               picture and the copy read as two unrelated blocks stacked. */}
           <div
-            className={`relative z-10 -mt-7 flex flex-col gap-3 p-4 pt-0 sm:-mt-9 sm:gap-4 sm:p-6 sm:pt-0 ${heroImg ? "lg:order-1 lg:mt-0 lg:p-8" : ""}`}
+            className={`relative z-10 -mt-7 flex flex-col gap-3 p-4 pt-0 sm:-mt-9 sm:gap-4 sm:p-6 sm:pt-0 ${heroImg ? "lg:mt-0 lg:max-w-[62%] lg:p-8" : ""}`}
           >
             <div className="flex items-center gap-3 sm:gap-4">
               {brand.logo_url && (

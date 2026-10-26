@@ -3,9 +3,11 @@
 The game page (`/store/{brand}`): pick a pack, fill the order panel, pay. Layout
 rules as of 2026-10-26 (design review of the live pages):
 
-- **The packs are on the first screen.** The hero band is 132px on a phone and
-  220px on desktop; the short description shows from `sm` only (the full text
-  is in «Об услуге»), and the chips scroll in one row on a phone.
+- **The packs are on the first screen.** On a phone the hero is a 150px band
+  cropped from the top; on desktop the art fills the 330px hero card behind the
+  copy, on a dark fade from the left. The short description shows from `sm`
+  only (the full text is in «Об услуге»), and the chips scroll in one row on a
+  phone.
 - **The order panel asks for the account first, the address last:** player id
   → server → «Проверить» → payment method → email → promo → «Оплатить».
 - **Email starts filled in** — from the account, else from the last checkout in
