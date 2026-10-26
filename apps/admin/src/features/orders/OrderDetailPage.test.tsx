@@ -526,12 +526,14 @@ const PAID_PAYMENT = {
   intent_url: null,
   created_at: "2026-10-04T20:07:00Z",
   updated_at: "2026-10-04T20:07:00Z",
+  extra_metadata: {},
+  attempts: [],
 };
 
-function mockWithPayment(order: OrderAdminOut): void {
+function mockWithPayment(order: OrderAdminOut, payment: object = PAID_PAYMENT): void {
   mockedApiGet.mockImplementation((path: string) => {
     if (path.includes("/fulfillment/tasks")) return Promise.resolve({ items: [], total: 0 });
-    if (path.includes("/payments")) return Promise.resolve({ items: [PAID_PAYMENT], total: 1 });
+    if (path.includes("/payments")) return Promise.resolve({ items: [payment], total: 1 });
     if (path.includes("/deliveries")) return Promise.resolve({ items: [], total: 0 });
     return Promise.resolve(order);
   });
@@ -561,4 +563,44 @@ it("offers no balance refund on a guest order — there is no balance", async ()
 
   expect(await screen.findByRole("button", { name: "Возврат" })).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: /Возврат на баланс/ })).not.toBeInTheDocument();
+});
+
+it("lets Uzum refund a delivered order to the card, with a reason", async () => {
+  mockWithPayment(makeOrder({ status: "delivered", events: [] }));
+  vi.spyOn(window, "prompt").mockReturnValue("код не активируется");
+  renderPage();
+
+  fireEvent.click(await screen.findByRole("button", { name: /Разрешить возврат через Uzum/ }));
+
+  await waitFor(() => {
+    expect(mockedApiPost).toHaveBeenCalledWith(
+      `/api/v1/admin/payments/${PAID_PAYMENT.id}/allow-provider-cancel`,
+      { reason: "код не активируется" },
+      expect.objectContaining({ "Idempotency-Key": expect.stringMatching(/^admin-allow-cancel-/) }),
+    );
+  });
+});
+
+it("books a refund made in Click's cabinet with its number", async () => {
+  mockWithPayment(makeOrder({ status: "delivered", events: [] }), {
+    ...PAID_PAYMENT,
+    provider: "click",
+  });
+  vi.spyOn(window, "prompt").mockReturnValueOnce("R-77").mockReturnValueOnce("валюта не пришла");
+  renderPage();
+
+  expect(screen.queryByRole("button", { name: /Разрешить возврат/ })).not.toBeInTheDocument();
+  fireEvent.click(
+    await screen.findByRole("button", { name: /Отметить возврат, сделанный в Click/ }),
+  );
+
+  await waitFor(() => {
+    expect(mockedApiPost).toHaveBeenCalledWith(
+      `/api/v1/admin/payments/${PAID_PAYMENT.id}/record-cabinet-refund`,
+      { reason: "валюта не пришла", provider_reference: "R-77" },
+      expect.objectContaining({
+        "Idempotency-Key": expect.stringMatching(/^admin-cabinet-refund-/),
+      }),
+    );
+  });
 });

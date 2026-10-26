@@ -38,6 +38,7 @@ from yupay.modules.payments.schemas import (
     AdminProviderListOut,
     AdminProviderSummary,
     AllowCancelIn,
+    CabinetRefundIn,
     PaymentAdminListOut,
     PaymentAdminOut,
     PaymentIntentIn,
@@ -450,6 +451,34 @@ async def admin_allow_provider_cancel(
     _require_idempotency_key(idempotency_key)
     await provider_cancel.allow_cancel(
         db, payment_id=payment_id, admin_id=admin.id, reason=body.reason.strip()
+    )
+    return PaymentAdminOut.model_validate(await svc.get_payment(db, payment_id))
+
+
+@admin_router.post(
+    "/{payment_id}/record-cabinet-refund",
+    response_model=PaymentAdminOut,
+    summary="Book a refund already made in Click's cabinet",
+)
+async def admin_record_cabinet_refund(
+    payment_id: str,
+    body: CabinetRefundIn,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    admin: Annotated[User, Depends(require_admin)],
+    idempotency_key: Annotated[str | None, Header(alias=IDEMPOTENCY_HEADER)] = None,
+) -> PaymentAdminOut:
+    """Walk a Click payment to ``refunded`` after a refund in Click's cabinet.
+
+    Idempotent by state: a refunded payment is refused, never booked twice.
+    Moves no money — see ``payments.provider_cancel.record_cabinet_refund``.
+    """
+    _require_idempotency_key(idempotency_key)
+    await provider_cancel.record_cabinet_refund(
+        db,
+        payment_id=payment_id,
+        admin_id=admin.id,
+        reason=body.reason.strip(),
+        provider_reference=body.provider_reference.strip(),
     )
     return PaymentAdminOut.model_validate(await svc.get_payment(db, payment_id))
 

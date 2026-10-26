@@ -157,11 +157,21 @@ late-payment path) until an operator releases it — `credit_held_wallet_topup`,
 fulfilment «release» route. A refund of such a top-up skips the balance reversal
 (`wallet.topup_was_credited`). Runbook: `docs/runbooks/order-held-for-review.md`.
 
-## Provider cancel after delivery (2026-10-26)
+## Refunding a delivered order to the card (2026-10-26)
 
-`provider_cancel.py`: Paynet's `CancelTransaction` answers `306` once the goods shipped. An
-operator can lift that for one payment — `POST /admin/payments/{id}/allow-provider-cancel`
-with a reason (the order page's «Разрешить возврат через Paynet») stamps
-`extra_metadata.cancel_allowed` and an `admin.provider_cancel_allowed` order event. The cancel
-from Paynet's cabinet then runs `reverse_provider_payment` as usual. Paynet only; no money moves
-until the provider calls. Runbook: `docs/runbooks/paynet-troubleshooting.md`.
+`provider_cancel.py`, two admin routes, both on the order page's payments card:
+
+- **Paynet, Payme, Uzum** refund from their own cabinet, and their cancel is refused once the
+  goods shipped (`306` / `-31007` / `10017`). When the goods did not really arrive (a dead
+  code, currency never credited) an operator lifts that for one payment —
+  `POST /admin/payments/{id}/allow-provider-cancel` with a reason («Разрешить возврат через
+  …») stamps `extra_metadata.cancel_allowed` and an `admin.provider_cancel_allowed` order
+  event. The next cancel from that provider runs `reverse_provider_payment` as usual. No money
+  moves until the provider calls.
+- **Click** sends nothing when a refund is made in its cabinet, so the order stayed paid and
+  the ledger kept the money. `POST /admin/payments/{id}/record-cabinet-refund` (reason + the
+  refund's number in Click; «Отметить возврат, сделанный в Click») books it through the same
+  reversal and records `last_refund.refunded_to = "card"`. Refused while a supplier or a CS2
+  trade is still working on the order.
+
+Runbook: `docs/runbooks/refund-delivered-order.md`.

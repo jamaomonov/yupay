@@ -1216,7 +1216,7 @@ async def settle_admin(
     return payment
 
 
-async def _refuse_while_a_supplier_works(db: AsyncSession, order_id: str) -> None:
+async def refuse_while_a_supplier_works(db: AsyncSession, order_id: str) -> None:
     """Refuse a refund while a supplier is still filling the order.
 
     The refund would cancel the task on our side only; the supplier delivers
@@ -1316,7 +1316,7 @@ async def refund_admin(
             "wait until it is received or fails",
             reason="skin_trade_in_flight",
         )
-    await _refuse_while_a_supplier_works(db, payment.order_id)
+    await refuse_while_a_supplier_works(db, payment.order_id)
     refund_amount = amount if amount is not None else payment.amount
     if refund_amount <= 0:
         raise ValidationError("refund amount must be positive")
@@ -1507,7 +1507,7 @@ async def refund_admin_to_wallet(
             "wait until it is received or fails",
             reason="skin_trade_in_flight",
         )
-    await _refuse_while_a_supplier_works(db, payment.order_id)
+    await refuse_while_a_supplier_works(db, payment.order_id)
     order = (await db.execute(select(Order).where(Order.id == payment.order_id))).scalar_one()
     if order.user_id is None:
         raise ConflictError("a guest order has no balance to refund to", reason="guest_order")

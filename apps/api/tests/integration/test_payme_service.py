@@ -937,3 +937,45 @@ async def test_the_site_can_start_payme_again_after_a_cancelled_attempt(
         assert second.intent_url
     finally:
         cfg.get_settings.cache_clear()
+
+
+async def test_cancel_state_2_delivered_goes_through_once_an_operator_allowed_it(
+    db_session: AsyncSession,
+) -> None:
+    """A dead code: the order page lifted the refusal (payments.provider_cancel)."""
+    user_id = await _make_user(db_session)
+    order_id = await _make_order(db_session, user_id=user_id, status="delivered")
+    payment_id = str(uuid.uuid4())
+    db_session.add(
+        Payment(
+            id=payment_id,
+            order_id=order_id,
+            provider="payme",
+            status="succeeded",
+            amount=Decimal("130000.00"),
+            currency="UZS",
+            extra_metadata={"cancel_allowed": {"by": "admin:x", "reason": "код не работает"}},
+        )
+    )
+    await db_session.flush()
+    db_session.add(
+        PaymeTransaction(
+            id=str(uuid.uuid4()),
+            payme_id="pt-cancel-allowed",
+            order_id=order_id,
+            payment_id=payment_id,
+            amount_tiyin=EXPECTED_TIYIN,
+            state=2,
+            create_time=1_700_000_000_000,
+            perform_time=1_700_000_100_000,
+        )
+    )
+    await db_session.flush()
+
+    result = await payme_svc.cancel_transaction(db_session, payme_id="pt-cancel-allowed", reason=5)
+
+    assert result["state"] == -2
+    payment = (
+        await db_session.execute(select(Payment).where(Payment.id == payment_id))
+    ).scalar_one()
+    assert payment.status == "refunded"

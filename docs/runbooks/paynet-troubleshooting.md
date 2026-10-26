@@ -111,7 +111,8 @@ letting a counterparty rewrite our credential store buys nothing.
   order in admin → payments → «Разрешить возврат через Paynet», give the reason,
   then cancel the transaction in Paynet's cabinet: it now refunds and walks the
   order to `refunded`. Nothing moves until Paynet sends the cancel. A payment
-  already refunded to the YuPay balance stays `306` regardless.
+  already refunded to the YuPay balance stays `306` regardless. Same for Payme
+  and Uzum: `docs/runbooks/refund-delivered-order.md`.
 - **The deep link is `https://app.paynet.uz/?m=54389&i={account}`**
   (Paynet, 2026-10-26; the code default). `m` is our merchant id in their app,
   `i` the order id, no amount in the link. Until then the default was a guessed

@@ -42,6 +42,7 @@ from yupay.modules.payme.errors import (
     transaction_not_found,
 )
 from yupay.modules.payme.models import PaymeTransaction
+from yupay.modules.payments import provider_cancel
 from yupay.modules.payments import service as pay_svc
 from yupay.modules.payments.external_ids import unclaimed_external_id
 from yupay.modules.payments.models import Payment
@@ -443,10 +444,13 @@ async def cancel_transaction(db: AsyncSession, *, payme_id: str, reason: int) ->
         # settled manually (Payme cabinet + admin), never auto-full-refunded.
         # Refunded to the YuPay balance already (a CS2 skin, plan 3a): the money
         # never left us, so a card refund on top would pay the customer twice.
-        if (
-            order.status in _DELIVERED_STATUSES
-            or pay_svc.refunded_to_wallet(payment)
-            or await _any_goods_delivered(db, txn.order_id)
+        # An operator may lift the delivered refusal for one payment (a dead
+        # code, currency that never arrived): ``payments.provider_cancel``.
+        delivered = order.status in _DELIVERED_STATUSES or await _any_goods_delivered(
+            db, txn.order_id
+        )
+        if pay_svc.refunded_to_wallet(payment) or (
+            delivered and not provider_cancel.cancel_allowed(payment)
         ):
             raise cannot_cancel_delivered()
         txn.state = _STATE_CANCELLED_PERFORMED

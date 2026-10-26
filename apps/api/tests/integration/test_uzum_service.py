@@ -1060,3 +1060,45 @@ async def test_build_checkout_url_with_return(monkeypatch: pytest.MonkeyPatch) -
         }
     )
     assert url == expected
+
+
+async def test_reverse_when_delivered_goes_through_once_an_operator_allowed_it(
+    db_session: AsyncSession,
+) -> None:
+    """A dead code: the order page lifted the refusal (payments.provider_cancel)."""
+    user_id = await _make_user(db_session)
+    order_id = await _make_order(db_session, user_id=user_id, status="delivered")
+    payment_id = str(uuid.uuid4())
+    db_session.add(
+        Payment(
+            id=payment_id,
+            order_id=order_id,
+            provider="uzum",
+            status="succeeded",
+            amount=Decimal("130000.00"),
+            currency="UZS",
+            extra_metadata={"cancel_allowed": {"by": "admin:x", "reason": "валюта не пришла"}},
+        )
+    )
+    await db_session.flush()
+    db_session.add(
+        UzumTransaction(
+            id=new_id(),
+            trans_id="uz-rev-allowed",
+            order_id=order_id,
+            payment_id=payment_id,
+            amount_tiyin=EXPECTED_TIYIN,
+            status="CONFIRMED",
+            create_time=1_700_000_000_000,
+            confirm_time=1_700_000_100_000,
+        )
+    )
+    await db_session.flush()
+
+    result = await uzum_svc.reverse(db_session, trans_id="uz-rev-allowed")
+
+    assert result["status"] == "REVERSED"
+    payment = (
+        await db_session.execute(select(Payment).where(Payment.id == payment_id))
+    ).scalar_one()
+    assert payment.status == "refunded"

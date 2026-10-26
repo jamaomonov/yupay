@@ -5130,6 +5130,30 @@
         "title": "CabinetRecipientFieldOut",
         "type": "object"
       },
+      "CabinetRefundIn": {
+        "additionalProperties": false,
+        "description": "Body of admin's ``POST /admin/payments/{id}/record-cabinet-refund``.",
+        "properties": {
+          "provider_reference": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Provider Reference",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 500,
+            "minLength": 3,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason",
+          "provider_reference"
+        ],
+        "title": "CabinetRefundIn",
+        "type": "object"
+      },
       "CabinetRegisterIn": {
         "additionalProperties": false,
         "properties": {
@@ -33842,6 +33866,91 @@
           }
         },
         "summary": "Let the provider cancel a delivered payment (Paynet cabinet refund)",
+        "tags": [
+          "admin:payments"
+        ]
+      }
+    },
+    "/api/v1/admin/payments/{payment_id}/record-cabinet-refund": {
+      "post": {
+        "description": "Walk a Click payment to ``refunded`` after a refund in Click's cabinet.\n\nIdempotent by state: a refunded payment is refused, never booked twice.\nMoves no money \u2014 see ``payments.provider_cancel.record_cabinet_refund``.",
+        "operationId": "admin_record_cabinet_refund_api_v1_admin_payments__payment_id__record_cabinet_refund_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "payment_id",
+            "required": true,
+            "schema": {
+              "title": "Payment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CabinetRefundIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentAdminOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Book a refund already made in Click's cabinet",
         "tags": [
           "admin:payments"
         ]

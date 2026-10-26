@@ -143,6 +143,16 @@ class AllowCancelIn(BaseModel):
     reason: str = Field(min_length=3, max_length=500)
 
 
+class CabinetRefundIn(BaseModel):
+    """Body of admin's ``POST /admin/payments/{id}/record-cabinet-refund``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(min_length=3, max_length=500)
+    #: The refund's id in the provider's cabinet — the evidence it happened.
+    provider_reference: str = Field(min_length=1, max_length=128)
+
+
 class SettleIn(BaseModel):
     """Body of admin's ``POST /admin/payments/{id}/settle``.
 

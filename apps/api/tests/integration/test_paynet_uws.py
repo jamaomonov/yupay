@@ -535,7 +535,7 @@ async def test_an_operator_can_allow_cancelling_a_delivered_order(
     assert (payment.status, order.status) == ("refunded", "refunded")
 
 
-async def test_only_a_succeeded_paynet_payment_can_be_unlocked(
+async def test_a_click_payment_cannot_be_unlocked(
     integration_client: AsyncClient, db_session: AsyncSession, admin_headers: dict[str, str]
 ) -> None:
     order_id = await _seed_order(db_session)
@@ -543,7 +543,7 @@ async def test_only_a_succeeded_paynet_payment_can_be_unlocked(
     payment = (
         await db_session.execute(select(Payment).where(Payment.order_id == order_id))
     ).scalar_one()
-    payment.provider = "payme"
+    payment.provider = "click"
     await db_session.commit()
 
     response = await integration_client.post(

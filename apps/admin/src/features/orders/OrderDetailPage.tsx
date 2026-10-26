@@ -246,7 +246,31 @@ export function OrderDetailPage() {
         { "Idempotency-Key": key },
       ),
     onSuccess: () => {
-      toast.success("Разрешено. Оформите отмену в кабинете Paynet");
+      toast.success("Разрешено. Оформите отмену в кабинете провайдера");
+      void qc.invalidateQueries({ queryKey: ["admin", "payments"] });
+      void qc.invalidateQueries({ queryKey: qk.order(orderId) });
+    },
+    onError: (err) => {
+      toast.error(extractApiMessage(err));
+    },
+  });
+
+  // Click refunds only in its own cabinet and sends us nothing; this books
+  // that refund so the order and the ledger stop saying the money is ours.
+  const recordCabinetRefund = useMutation<
+    PaymentAdminOut,
+    ApiError,
+    { id: string; reason: string; reference: string; key: string }
+  >({
+    mutationFn: ({ id, reason, reference, key }) =>
+      apiPost<PaymentAdminOut>(
+        `/api/v1/admin/payments/${id}/record-cabinet-refund`,
+        { reason, provider_reference: reference },
+        { "Idempotency-Key": key },
+      ),
+    onSuccess: () => {
+      toast.success("Возврат записан, заказ закрыт как возвращённый");
+      void qc.invalidateQueries({ queryKey: ["admin", "orders"] });
       void qc.invalidateQueries({ queryKey: ["admin", "payments"] });
       void qc.invalidateQueries({ queryKey: qk.order(orderId) });
     },
@@ -490,10 +514,25 @@ export function OrderDetailPage() {
                 key: `admin-refund-wallet-${crypto.randomUUID()}`,
               });
             }}
-            allowingCancel={allowProviderCancel.isPending}
+            allowingCancel={allowProviderCancel.isPending || recordCabinetRefund.isPending}
+            onRecordCabinetRefund={(p) => {
+              const reference = window.prompt(
+                `Вы уже вернули ${formatMoney(p.amount, p.currency)} в кабинете Click? Номер возврата в Click:`,
+                "",
+              );
+              if (reference === null || reference.trim() === "") return;
+              const reason = window.prompt("Почему вернули деньги?", "");
+              if (reason === null || reason.trim() === "") return;
+              recordCabinetRefund.mutate({
+                id: p.id,
+                reason: reason.trim(),
+                reference: reference.trim(),
+                key: `admin-cabinet-refund-${crypto.randomUUID()}`,
+              });
+            }}
             onAllowProviderCancel={(p) => {
               const reason = window.prompt(
-                `Разрешить Paynet вернуть ${formatMoney(p.amount, p.currency)} на карту, хотя товар выдан. Почему товар не дошёл?`,
+                `Разрешить ${CANCEL_FROM_CABINET[p.provider] ?? p.provider} вернуть ${formatMoney(p.amount, p.currency)} на карту, хотя товар выдан. Почему товар не дошёл?`,
                 "",
               );
               if (reason === null || reason.trim() === "") return;
@@ -974,6 +1013,15 @@ function CardLoadError({ onRetry, what }: { onRetry?: (() => void) | undefined; 
   );
 }
 
+/** Providers whose cabinet cancel reaches us and is refused once goods shipped. */
+const CANCEL_FROM_CABINET: Record<string, string> = {
+  paynet: "Paynet",
+  payme: "Payme",
+  uzum: "Uzum",
+};
+/** Providers that refund only in their cabinet and never tell us. */
+const REFUND_IN_CABINET_ONLY = new Set(["click", "click_miniapp"]);
+
 function PaymentsCard({
   payments,
   orderId,
@@ -984,6 +1032,7 @@ function PaymentsCard({
   onSettle,
   settling,
   onAllowProviderCancel,
+  onRecordCabinetRefund,
   allowingCancel,
   failed,
   onRetryLoad,
@@ -997,8 +1046,10 @@ function PaymentsCard({
   onRefundToWallet: (payment: PaymentAdminOut) => void;
   onSettle: (payment: PaymentAdminOut) => void;
   settling: boolean;
-  /** Lift Paynet's «товар уже выдан» refusal for this payment. */
+  /** Lift the provider's «товар уже выдан» refusal for this payment. */
   onAllowProviderCancel: (payment: PaymentAdminOut) => void;
+  /** Book a refund already made in Click's cabinet. */
+  onRecordCabinetRefund: (payment: PaymentAdminOut) => void;
   allowingCancel: boolean;
   /** The payments query failed — "no payments" would be a lie mid-support-call. */
   failed?: boolean | undefined;
@@ -1074,13 +1125,14 @@ function PaymentsCard({
                     )}
                   </div>
                 )}
-                {/* Paynet refunds only from its own cabinet, and refuses once the
-                    goods shipped unless we allowed it here. */}
-                {p.provider === "paynet" &&
+                {/* Paynet, Payme and Uzum refund from their own cabinet and refuse
+                    once the goods shipped, unless we allowed it here. */}
+                {CANCEL_FROM_CABINET[p.provider] !== undefined &&
                   p.status === "succeeded" &&
                   (p.extra_metadata.cancel_allowed ? (
                     <p className="mt-2 text-xs text-[var(--text-secondary)]">
-                      Возврат через Paynet разрешён — оформите отмену в кабинете Paynet.
+                      Возврат разрешён — оформите отмену в кабинете{" "}
+                      {CANCEL_FROM_CABINET[p.provider]}.
                     </p>
                   ) : (
                     <Button
@@ -1094,9 +1146,25 @@ function PaymentsCard({
                       className="mt-2"
                     >
                       <Undo2 className="size-3.5" />
-                      Разрешить возврат через Paynet
+                      Разрешить возврат через {CANCEL_FROM_CABINET[p.provider]}
                     </Button>
                   ))}
+                {/* Click never tells us about a refund made in its cabinet. */}
+                {REFUND_IN_CABINET_ONLY.has(p.provider) && p.status === "succeeded" && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      onRecordCabinetRefund(p);
+                    }}
+                    disabled={allowingCancel}
+                    className="mt-2"
+                  >
+                    <Undo2 className="size-3.5" />
+                    Отметить возврат, сделанный в Click
+                  </Button>
+                )}
                 {/* The acquirer charged but never called back — the order would
                     otherwise sit unpaid until it expires. */}
                 {(p.status === "pending" || p.status === "requires_action") && (
