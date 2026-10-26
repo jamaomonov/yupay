@@ -73,7 +73,10 @@ export function CustomerPage() {
   // operator drills into wallet detail.
   const walletLedger = useQuery<AdminUserLedgerOut, ApiError>({
     queryKey: [...qk.walletUser(userId), "rail"],
-    queryFn: () => apiGet<AdminUserLedgerOut>(`/api/v1/admin/wallet/${userId}?limit=5`),
+    queryFn: () =>
+      apiGet<AdminUserLedgerOut>(
+        `/api/v1/admin/wallet/${userId}?limit=${String(WALLET_RAIL_LIMIT)}`,
+      ),
     enabled: Boolean(userId),
   });
 
@@ -628,6 +631,10 @@ function OpenTasks({
   );
 }
 
+/** Rows the wallet rail shows. At 5, a sixth movement pushed the first top-up off the
+ *  page while the count beside the title still read «5», as if that were all of it. */
+const WALLET_RAIL_LIMIT = 20;
+
 function WalletHistory({
   ledger,
   loading,
@@ -650,9 +657,10 @@ function WalletHistory({
 
   const rows = ledger?.recent_transactions ?? [];
   const count = rows.length;
+  const truncated = count >= WALLET_RAIL_LIMIT;
 
   return (
-    <Section title="История кошелька" count={count}>
+    <Section title={truncated ? "История кошелька — последние" : "История кошелька"} count={count}>
       {loading ? (
         <ul className="space-y-1.5" aria-busy="true">
           {[0, 1, 2].map((i) => (
@@ -676,7 +684,7 @@ function WalletHistory({
               to={`/wallet?user_id=${userId}`}
               className="text-xs text-[var(--accent)] hover:underline"
             >
-              Полная история →
+              {truncated ? "Показаны не все — полная история →" : "Полная история →"}
             </Link>
           </div>
         </>
