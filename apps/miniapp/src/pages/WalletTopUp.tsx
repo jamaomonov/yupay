@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 
 import { useToast } from "@/hooks/use-toast";
+import { cleanAmount, groupAmount } from "@/lib/amount-input";
 import { ApiError } from "@/lib/api";
 import { useMe } from "@/lib/auth";
 import { useT } from "@/lib/i18n";
@@ -166,13 +167,12 @@ export default function WalletTopUp() {
             <div className="mt-2 flex items-baseline gap-2">
               <input
                 inputMode="decimal"
-                value={amount}
+                // Shown grouped («50 000»), kept bare («50000»): only digits and
+                // one decimal separator reach the state, so a stray "abc" can
+                // never wedge the page (it used to disable every chip).
+                value={groupAmount(amount)}
                 onChange={(e) => {
-                  // Keep only digits + a single decimal separator so the
-                  // controlled value never wedges the page (a stray "abc"
-                  // used to make every chip disabled).
-                  const v = e.target.value.replace(/[^\d.,]/g, "").replace(",", ".");
-                  setAmount(v);
+                  setAmount(cleanAmount(e.target.value));
                 }}
                 placeholder="0"
                 className="w-full bg-transparent text-4xl font-bold tabular-nums text-white outline-none"
