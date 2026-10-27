@@ -95,6 +95,13 @@ class Brand(Base):
     # "maintenance" badge and blocks purchases. ``active=False`` hides it entirely;
     # ``maintenance`` is the softer "temporarily unavailable" state.
     maintenance: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    # While ``maintenance`` is on, the page points buyers at this brand instead
+    # (same goods, another way to buy them — Standoff 2 promo codes → Gold by id).
+    maintenance_redirect_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("brands.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     # ``active`` is the master switch: off, the brand is gone from both
     # channels. Under it sit two channel gates. ``visible_retail`` is the
     # storefront's (catalogue, brand page, search, Merchant Center feed, retail

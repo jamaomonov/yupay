@@ -1,12 +1,12 @@
 -- scripts/seed/2026-10-27_standoff2_by_id_seo.sql
 --
--- Copy for /store/standoff-2 once it sells Gold by player id instead of promo
--- codes. Run AFTER scripts/seed/2026-10-27_standoff2_by_id_import.py.
--- Replaces what standoff2_seo.sql and 2026-10-12_standoff_roblox_seo.sql wrote
--- for this brand (Roblox's FAQ from the latter is untouched).
+-- Copy for /store/standoff-2-id: Standoff 2 Gold by player id. Run AFTER
+-- 2026-10-27_standoff2_split.sql, which creates the brand.
 --
--- The promo-code page avoided «пополнение по ID» on purpose, so the two would
--- not compete; the promo product is now off, so this page takes that phrasing.
+-- The promo-code page (/store/standoff-2, standoff2_seo.sql) keeps «промокод»,
+-- «код на голду»; this one takes «пополнение по ID» — the split its header
+-- planned for. (First applied to `standoff-2` itself the same morning, before
+-- the two were split.)
 -- Still absent on purpose: any promise that the game endorses the purchase —
 -- Standoff 2's own support says buying currency outside the game is against its
 -- Code of Conduct.
@@ -77,12 +77,12 @@ Uzcard yoki Humo kartasi bilan Click, Payme yoki Uzum orqali soʻmda toʻlov. Ya
    'Standoff 2 ni ID orqali toʻldirish — Gold soʻmda, Oʻzbekiston',
    'Standoff 2 Gold oʻyinchi ID orqali: 100 dan 3000 Gold gacha. Click, Payme yoki Uzum orqali soʻmda toʻlov, parolsiz.')
 ) AS v(locale, highlights, short_description, description, instructions, seo_title, seo_description)
-WHERE b.slug = 'standoff-2' AND bt.brand_id = b.id AND bt.locale = v.locale;
+WHERE b.slug = 'standoff-2-id' AND bt.brand_id = b.id AND bt.locale = v.locale;
 
-DELETE FROM brand_faqs WHERE brand_id = (SELECT id FROM brands WHERE slug = 'standoff-2');
+DELETE FROM brand_faqs WHERE brand_id = (SELECT id FROM brands WHERE slug = 'standoff-2-id');
 
 WITH so2 AS (
-    SELECT id FROM brands WHERE slug = 'standoff-2'
+    SELECT id FROM brands WHERE slug = 'standoff-2-id'
 ),
 new_faqs AS (
     INSERT INTO brand_faqs (id, brand_id, sort_order, active)

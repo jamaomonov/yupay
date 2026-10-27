@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import lazyload, selectinload
 
+from yupay.modules.catalog import maintenance_redirect
 from yupay.modules.catalog.models import Brand, BrandFaq, Category, Product, Sku
 from yupay.modules.catalog.schemas import (
     HELP_IMAGES_READ_CONTEXT,
@@ -497,6 +498,7 @@ async def get_brand_by_slug(
         region_code=brand.region_code or GLOBAL_REGION,
         region_of=region_of,
         regions=regions,
+        maintenance_redirect=await maintenance_redirect.resolve(db, brand, locale=locale),
     )
 
 

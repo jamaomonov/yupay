@@ -164,6 +164,15 @@ export interface BrandDetail extends BrandSummary {
   /** Every sellable region of the game, main brand first, in switcher order;
    *  empty when the game is sold in one region only. */
   regions?: BrandRegion[];
+  /** While the brand is in maintenance: where the same goods are on sale.
+   *  Optional — absent from an API that predates it; read through `?? null`. */
+  maintenance_redirect?: BrandRedirect | null;
+}
+
+export interface BrandRedirect {
+  slug: string;
+  name: string;
+  short_description?: string | null;
 }
 
 export interface BrandRegion {

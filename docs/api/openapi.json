@@ -3064,6 +3064,16 @@
             "title": "Maintenance",
             "type": "boolean"
           },
+          "maintenance_redirect": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BrandRedirectOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -3286,6 +3296,36 @@
           "count"
         ],
         "title": "BrandRatingOut",
+        "type": "object"
+      },
+      "BrandRedirectOut": {
+        "description": "Where a brand in maintenance sends its buyers (``brands.maintenance_redirect_id``).",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "short_description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Short Description"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "name"
+        ],
+        "title": "BrandRedirectOut",
         "type": "object"
       },
       "BrandRefOut": {

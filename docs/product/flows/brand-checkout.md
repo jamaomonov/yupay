@@ -19,6 +19,10 @@ rules as of 2026-10-26 (design review of the live pages):
   («Осталось заполнить: ID игрока, email»), not only the first gap.
 - **On desktop the panel sticks so its bottom stays on screen** when it is taller
   than the window (`lib/useStickyFit.ts`); otherwise it sticks under the header.
+- **A brand in maintenance** keeps its packs and copy but takes no orders; when
+  it names a `maintenance_redirect`, an amber card above the packs says the
+  purchase is unavailable and links to the brand that sells the same goods
+  (Standoff 2 promo codes → «Standoff 2 по ID»).
 - **The phone's bottom bar** shows the pack and the total, never cut, and a lime
   button that says what it does: «Оплатить» or «Перейти к оплате».
 

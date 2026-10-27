@@ -14,6 +14,7 @@ import { JsonLd } from "@/components/JsonLd";
 import { SteamSkinsPromo } from "@/components/skins/SteamSkinsPromo";
 import { AboutText } from "@/components/store/AboutText";
 import { HighlightChips } from "@/components/store/HighlightChips";
+import { MaintenanceRedirect } from "@/components/store/MaintenanceRedirect";
 import { PurchasePanel } from "@/components/store/PurchasePanel";
 import { RatingChip } from "@/components/store/RatingChip";
 import { RatingSummary } from "@/components/store/RatingSummary";
@@ -571,6 +572,9 @@ export default async function BrandPage({
             passed into the left column so the sticky order sidebar scrolls with
             them — one aligned 2-column grid (see PurchasePanel). */}
         <div className="mt-5 sm:mt-6">
+          {brand.maintenance && brand.maintenance_redirect && (
+            <MaintenanceRedirect target={brand.maintenance_redirect} locale={locale} />
+          )}
           {regionOptions.length > 0 ? (
             <RegionPurchase regions={regionOptions} locale={locale}>
               {sections}

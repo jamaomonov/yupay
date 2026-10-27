@@ -455,6 +455,14 @@ class BrandRegionOut(BaseModel):
     slug: str
 
 
+class BrandRedirectOut(BaseModel):
+    """Where a brand in maintenance sends its buyers (``brands.maintenance_redirect_id``)."""
+
+    slug: str
+    name: str
+    short_description: str | None = None
+
+
 class BrandDetailOut(BaseModel):
     """Full brand page payload: brand metadata + all its active products."""
 
@@ -486,6 +494,9 @@ class BrandDetailOut(BaseModel):
     #: Every region of this game the storefront sells, main brand first; empty
     #: for a game sold in one region only.
     regions: list[BrandRegionOut] = Field(default_factory=list)
+    #: Only while ``maintenance`` is on: the brand selling the same goods another
+    #: way, for a "buy it here instead" link. ``None`` -> no link.
+    maintenance_redirect: BrandRedirectOut | None = None
 
 
 class CategoryListOut(BaseModel):

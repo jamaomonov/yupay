@@ -1,4 +1,4 @@
-"""Standoff 2 Gold by player id, filled by hand; the promo code goes off.
+"""Standoff 2 Gold by player id, filled by hand.
 
 Run inside the api container (it needs the ``yupay`` package, the DB and FX):
 
@@ -11,12 +11,13 @@ and on prod:
 
 Then apply the copy: ``scripts/seed/2026-10-27_standoff2_by_id_seo.sql``.
 
-**Same brand, new product.** ``/store/standoff-2`` keeps its URL and its search
-history; what it sells changes. The promo-code product (``standoff-2-gold``,
-G-Engine vouchers) is switched off, not deleted — its orders keep their lines —
-and ``standoff-2-gold-id`` takes its place: the buyer types a player id, the
-order lands in the manual queue, an operator credits the Gold in the official
-store (store.standoff2.com) and closes the task.
+**Its own brand, ``standoff-2-id``** (``/store/standoff-2-id``). The first run
+on 2026-10-27 put this product on ``standoff-2`` and switched the promo-code
+product off; the same day ``2026-10-27_standoff2_split.sql`` gave it a brand of
+its own and put promo codes back on ``standoff-2``. On a fresh database run that
+SQL first — it creates the brand this script expects. The buyer types a player
+id, the order lands in the manual queue, an operator credits the Gold in the
+official store (store.standoff2.com) and closes the task.
 
 **The cost is the store's rouble price** (owner, 2026-10-27), kept on each SKU's
 ``manual`` mapping (``extra.cost`` / ``extra.cost_currency``). The hourly price
@@ -27,7 +28,7 @@ script runs the same refresh once, so the shelf is right from the first render.
 **Player id:** digits, four or more, no upper cap (owner, 2026-10-27). No live
 check — there is no API to ask; the owner may hand one over later.
 
-The brand moves from ``gift-cards`` to the top-ups category (Free Fire's) and leaves the reseller
+The brand sits in the top-ups category (Free Fire's) and out of the reseller
 catalogue (``visible_b2b``): a hand-filled order is not what the API promises.
 
 Idempotent: the product and SKUs are reused when present, mappings upserted.
@@ -39,7 +40,7 @@ import asyncio
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
-from sqlalchemy import select, update
+from sqlalchemy import select
 from yupay.core.db import get_session_factory
 from yupay.modules.catalog import admin_schemas as cat_schemas
 from yupay.modules.catalog import admin_service as catalog
@@ -50,8 +51,7 @@ from yupay.modules.integrations.models import SkuSupplierMapping
 from yupay.modules.integrations.service import MappingUpsert, upsert_mapping
 
 ADMIN_ID = "00000000-0000-7000-8000-000000000001"
-BRAND_SLUG = "standoff-2"
-OLD_PRODUCT_SLUG = "standoff-2-gold"
+BRAND_SLUG = "standoff-2-id"
 PRODUCT_SLUG = "standoff-2-gold-id"
 #: The top-ups category, found through a game that lives in it: its slug is
 #: ``top-ups`` on prod and ``games`` in older dev databases.
@@ -186,10 +186,6 @@ async def main() -> None:
                 f"  {pack[0]}: {pack[2]} RUB → cost {sku.cost_usdt} price {sku.price_usd} "
                 f"({outcome.reason or outcome.source})"
             )
-        off = await session.execute(
-            update(Product).where(Product.slug == OLD_PRODUCT_SLUG).values(active=False)
-        )
-        print(f"promo product {OLD_PRODUCT_SLUG}: switched off ({off.rowcount})")
         await session.commit()
         print("committed")
 
