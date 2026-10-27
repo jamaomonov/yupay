@@ -37,6 +37,7 @@ const PAY_MARKS = [
   { src: "/payment/payme-mark.png", name: "Payme" },
   { src: "/payment/click-mark.png", name: "Click" },
   { src: "/payment/uzum-mark.png", name: "Uzum" },
+  { src: "/payment/paynet-mark.png", name: "Paynet" },
 ] as const;
 
 export const STAR_IMAGE = "/brands/telegram-star.png";

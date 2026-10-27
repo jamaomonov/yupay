@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   checkBlocks,
   isEmail,
+  opensInAppBrowser,
   orderBody,
   orderFingerprint,
   returnUrl,
@@ -60,5 +61,16 @@ describe("checkout", () => {
     expect(stageTone(stageOf("failed"))).toBe("danger");
     expect(stageTone(stageOf("refunded"))).toBe("mute");
     expect(stageTone(stageOf("cancelled"))).toBe("mute");
+  });
+});
+
+describe("opensInAppBrowser", () => {
+  it("opens a web checkout in the in-app browser", () => {
+    expect(opensInAppBrowser("https://checkout.paycom.uz/abc")).toBe(true);
+  });
+
+  it("hands Paynet's app link and a custom scheme to the OS", () => {
+    expect(opensInAppBrowser("https://app.paynet.uz/?m=54389&i=01a1")).toBe(false);
+    expect(opensInAppBrowser("uzumbank://pay?x=1")).toBe(false);
   });
 });

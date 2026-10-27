@@ -74,6 +74,7 @@
   "payment.click.sub": "Карта · Humo · Uzcard",
   "payment.payme.sub": "Карта · Humo · Uzcard",
   "payment.uzum.sub": "Humo · Uzcard",
+  "payment.paynet.sub": "Humo · Uzcard",
   "payment.usdt.sub": "TRC-20 / ERC-20",
   "payment.maintenance": "Технические работы",
   "payment.maintenanceShort": "Тех. работы",

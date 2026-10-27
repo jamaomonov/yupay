@@ -100,6 +100,14 @@ const METHODS: Method[] = [
     h: 160,
   },
   { id: "uzum", name: "Uzum", provider: "uzum", icon: "/payment/uzum-mark.png", w: 160, h: 160 },
+  {
+    id: "paynet",
+    name: "Paynet",
+    provider: "paynet",
+    icon: "/payment/paynet-mark.png",
+    w: 160,
+    h: 160,
+  },
 ];
 
 /**
@@ -978,7 +986,7 @@ export function GiftPurchasePanel({
             </>
           )}
           {anyMethodVisible ? (
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-4 gap-2">
               {METHODS.map((m) => {
                 const visibility = methodVisibility(m.provider, providerStatus);
                 if (visibility === "hidden") return null;

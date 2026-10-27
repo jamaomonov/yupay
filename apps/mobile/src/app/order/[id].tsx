@@ -23,7 +23,14 @@ import { TopBar } from "@/components/TopBar";
 import { Button, Card, Notice, Skeleton, T } from "@/components/ui";
 import { useBrands } from "@/lib/api";
 import { itemLabel, orderImage } from "@/lib/catalog";
-import { PAY_METHODS, stageOf, stageTone, type OrderStage, type PayMethod } from "@/lib/checkout";
+import {
+  opensInAppBrowser,
+  PAY_METHODS,
+  stageOf,
+  stageTone,
+  type OrderStage,
+  type PayMethod,
+} from "@/lib/checkout";
 import { formatSum } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 import { createIntent, useOrder } from "@/lib/orders";
@@ -79,7 +86,7 @@ export default function OrderScreen() {
     setPaying(true);
     try {
       const intent = await createIntent({ orderId: id, provider, locale });
-      if (intent.intent_url?.startsWith("http"))
+      if (intent.intent_url && opensInAppBrowser(intent.intent_url))
         await WebBrowser.openBrowserAsync(intent.intent_url);
       else if (intent.intent_url) await Linking.openURL(intent.intent_url);
       await refetch();

@@ -39,6 +39,7 @@ const METHODS = [
   { id: "click", provider: "click", name: "Click", icon: "/payment/click-mark.png" },
   { id: "payme", provider: "payme", name: "Payme", icon: "/payment/payme-mark.png" },
   { id: "uzum", provider: "uzum", name: "Uzum", icon: "/payment/uzum-mark.png" },
+  { id: "paynet", provider: "paynet", name: "Paynet", icon: "/payment/paynet-mark.png" },
   // A transfer to the owner's Humo card, matched by exact amount (ADR-0097).
   // No hosted page: the order view shows the card, the amount and a clock.
   { id: "p2p", provider: "p2p", nameKey: "methodP2p", icon: "/payment/humo-mark.png" },

@@ -19,11 +19,12 @@ import { canPayFromBalance, spendableBalance, walletTile } from "@/lib/wallet-ba
 
 export const WALLET_METHOD_ID = "wallet";
 
-/** The same three UZ rails, in the same order, as the gift and top-up panels. */
+/** The same four UZ rails, in the same order, as the gift and top-up panels. */
 const METHODS = [
   { id: "payme", name: "Payme", icon: "/payment/payme-mark.png" },
   { id: "click", name: "Click", icon: "/payment/click-mark.png" },
   { id: "uzum", name: "Uzum", icon: "/payment/uzum-mark.png" },
+  { id: "paynet", name: "Paynet", icon: "/payment/paynet-mark.png" },
 ] as const;
 
 /**
@@ -154,7 +155,7 @@ export function SkinPaymentPicker({
           <ArrowUpRight size={14} />
         </Link>
       )}
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-4 gap-2">
         {METHODS.map((m) => {
           const visibility = methodVisibility(m.id, status);
           if (visibility === "hidden") return null;

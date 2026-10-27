@@ -32,6 +32,7 @@ const PAY = [
   { src: "/payment/click-dark.svg", name: "Click", w: 157, h: 40 },
   { src: "/payment/payme.png", name: "Payme", w: 454, h: 179 },
   { src: "/payment/uzum.png", name: "Uzum", w: 506, h: 148 },
+  { src: "/payment/paynet.svg", name: "Paynet", w: 182, h: 42 },
 ];
 
 export async function generateMetadata({

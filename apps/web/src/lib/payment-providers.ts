@@ -103,7 +103,7 @@ export function paymentProviderDisplay(provider: string | null): ProviderDisplay
     case "octo":
       return { name: "Octo" };
     case "paynet":
-      return { name: "Paynet" };
+      return { name: "Paynet", logo: "/payment/paynet-mark.png", logoWidth: 160, logoHeight: 160 };
     case "wallet":
       return { nameKey: "paidWithWallet" };
     case null:

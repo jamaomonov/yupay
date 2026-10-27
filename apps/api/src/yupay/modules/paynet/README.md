@@ -17,6 +17,14 @@ See [ADR-0078](../../../../../../docs/decisions/0078-paynet-acquirer.md) for why
 it is shaped this way, and `docs/runbooks/paynet-troubleshooting.md` for
 operating it.
 
+**Where buyers pick it** (since 2026-10-27): the web storefront's game, Steam
+gift, CS2 skin and wallet top-up panels, the mini app (`PAYMENT_METHODS`, so
+checkout and wallet top-ups alike) and the mobile app (`PAY_METHODS`). The
+mobile app hands `app.paynet.uz` to the OS rather than its in-app browser
+(`opensInAppBrowser`): an in-app browser never passes a universal link to the
+app it belongs to. Switched off for everyone at once from the admin's payment
+providers screen (`payment_provider_states`, slug `paynet`).
+
 ## Endpoint + auth
 
 ```

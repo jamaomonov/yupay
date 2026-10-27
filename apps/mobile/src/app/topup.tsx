@@ -12,7 +12,7 @@ import { Field } from "@/components/Field";
 import { TopBar } from "@/components/TopBar";
 import { Button, Chip, T } from "@/components/ui";
 import { createTopUp } from "@/lib/account";
-import { PAY_METHODS, type PayMethod } from "@/lib/checkout";
+import { opensInAppBrowser, PAY_METHODS, type PayMethod } from "@/lib/checkout";
 import { formatSum } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 import { newKey, useProviders } from "@/lib/orders";
@@ -72,7 +72,7 @@ export default function TopUpScreen() {
         idempotencyKey: keyRef.current.key,
       });
       if (payment.intent_url !== null) {
-        if (payment.intent_url.startsWith("http"))
+        if (opensInAppBrowser(payment.intent_url))
           await WebBrowser.openBrowserAsync(payment.intent_url);
         else await Linking.openURL(payment.intent_url);
       }

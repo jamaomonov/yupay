@@ -12,7 +12,13 @@ import { MethodPicker, MethodRow } from "@/components/checkout/MethodPicker";
 import { TopBar } from "@/components/TopBar";
 import { Button, Card, T } from "@/components/ui";
 import { spendable, useWallet } from "@/lib/account";
-import { orderFingerprint, PAY_METHODS, type OrderLine, type PayMethod } from "@/lib/checkout";
+import {
+  opensInAppBrowser,
+  orderFingerprint,
+  PAY_METHODS,
+  type OrderLine,
+  type PayMethod,
+} from "@/lib/checkout";
 import { formatSum } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 import { createIntent, createOrder, newKey, useProviders } from "@/lib/orders";
@@ -50,10 +56,10 @@ function parseFields(raw: string | undefined): Record<string, string> {
 
 /**
  * Opens the acquirer's page and waits for the buyer to come back. A web page opens in the
- * in-app browser and resolves when it closes; an app link (Uzum) leaves the app.
+ * in-app browser and resolves when it closes; an app link (Uzum, Paynet) leaves the app.
  */
 async function openPayment(url: string): Promise<void> {
-  if (url.startsWith("http")) await WebBrowser.openBrowserAsync(url);
+  if (opensInAppBrowser(url)) await WebBrowser.openBrowserAsync(url);
   else await Linking.openURL(url);
 }
 

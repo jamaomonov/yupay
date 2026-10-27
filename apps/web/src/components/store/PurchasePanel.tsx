@@ -122,6 +122,14 @@ const METHODS: Method[] = [
     h: 160,
   },
   { id: "uzum", name: "Uzum", provider: "uzum", icon: "/payment/uzum-mark.png", w: 160, h: 160 },
+  {
+    id: "paynet",
+    name: "Paynet",
+    provider: "paynet",
+    icon: "/payment/paynet-mark.png",
+    w: 160,
+    h: 160,
+  },
   // A transfer to the owner's card, matched by exact amount (ADR-0097). No
   // acquirer: the order page shows the card and the amount with a clock.
   {
@@ -2376,7 +2384,7 @@ export function PurchasePanel({
                         markPicked();
                         setMethodId(m.id);
                       }}
-                      className={`focus-visible:ring-primary focus-visible:ring-offset-bg rounded-btn relative flex flex-col items-center justify-center gap-1 overflow-hidden border px-3 py-3 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed lg:py-2 ${
+                      className={`focus-visible:ring-primary focus-visible:ring-offset-bg rounded-btn relative flex flex-col items-center justify-center gap-1 overflow-hidden border px-0.5 py-3 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed sm:px-3 lg:py-2 ${
                         disabled
                           ? "border-border bg-card"
                           : active
@@ -2412,7 +2420,7 @@ export function PurchasePanel({
                         />
                       </span>
                       <span
-                        className={`text-center text-[12px] font-semibold leading-tight ${
+                        className={`text-center text-[10.5px] font-semibold leading-tight sm:text-[12px] ${
                           disabled ? "text-tx-dim" : "text-foreground"
                         }`}
                       >

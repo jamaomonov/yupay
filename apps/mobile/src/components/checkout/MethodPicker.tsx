@@ -10,6 +10,7 @@ const MARKS: Record<PayMethod, { name: string; mark: number }> = {
   payme: { name: "Payme", mark: require("../../../assets/images/payment/payme-mark.png") },
   click: { name: "Click", mark: require("../../../assets/images/payment/click-mark.png") },
   uzum: { name: "Uzum", mark: require("../../../assets/images/payment/uzum-mark.png") },
+  paynet: { name: "Paynet", mark: require("../../../assets/images/payment/paynet-mark.png") },
 };
 
 interface MethodRowProps {

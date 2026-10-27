@@ -16,6 +16,7 @@ import type { MessageKey } from "@/lib/i18n";
 import clickIcon from "@/assets/payments/click.png";
 import humoIcon from "@/assets/payments/humo.png";
 import paymeIcon from "@/assets/payments/payme.png";
+import paynetIcon from "@/assets/payments/paynet.png";
 import usdtIcon from "@/assets/payments/usdt.png";
 import uzumIcon from "@/assets/payments/uzum.png";
 
@@ -62,6 +63,14 @@ export const PAYMENT_METHODS: PaymentMethod[] = [
     provider: "uzum",
     currency: "UZS",
     icon: uzumIcon,
+  },
+  {
+    id: "paynet",
+    name: "Paynet",
+    subKey: "payment.paynet.sub",
+    provider: "paynet",
+    currency: "UZS",
+    icon: paynetIcon,
   },
   {
     // A transfer to the owner's Humo card, matched by exact amount (ADR-0097).

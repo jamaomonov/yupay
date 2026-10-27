@@ -14,8 +14,26 @@ export function isEmail(value: string): boolean {
 }
 
 /** The acquirers the app offers, in the web storefront's order (Payme converts best). */
-export const PAY_METHODS = ["payme", "click", "uzum"] as const;
+export const PAY_METHODS = ["payme", "click", "uzum", "paynet"] as const;
 export type PayMethod = (typeof PAY_METHODS)[number];
+
+/** Hosts whose https link is the acquirer's app link (iOS universal link / Android App Link). */
+const APP_LINK_HOSTS = new Set(["app.paynet.uz"]);
+
+/**
+ * Whether an acquirer's URL opens in the in-app browser. A web checkout (Payme, Click) does,
+ * and the app resumes when it closes. A custom-scheme link (Uzum) or an https app link
+ * (Paynet's `app.paynet.uz`) goes to the OS instead: the in-app browser never hands a
+ * universal link to the app it belongs to, so the buyer would be stuck on a web page.
+ */
+export function opensInAppBrowser(url: string): boolean {
+  if (!url.startsWith("http")) return false;
+  try {
+    return !APP_LINK_HOSTS.has(new URL(url).hostname);
+  } catch {
+    return true;
+  }
+}
 
 /**
  * A SKU bought as one tile. A typed amount (Steam) or a typed quantity (Telegram Stars) has
