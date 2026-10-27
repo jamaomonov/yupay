@@ -21,6 +21,7 @@ import { type AppliedPromo, PromoField } from "@/components/PromoField";
 import { ReviewsSheet } from "@/components/ReviewsSheet";
 import { SafeImage } from "@/components/ui/safe-image";
 import { Skeleton } from "@/components/ui/skeleton";
+import { VariantChips } from "@/components/VariantChips";
 import { WalletPayOption } from "@/components/WalletPayOption";
 import { useToast } from "@/hooks/use-toast";
 import { ApiError } from "@/lib/api";
@@ -28,6 +29,7 @@ import { useMe } from "@/lib/auth";
 import { BOT_LINK } from "@/lib/bot-link";
 import { getBrandShape, rememberBrandShape } from "@/lib/brand-shape";
 import {
+  brandToGame,
   useBrandSummary,
   useGames,
   useProductWithSkus,
@@ -51,6 +53,7 @@ import {
   currentFieldCheck,
   type PlayerCheckVerdict,
 } from "@/lib/player-check-state";
+import { usePreferBalance } from "@/lib/prefer-balance";
 import { getRecentFulfillment, rememberFulfillment } from "@/lib/recent-checkout";
 import {
   isUncheckedAccount,
@@ -74,7 +77,6 @@ import {
 } from "@/lib/variable-amount";
 import { formatBalance, groupBalancesByCurrency, useWallet } from "@/lib/wallet";
 import { ensureBotCanWrite } from "@/lib/write-access";
-import { usePreferBalance } from "@/lib/prefer-balance";
 
 // ─── Adapter: API Package → local Package ─────────────────────────────────────
 // Keeps badge/bonus optional for future enrichment.
@@ -238,7 +240,20 @@ export default function TopUp() {
   // for a one-region game.
   const brandSlug = regionBrandSlug(regions, region, gameId ?? "");
 
-  const game = gamesQuery.data?.find((g) => g.id === baseId);
+  // A game's other ways to buy it (migration 0108) are their own brands and
+  // screens, and only the main one is in the games list — the promo-code
+  // brand is reached from the «По ID / Промокод» chips, so it is built from
+  // its own summary.
+  const variants = routeSummary.data?.variants ?? [];
+  const game =
+    gamesQuery.data?.find((g) => g.id === baseId) ??
+    (routeSummary.data && variants.length > 1
+      ? brandToGame(routeSummary.data, getActiveLocale())
+      : undefined);
+  const pickVariant = (slug: string) => {
+    haptic("select");
+    setLocation(`/topup/${slug}`);
+  };
   // Same query as `routeSummary` until a region is picked (equal keys).
   const brandQuery = useBrandSummary(routeSlug ? brandSlug : undefined);
   const products = brandQuery.data?.products ?? [];
@@ -528,6 +543,16 @@ export default function TopUp() {
   // link (recent-orders strip, deep link) can still land here, so block the
   // purchase flow with a friendly notice instead of rendering the buy UI.
   if (game.maintenance || brandQuery.data?.maintenance) {
+    const redirect = brandQuery.data?.maintenance_redirect ?? null;
+    // Both Standoff 2 brands are called «Standoff 2»: name the target by how it
+    // is bought when it is one of this game's variants.
+    const redirectCode = variants.find((v) => v.slug === redirect?.slug)?.code;
+    const redirectLabel =
+      redirectCode === "id"
+        ? t("topup.variant.id")
+        : redirectCode === "promo"
+          ? t("topup.variant.promo")
+          : undefined;
     return (
       <div className="flex flex-col items-center gap-4 p-6 pt-24 text-center">
         <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/5">
@@ -535,16 +560,30 @@ export default function TopUp() {
         </div>
         <h2 className="text-xl font-bold text-white">{t("topup.maintenance")}</h2>
         <p className="max-w-xs text-sm text-white/55">
-          {t("topup.maintenanceBody", { game: game.name })}
+          {redirect
+            ? t("topup.maintenanceRedirectBody")
+            : t("topup.maintenanceBody", { game: game.name })}
         </p>
-        <button
-          onClick={() => {
-            setLocation("/");
-          }}
-          className="bg-primary mt-2 rounded-2xl px-6 py-3 font-bold text-black"
-        >
-          {t("common.toHome")}
-        </button>
+        {/* The same goods on sale another way (0107): point there instead of home. */}
+        {redirect ? (
+          <button
+            onClick={() => {
+              pickVariant(redirect.slug);
+            }}
+            className="bg-primary mt-2 rounded-2xl px-6 py-3 font-bold text-black"
+          >
+            {t("topup.maintenanceRedirectGo", { name: redirectLabel ?? redirect.name })}
+          </button>
+        ) : (
+          <button
+            onClick={() => {
+              setLocation("/");
+            }}
+            className="bg-primary mt-2 rounded-2xl px-6 py-3 font-bold text-black"
+          >
+            {t("common.toHome")}
+          </button>
+        )}
       </div>
     );
   }
@@ -1145,6 +1184,9 @@ export default function TopUp() {
         {/* ── Form ── */}
         {stage === "select" && (
           <div className="space-y-7 px-4 pt-5">
+            {variants.length > 1 && (
+              <VariantChips variants={variants} current={brandSlug} onPick={pickVariant} />
+            )}
             {/* Region picker — only for a game sold in more than one region
                 (ADR-0099). Same chip styling as the product picker below,
                 minus the image slot: there's nothing to show but the region

@@ -165,7 +165,7 @@ function bucketCategory(slug: string): Category {
   return "services";
 }
 
-function brandToGame(b: BrandApi, locale = "ru"): Game {
+export function brandToGame(b: BrandApi, locale = "ru"): Game {
   return {
     id: b.slug,
     name: b.name,
@@ -330,6 +330,16 @@ export interface BrandSummary {
   region_code?: string;
   region_of?: string | null;
   regions?: BrandRegion[];
+  // One game sold two ways, each its own brand (migration 0108): Standoff 2 by
+  // player id and as promo codes. Optional for the same stale-API reason.
+  variants?: BrandVariant[];
+  /** While in maintenance: the brand selling the same goods (0107). */
+  maintenance_redirect?: { slug: string; name: string; short_description?: string | null } | null;
+}
+
+export interface BrandVariant {
+  code: string;
+  slug: string;
 }
 
 /** Brand metadata + the list of products (no SKUs). Cheap, cached separately
