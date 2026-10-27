@@ -78,6 +78,13 @@ health probes, and supplier-cost refresh. Supplier adapter code itself lives in
   top-up endpoint would 404 on a perfectly real category id; G-Engine reads
   the cache for both of its catalogues, since the sync already holds every
   number it would otherwise re-fetch per mapping).
+
+- Price a hand-filled SKU in the currency the operator pays (`manual_cost.py`,
+  2026-10-27): a `manual` mapping carries `extra = {"cost": "119",
+"cost_currency": "RUB"}` and the same refresh converts it to `cost_usdt` at
+  `FxService.get_rate("USD", <cur>)`, so the margin follows the rate. The
+  mapping only stores the price — the order still goes to the manual queue.
+  First user: Standoff 2 Gold by ID (`scripts/seed/2026-10-27_standoff2_by_id_import.py`).
   So for G-Engine and for NOVA gift cards, **«Синхронизировать каталог» is
   the button that moves the price** — a stale cache is a stale cost. That
   coupling is deliberate (ADR-0090); the alternative was ~120 redundant

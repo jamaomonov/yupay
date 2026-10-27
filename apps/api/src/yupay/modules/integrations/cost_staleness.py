@@ -92,7 +92,18 @@ async def find_stale(db: AsyncSession, *, max_age: timedelta, top: int = _TOP) -
     # Pinned somewhere no price feed exists: the warehouse, the manual queue
     # (either as ``mode="manual"`` or as ``force_supplier`` with slug
     # ``manual`` — the first prod tick alerted on exactly that), or forced to
-    # a supplier whose prices are not collected.
+    # a supplier whose prices are not collected. ``manual`` is collected only
+    # where its own mapping carries a price (``manual_cost.py``), so a forced
+    # slug counts as fed only when an active mapping of that slug exists.
+    forced_and_fed = (
+        select(SkuSupplierMapping.sku_id)
+        .where(
+            SkuSupplierMapping.sku_id == Sku.id,
+            SkuSupplierMapping.is_active.is_(True),
+            SkuSupplierMapping.supplier_slug == SkuSourcingRule.supplier_slug,
+        )
+        .exists()
+    )
     pinned = exists(
         select(SkuSourcingRule.sku_id).where(
             SkuSourcingRule.sku_id == Sku.id,
@@ -103,6 +114,7 @@ async def find_stale(db: AsyncSession, *, max_age: timedelta, top: int = _TOP) -
                     or_(
                         SkuSourcingRule.supplier_slug.is_(None),
                         SkuSourcingRule.supplier_slug.notin_(PRICE_COLLECTION_SUPPORTED_SUPPLIERS),
+                        ~forced_and_fed,
                     ),
                 ),
             ),

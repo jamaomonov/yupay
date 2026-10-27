@@ -36,6 +36,7 @@ from yupay.modules.integrations.cost_lookup import (
     _gengine_raw_price,
     _nova_raw_price,
 )
+from yupay.modules.integrations.manual_cost import manual_raw_price
 from yupay.modules.integrations.models import SkuSupplierMapping, SupplierPriceHistory
 
 if TYPE_CHECKING:
@@ -107,7 +108,10 @@ def _route_label(decision: Decision) -> str:
 #: force-routed to a supplier outside this set has no live price to call
 #: "current", however recently `Sku.cost_usdt` was written by a *previous*
 #: routed supplier.
-PRICE_COLLECTION_SUPPORTED_SUPPLIERS = frozenset({"g2b", "gengine", "nova", "fzr"})
+#: ``manual`` is the operator's own purchase price, in whatever currency they
+#: pay (``manual_cost.py``) — not a supplier API, but a price that moves with
+#: the rate all the same.
+PRICE_COLLECTION_SUPPORTED_SUPPLIERS = frozenset({"g2b", "gengine", "nova", "fzr", "manual"})
 
 
 def supports_price_collection(supplier_slug: str) -> bool:
@@ -127,7 +131,7 @@ def supports_price_collection(supplier_slug: str) -> bool:
         supplier_slug: The supplier to check.
 
     Returns:
-        ``True`` for g2b, gengine, nova and fzr; ``False`` for everything else.
+        ``True`` for g2b, gengine, nova, fzr and manual; ``False`` for everything else.
     """
     return supplier_slug in PRICE_COLLECTION_SUPPORTED_SUPPLIERS
 
@@ -207,6 +211,8 @@ async def _lookup_price(
         return await _g2b_raw_price(db, mapping, catalogue_cache=g2b_catalogue_cache)
     if mapping.supplier_slug == "gengine":
         return await _gengine_raw_price(db, mapping)
+    if mapping.supplier_slug == "manual":
+        return await manual_raw_price(mapping)
     if mapping.supplier_slug == "fzr":
         # Its own cache, never NOVA's: it is keyed by category id alone, and
         # the two vendors' category ids are the same strings for the same
