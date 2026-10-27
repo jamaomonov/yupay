@@ -3154,6 +3154,13 @@
           "slug": {
             "title": "Slug",
             "type": "string"
+          },
+          "variants": {
+            "items": {
+              "$ref": "#/components/schemas/BrandVariantOut"
+            },
+            "title": "Variants",
+            "type": "array"
           }
         },
         "required": [
@@ -3523,6 +3530,25 @@
           }
         },
         "title": "BrandUpdate",
+        "type": "object"
+      },
+      "BrandVariantOut": {
+        "description": "One way to buy a game, on its own page (``brands.variant_code``, 0108).\n\nThe storefront names it from its message catalogue by ``code`` (``id``,\n``promo``), so the API carries no label.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "slug"
+        ],
+        "title": "BrandVariantOut",
         "type": "object"
       },
       "BroadcastCreateIn": {
@@ -39917,7 +39943,7 @@
     },
     "/api/v1/catalog/brands": {
       "get": {
-        "description": "Brand index, optionally narrowed to one category.",
+        "description": "Brand index, optionally narrowed to one category.\n\n``variants=true`` also lists a game's secondary variant pages (Standoff 2's\npromo codes beside its by-id main page) \u2014 for the sitemap, not the catalogue.",
         "operationId": "get_brands_api_v1_catalog_brands_get",
         "parameters": [
           {
@@ -39934,6 +39960,16 @@
                 }
               ],
               "title": "Category"
+            }
+          },
+          {
+            "in": "query",
+            "name": "variants",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Variants",
+              "type": "boolean"
             }
           },
           {

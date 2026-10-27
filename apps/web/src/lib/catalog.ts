@@ -167,6 +167,15 @@ export interface BrandDetail extends BrandSummary {
   /** While the brand is in maintenance: where the same goods are on sale.
    *  Optional — absent from an API that predates it; read through `?? null`. */
   maintenance_redirect?: BrandRedirect | null;
+  /** Every way to buy this game, each its own page, main one first; empty when
+   *  there is one. Optional — absent from an older API; read through `?? []`. */
+  variants?: BrandVariant[];
+}
+
+export interface BrandVariant {
+  /** `id`, `promo` — named from the message catalogue (`variants.<code>`). */
+  code: string;
+  slug: string;
 }
 
 export interface BrandRedirect {
@@ -197,8 +206,17 @@ export async function getCategories(locale: string): Promise<CategoryOut[]> {
   return r.items;
 }
 
-export async function getBrands(locale: string, category?: string): Promise<BrandSummary[]> {
-  const q = category && category !== "all" ? `?category=${encodeURIComponent(category)}` : "";
+export async function getBrands(
+  locale: string,
+  category?: string,
+  opts?: { variants?: boolean },
+): Promise<BrandSummary[]> {
+  const params = new URLSearchParams();
+  if (category && category !== "all") params.set("category", category);
+  // A game's secondary variant pages (Standoff 2's promo codes) are not
+  // catalogue tiles, but the sitemap and the static build need them.
+  if (opts?.variants) params.set("variants", "true");
+  const q = params.size > 0 ? `?${params.toString()}` : "";
   const r = await apiGet<{ items: BrandSummary[] }>(`/catalog/brands${q}`, {
     locale,
     revalidate: REVALIDATE,
@@ -234,7 +252,7 @@ export function getProductDetail(
  * is unreachable (e.g. at build time) so the build never fails on it. */
 export async function getBrandSlugs(): Promise<string[]> {
   try {
-    const items = await getBrands("ru");
+    const items = await getBrands("ru", undefined, { variants: true });
     return items.map((b) => b.slug);
   } catch {
     return [];

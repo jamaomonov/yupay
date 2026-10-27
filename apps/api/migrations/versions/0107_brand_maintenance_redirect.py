@@ -43,5 +43,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_constraint("ck_brands_maintenance_redirect_not_self", "brands", type_="check")
+    op.drop_constraint("maintenance_redirect_not_self", "brands", type_="check")
     op.drop_column("brands", "maintenance_redirect_id")

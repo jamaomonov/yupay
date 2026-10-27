@@ -208,6 +208,11 @@
     "maintenanceRedirectTitle": "Сейчас эта покупка недоступна",
     "maintenanceRedirectBody": "Купить можно в разделе «{name}».",
     "maintenanceRedirectGo": "Перейти: {name}",
+    "variantTitle": "Способ покупки",
+    "variants": {
+      "id": "По ID",
+      "promo": "Промокод"
+    },
     "empty": "Скоро здесь появятся игры.",
     "filterAll": "Все",
     "filterGames": "Игры",

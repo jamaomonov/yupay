@@ -11,6 +11,9 @@ import { pathFor } from "@/lib/seo";
 interface MaintenanceRedirectProps {
   target: BrandRedirect;
   locale: string;
+  /** What to call the target when its brand name would not tell it apart —
+   *  a variant of the same game («По ID»), named like the page itself. */
+  label?: string | undefined;
 }
 
 /**
@@ -21,7 +24,7 @@ interface MaintenanceRedirectProps {
  * buyer is told up front, above the packs, where the same goods are on sale.
  * Standoff 2 promo codes → Gold by player id (2026-10-27).
  */
-export async function MaintenanceRedirect({ target, locale }: MaintenanceRedirectProps) {
+export async function MaintenanceRedirect({ target, locale, label }: MaintenanceRedirectProps) {
   const t = await getTranslations("web.store");
   return (
     <div className="mb-5 flex flex-col gap-4 rounded-2xl border border-amber-400/50 bg-amber-400/10 p-5 sm:flex-row sm:items-center sm:justify-between">
@@ -38,7 +41,7 @@ export async function MaintenanceRedirect({ target, locale }: MaintenanceRedirec
         href={pathFor(locale, brandPath(target.slug))}
         className={buttonStyles({ className: "shrink-0" })}
       >
-        {t("maintenanceRedirectGo", { name: target.name })}
+        {t("maintenanceRedirectGo", { name: label ?? target.name })}
         <ArrowRight size={16} aria-hidden />
       </Link>
     </div>

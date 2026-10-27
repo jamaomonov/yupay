@@ -455,6 +455,17 @@ class BrandRegionOut(BaseModel):
     slug: str
 
 
+class BrandVariantOut(BaseModel):
+    """One way to buy a game, on its own page (``brands.variant_code``, 0108).
+
+    The storefront names it from its message catalogue by ``code`` (``id``,
+    ``promo``), so the API carries no label.
+    """
+
+    code: str
+    slug: str
+
+
 class BrandRedirectOut(BaseModel):
     """Where a brand in maintenance sends its buyers (``brands.maintenance_redirect_id``)."""
 
@@ -497,6 +508,9 @@ class BrandDetailOut(BaseModel):
     #: Only while ``maintenance`` is on: the brand selling the same goods another
     #: way, for a "buy it here instead" link. ``None`` -> no link.
     maintenance_redirect: BrandRedirectOut | None = None
+    #: Every way to buy this game, each its own page, main one first; empty when
+    #: there is only one. A switcher of links, not a region switch.
+    variants: list[BrandVariantOut] = Field(default_factory=list)
 
 
 class CategoryListOut(BaseModel):

@@ -68,9 +68,14 @@ async def get_brands(
     db: Annotated[AsyncSession, Depends(db_session)],
     locale: Annotated[str, Depends(resolve_locale)],
     category: str | None = None,
+    variants: bool = False,
 ) -> BrandListOut:
-    """Brand index, optionally narrowed to one category."""
-    items = await list_brands(db, locale=locale, category_slug=category)
+    """Brand index, optionally narrowed to one category.
+
+    ``variants=true`` also lists a game's secondary variant pages (Standoff 2's
+    promo codes beside its by-id main page) — for the sitemap, not the catalogue.
+    """
+    items = await list_brands(db, locale=locale, category_slug=category, include_variants=variants)
     return BrandListOut(items=items)
 
 

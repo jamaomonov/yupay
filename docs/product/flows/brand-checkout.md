@@ -23,6 +23,9 @@ rules as of 2026-10-26 (design review of the live pages):
   it names a `maintenance_redirect`, an amber card above the packs says the
   purchase is unavailable and links to the brand that sells the same goods
   (Standoff 2 promo codes → «Standoff 2 по ID»).
+- **A game sold two ways** (Standoff 2: by player id, promo codes) is one
+  catalogue tile that opens the main way; «По ID / Промокод» links switch between
+  the two pages, each with its own URL and search copy.
 - **The phone's bottom bar** shows the pack and the total, never cut, and a lime
   button that says what it does: «Оплатить» or «Перейти к оплате».
 

@@ -122,6 +122,15 @@ class Brand(Base):
         nullable=True,
     )
     region_code: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    # One game sold two ways on two pages (0108): Standoff 2 by player id and as
+    # promo codes. Unlike a region, a variant keeps its own page and URL; the
+    # catalogue lists the main one (no parent) and each page links the others.
+    variant_parent_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("brands.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    variant_code: Mapped[str | None] = mapped_column(String(16), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
     )

@@ -31,6 +31,7 @@ from yupay.modules.catalog.schemas import (
     SkuNoticeOut,
     SkuOut,
 )
+from yupay.modules.catalog.variants import brand_variants
 from yupay.modules.pricing.fx_guard import RateRejected, guarded_usd_rate
 from yupay.modules.pricing.variable import display_rate, price_in_quote
 
@@ -367,10 +368,15 @@ async def list_brands(
     *,
     locale: str,
     category_slug: str | None = None,
+    include_variants: bool = False,
 ) -> list[BrandOut]:
     """Return active brands under active categories, optionally filtered by
     category slug. A brand under a hidden category never lists — the same
-    cascade the brand's own ``active`` flag applies to its products."""
+    cascade the brand's own ``active`` flag applies to its products.
+
+    ``include_variants`` adds a game's secondary variants (0108) — pages that
+    exist but are not catalogue tiles; the sitemap and the static build want
+    them, the catalogue does not."""
     stmt = (
         select(Brand)
         .join(Brand.category)
@@ -396,6 +402,9 @@ async def list_brands(
         )
         .order_by(Brand.sort_order, Brand.slug)
     )
+    if not include_variants:
+        # One tile per game: the other ways to buy it are linked from its page (0108).
+        stmt = stmt.where(Brand.variant_parent_id.is_(None))
     if category_slug is not None:
         stmt = stmt.where(Category.slug == category_slug)
 
@@ -499,6 +508,7 @@ async def get_brand_by_slug(
         region_of=region_of,
         regions=regions,
         maintenance_redirect=await maintenance_redirect.resolve(db, brand, locale=locale),
+        variants=await brand_variants(db, brand),
     )
 
 

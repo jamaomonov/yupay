@@ -43,6 +43,15 @@ storefront and not itself in maintenance (`catalog/maintenance_redirect.py`).
 First use: Standoff 2 promo codes → Standoff 2 by ID (2026-10-27). Set by SQL;
 the admin form does not edit it yet.
 
+**Variants (0108)** — one game sold two ways, each on its own page:
+`variant_parent_id` + `variant_code` (`catalog/variants.py`). The catalogue
+lists only the main variant (no parent); `GET /catalog/brands?variants=true`
+adds the others for the sitemap and the static build. Every variant's page gets
+`variants` (code, slug — main first) and the storefront renders them as links
+(`BrandVariants.tsx`). Not a region (ADR-0099): a region's page redirects to the
+game's page, a variant keeps its own URL and search copy. First use: Standoff 2,
+`standoff-2-id` (`id`, main) and `standoff-2` (`promo`).
+
 ### Channels: `visible_retail` and `visible_b2b` (ADR-0095)
 
 `Brand.active` is the master switch for **both** channels. Under it, two

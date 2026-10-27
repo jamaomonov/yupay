@@ -208,6 +208,11 @@
     "maintenanceRedirectTitle": "Hozir bu xarid mavjud emas",
     "maintenanceRedirectBody": "«{name}» boʻlimida sotib olish mumkin.",
     "maintenanceRedirectGo": "Oʻtish: {name}",
+    "variantTitle": "Xarid usuli",
+    "variants": {
+      "id": "ID orqali",
+      "promo": "Promokod"
+    },
     "empty": "Tez orada bu yerda oʻyinlar paydo boʻladi.",
     "filterAll": "Hammasi",
     "filterGames": "Oʻyinlar",

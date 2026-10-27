@@ -13,6 +13,7 @@ import { BrandBlogBlock } from "@/components/blog/BrandBlogBlock";
 import { JsonLd } from "@/components/JsonLd";
 import { SteamSkinsPromo } from "@/components/skins/SteamSkinsPromo";
 import { AboutText } from "@/components/store/AboutText";
+import { BrandVariants } from "@/components/store/BrandVariants";
 import { HighlightChips } from "@/components/store/HighlightChips";
 import { MaintenanceRedirect } from "@/components/store/MaintenanceRedirect";
 import { PurchasePanel } from "@/components/store/PurchasePanel";
@@ -159,6 +160,12 @@ export default async function BrandPage({
 
   const t = await getTranslations("web.store");
   const t2 = await getTranslations("web.brandReviews");
+  // A variant of this game (0108) is named by how it is bought, not by the
+  // game's name — both pages are called «Standoff 2».
+  const variantLabel = (slug: string): string | undefined => {
+    const code = (brand.variants ?? []).find((v) => v.slug === slug)?.code;
+    return code && t.has(`variants.${code}`) ? t(`variants.${code}`) : undefined;
+  };
   // A codes-only brand is bought and redeemed, never «пополнен».
   const v = isVoucherBrand(brand) ? "Voucher" : "";
   const tn = await getTranslations("web.nav");
@@ -572,8 +579,15 @@ export default async function BrandPage({
             passed into the left column so the sticky order sidebar scrolls with
             them — one aligned 2-column grid (see PurchasePanel). */}
         <div className="mt-5 sm:mt-6">
+          {(brand.variants ?? []).length > 1 && (
+            <BrandVariants variants={brand.variants ?? []} current={brand.slug} locale={locale} />
+          )}
           {brand.maintenance && brand.maintenance_redirect && (
-            <MaintenanceRedirect target={brand.maintenance_redirect} locale={locale} />
+            <MaintenanceRedirect
+              target={brand.maintenance_redirect}
+              locale={locale}
+              label={variantLabel(brand.maintenance_redirect.slug)}
+            />
           )}
           {regionOptions.length > 0 ? (
             <RegionPurchase regions={regionOptions} locale={locale}>
