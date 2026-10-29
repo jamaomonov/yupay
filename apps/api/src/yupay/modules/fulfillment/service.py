@@ -914,12 +914,19 @@ async def process_task(db: AsyncSession, *, task_id: str) -> FulfillmentTask:
                 )
             )
     elif result.outcome == "in_progress":
-        task.status = "in_progress"
-        item.fulfillment_state = "in_progress"
+        _apply_in_progress(task=task, item=item)
     else:  # "failed"
         _apply_failure(task=task, item=item, result=result)
 
     return task
+
+
+def _apply_in_progress(*, task: FulfillmentTask, item: OrderItem) -> None:
+    """The supplier took the order and will finish later; a manual one needs a person."""
+    task.status = "in_progress"
+    item.fulfillment_state = "in_progress"
+    if task.supplier == "manual":
+        _dispatch_alert(_alert_manual_order(task, sku_code=item.sku.sku_code, qty=item.qty))
 
 
 def _apply_failure(*, task: FulfillmentTask, item: OrderItem, result: FulfillResult) -> None:
@@ -2520,6 +2527,38 @@ async def _alert_merchant_needs_a_human(
             task_id=task_id,
             error=str(exc)[:200],
         )
+
+
+_MANUAL_ALERT_DEDUPE_SECONDS = 7 * 24 * 60 * 60
+
+
+async def _alert_manual_order(task: FulfillmentTask, *, sku_code: str, qty: int) -> None:
+    """Tell ops a paid order waits for a human to fulfil it (supplier ``manual``).
+
+    Nothing else ever says so: the manual fulfiller just answers
+    ``in_progress`` and the task sits in the admin inbox until someone opens
+    it. Deduped per task, so a re-run of the same task does not repeat it.
+    No player id in the text — it is in the task, behind the admin login.
+
+    Never raises, for the same reason as :func:`_alert_fulfillment_error`.
+    """
+    from yupay.modules.notifications import api as notifications
+
+    try:
+        if await _set_redis_dedupe(
+            f"alert:manual_order:{task.id}", ttl_seconds=_MANUAL_ALERT_DEDUPE_SECONDS
+        ):
+            return
+        text = (
+            "<b>✋ Ручной заказ — выполни</b>\n"
+            f"Товар: <code>{html.escape(sku_code)}</code> × {qty}\n"
+            f"Заказ: <code>{task.order_id}</code>\n"
+            f"Задача: <code>{task.id}</code>\n"
+            "<i>Оплачен. Выполни у поставщика и закрой задачу в админке → Фулфилмент.</i>"
+        )
+        await notifications.send_admin_alert(text, kind="manual_order")
+    except Exception as exc:  # noqa: BLE001 -- alerting must never break a sale
+        log.warning("fulfillment.manual_alert_failed", task_id=task.id, error=str(exc)[:200])
 
 
 async def _alert_merchant_order_cancelled(*, task_id: str, order_id: str, reason: str) -> None:

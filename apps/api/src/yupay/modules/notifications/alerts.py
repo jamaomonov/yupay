@@ -8,6 +8,12 @@ outage of one doesn't drag the other down.
 
 Empty env vars no-op — useful in dev and on a fresh prod boot before
 the alert bot is provisioned.
+
+Two chats. Alerts someone has to act on now (``URGENT_KINDS``) go to
+``TG_URGENT_CHAT_ID``; the hourly digests — price moves, margin drift,
+stock — stay in ``TG_ALERT_CHAT_ID``, where they had been burying the
+urgent ones (owner, 2026-10-30). An unset urgent chat sends everything to
+the main one, as before.
 """
 
 from __future__ import annotations
@@ -17,6 +23,29 @@ from yupay.core.logging import get_logger
 from yupay.modules.notifications.channels import telegram as tg
 
 log = get_logger("yupay.notifications.alerts")
+
+#: Kinds that need a human soon: an order waiting on a decision or a hand,
+#: money that went somewhere it should not, a supplier that cannot deliver.
+#: A new ``kind`` lands in the main chat until it is added here.
+URGENT_KINDS: frozenset[str] = frozenset(
+    {
+        "order_held_for_review",
+        "order_auto_refund_escalated",
+        "order_stuck",
+        "manual_order",
+        "fulfillment_error",
+        "merchant_money_outcome",
+        "merchant_order_cancelled",
+        "merchant_refund_failed",
+        "supplier_low_balance",
+        "supplier_balance_low",
+        "wallet_topup_refund_blocked",
+        "paid_after_expiry",
+        "skin_trade_rollback",
+        "p2p_ambiguous_card",
+        "p2p_order_payment_missing",
+    }
+)
 
 
 async def send_admin_alert(
@@ -35,11 +64,14 @@ async def send_admin_alert(
     silently discarded — the one case where silence was most misleading.
 
     ``kind`` is a short label for the alert type so the log can be filtered
-    per alert rather than per line.
+    per alert rather than per line, and it picks the chat: an ``URGENT_KINDS``
+    kind goes to the urgent chat when one is set. An explicit ``chat_id``
+    wins over both.
     """
     settings = get_settings()
     token = settings.tg_alert_bot_token
-    chat_id_raw = chat_id or settings.tg_alert_chat_id
+    urgent = settings.tg_urgent_chat_id if kind in URGENT_KINDS else ""
+    chat_id_raw = chat_id or urgent or settings.tg_alert_chat_id
     if not token or not chat_id_raw:
         log.warning("alerts.not_configured", kind=kind)
         return False
@@ -61,4 +93,4 @@ async def send_admin_alert(
     return delivered
 
 
-__all__ = ["send_admin_alert"]
+__all__ = ["URGENT_KINDS", "send_admin_alert"]

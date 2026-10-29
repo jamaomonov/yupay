@@ -54,6 +54,7 @@ def _test_env() -> Iterator[None]:
         # error-path test into an outbound HTTP call, and the suite crawls.
         "TG_ALERT_BOT_TOKEN": "",
         "TG_ALERT_CHAT_ID": "",
+        "TG_URGENT_CHAT_ID": "",
     }
     previous = {k: os.environ.get(k) for k in env}
     os.environ.update(env)

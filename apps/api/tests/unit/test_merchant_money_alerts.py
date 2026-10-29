@@ -180,3 +180,20 @@ async def test_an_alerting_outage_never_escapes(
     monkeypatch.setattr(notifications_api, "send_admin_alert", _explode)
 
     await call()
+
+
+async def test_the_manual_order_alert_names_the_task_and_nothing_personal(
+    sent: list[tuple[str, str]],
+) -> None:
+    """A manual order has no other signal — the task just waits in the inbox."""
+    from types import SimpleNamespace
+
+    task = SimpleNamespace(id=new_id(), order_id=new_id())
+    await ff_svc._alert_manual_order(task, sku_code="standoff-2-id-<b>100</b>", qty=1)  # type: ignore[arg-type]
+
+    assert len(sent) == 1
+    text, kind = sent[0]
+    assert kind == "manual_order"
+    assert task.id in text
+    assert task.order_id in text
+    assert "&lt;b&gt;100" in text

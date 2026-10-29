@@ -9,6 +9,21 @@ Every container that calls the Telegram Bot API depends on the host's egress pat
 **The correct configuration depends entirely on the host.** Read the next section before
 changing anything: the workaround that fixes one host is exactly what breaks the other.
 
+## Two admin chats — urgent and digests
+
+Since 2026-10-30 admin alerts go to two Telegram groups, both posted by the same
+`TG_ALERT_BOT_TOKEN` bot (add it to both groups):
+
+| Chat   | Env                                                                      | What lands there                                                                                                                                                                                                                                                                                |
+| ------ | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Urgent | `TG_URGENT_CHAT_ID` (api.env), `ALERT_URGENT_CHAT_ID` (alertmanager.env) | every `kind` in `notifications/alerts.py` `URGENT_KINDS` — held orders, auto-refund escalations, stuck orders, **manual orders** (`manual_order`, one per task), fulfilment errors, reseller money, supplier balance, paid-after-expiry, P2P money mismatches — and Prometheus `severity: page` |
+| Main   | `TG_ALERT_CHAT_ID`, `ALERT_CHAT_ID`                                      | everything else: price changes, margin drift, cost staleness, out-of-stock vouchers, catalog watch, FX, `severity: warn`                                                                                                                                                                        |
+
+An empty urgent id sends everything to the main chat, as before. A new alert `kind`
+goes to the main chat until it is added to `URGENT_KINDS`. Changing an id needs
+`api`, `worker` and `scheduler` restarted (with `IMAGE_TAG`) and, for the
+Prometheus side, `up -d --force-recreate alertmanager`.
+
 ## Current host (`152.228.137.175`) — IPv4, direct, no workarounds
 
 This host reaches Telegram over **IPv4** (302 in ~60 ms) and has **no global IPv6 address at

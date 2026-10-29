@@ -1060,6 +1060,11 @@ class Settings(BaseSettings):
     # write rights. Configure both as empty in dev — alerts then no-op.
     tg_alert_bot_token: str = Field(default="")
     tg_alert_chat_id: str = Field(default="")
+    # Second admin chat for the alerts someone has to act on now — holds,
+    # fulfilment errors, manual orders, money stuck (``alerts.URGENT_KINDS``).
+    # Everything else (price and margin digests, stock) stays in
+    # ``tg_alert_chat_id``. Empty = urgent alerts go there too.
+    tg_urgent_chat_id: str = Field(default="")
     # secret_token passed to setWebhook for @depositlistenerbot; empty = webhook
     # refuses everything.
     p2p_webhook_secret: str = Field(default="")

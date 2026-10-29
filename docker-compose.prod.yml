@@ -406,7 +406,7 @@ services:
     volumes:
       - ./infra/alertmanager/alertmanager.tmpl.yml:/etc/alertmanager/alertmanager.tmpl.yml:ro
       - alertmanager-data:/alertmanager
-    # Alertmanager does no env expansion of its own, so the template's two
+    # Alertmanager does no env expansion of its own, so the template's three
     # placeholders are rendered here at start-up. The result goes to the
     # private volume, never to the bind mount, so the credentials stay out of
     # the repo and out of the image. `chat_id` is unquoted on purpose —
@@ -416,6 +416,7 @@ services:
       - -c
       - >
         sed -e "s|__ALERT_BOT_TOKEN__|$$ALERT_BOT_TOKEN|"
+        -e "s|__ALERT_URGENT_CHAT_ID__|$${ALERT_URGENT_CHAT_ID:-$$ALERT_CHAT_ID}|"
         -e "s|__ALERT_CHAT_ID__|$$ALERT_CHAT_ID|"
         /etc/alertmanager/alertmanager.tmpl.yml > /alertmanager/alertmanager.yml &&
         exec /bin/alertmanager --config.file=/alertmanager/alertmanager.yml

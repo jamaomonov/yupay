@@ -11,7 +11,7 @@
 # This is a TEMPLATE, not the config. Alertmanager does no environment
 # expansion of its own, so `${VAR}` here would be taken literally and the bot
 # token would silently be the string "${ALERT_BOT_TOKEN}". The compose
-# entrypoint renders the two placeholders below with `sed` at start-up and
+# entrypoint renders the three placeholders below with `sed` at start-up and
 # writes the result to the container's private volume — so neither the token
 # nor the chat id ever lives in this repository or in the image.
 
@@ -32,13 +32,29 @@ route:
   repeat_interval: 4h
 
   routes:
-    # `page` severity repeats sooner. Nothing here pages a phone yet, so the
-    # repeat interval is the only urgency signal available.
+    # `page` severity repeats sooner and goes to the urgent chat — the one
+    # kept free of hourly digests (2026-10-30), next to held orders and
+    # fulfilment errors. `__ALERT_URGENT_CHAT_ID__` falls back to the main
+    # chat when ALERT_URGENT_CHAT_ID is unset.
     - matchers: [severity="page"]
-      receiver: telegram
+      receiver: telegram-urgent
       repeat_interval: 1h
 
 receivers:
+  - name: telegram-urgent
+    telegram_configs:
+      - bot_token: "__ALERT_BOT_TOKEN__"
+        chat_id: __ALERT_URGENT_CHAT_ID__
+        api_url: https://api.telegram.org
+        parse_mode: HTML
+        send_resolved: true
+        message: &message |
+          {{ if eq .Status "firing" }}🔴{{ else }}✅{{ end }} <b>{{ .CommonLabels.alertname }}</b> ({{ .Status }})
+          {{ range .Alerts }}
+          {{ .Annotations.summary }}
+          {{ if .Annotations.description }}{{ .Annotations.description }}{{ end }}
+          {{ if .Annotations.runbook }}{{ .Annotations.runbook }}{{ end }}
+          {{ end }}
   - name: telegram
     telegram_configs:
       - bot_token: "__ALERT_BOT_TOKEN__"
@@ -46,13 +62,7 @@ receivers:
         api_url: https://api.telegram.org
         parse_mode: HTML
         send_resolved: true
-        message: |
-          {{ if eq .Status "firing" }}🔴{{ else }}✅{{ end }} <b>{{ .CommonLabels.alertname }}</b> ({{ .Status }})
-          {{ range .Alerts }}
-          {{ .Annotations.summary }}
-          {{ if .Annotations.description }}{{ .Annotations.description }}{{ end }}
-          {{ if .Annotations.runbook }}{{ .Annotations.runbook }}{{ end }}
-          {{ end }}
+        message: *message
 
 inhibit_rules:
   # If the API is down, its saturation, latency and error-rate alerts are
