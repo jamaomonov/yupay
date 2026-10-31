@@ -883,6 +883,7 @@ stringifies to `""` — and now reads `ReadTimeout`
 | `nova.order_without_status` / `_without_id` | warn  | Their order object had no recognisable `status`/`state` or `id`/`order_id`/`public_id`/`uuid` field. |
 | `nova_reconcile.tick`                       | info  | One 60 s sweep finished — `checked`, `reconciled`, `failed`.                                         |
 | `nova_reconcile.task_failed`                | warn  | One task's reconciliation raised — the sweep continues past it.                                      |
+| `integrations.supplier_balance`             | info  | Hourly (price refresh): `supplier`, `balance`, `currency` — every wallet supplier, muted ones too.   |
 
 `nova.request` at `info` is verbose by design — it is the only line that
 shows every call, including the ones nothing else logs. For a specific

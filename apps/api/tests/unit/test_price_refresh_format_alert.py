@@ -144,3 +144,29 @@ async def test_a_muted_supplier_is_not_warned_about(monkeypatch: Any) -> None:
     await price_refresh._maybe_warn_low_balance()
     assert len(sent) == 1
     assert "NOVA" in sent[0]
+
+
+async def test_every_wallet_read_is_logged_muted_ones_too(monkeypatch: Any) -> None:
+    """An hourly trail of each balance — the only way to reconcile a supplier's
+    charges afterwards (did NOVA keep the money for a FAILED order?)."""
+    from structlog.testing import capture_logs
+    from yupay.modules.integrations import price_refresh
+
+    class _Funded:
+        available = True
+
+        async def health(self) -> dict[str, Any]:
+            return {"available": True, "balance": "135.58", "currency": "USD"}
+
+    for slug in ("waxpeer", "nova"):
+        monkeypatch.setitem(REGISTRY, slug, _Funded())
+    monkeypatch.setattr(price_refresh, "_WALLET_SUPPLIERS", ("waxpeer", "nova"))
+
+    with capture_logs() as logs:
+        await price_refresh._maybe_warn_low_balance()
+
+    trail = [e for e in logs if e["event"] == "integrations.supplier_balance"]
+    assert [(e["supplier"], e["balance"]) for e in trail] == [
+        ("waxpeer", "135.58"),
+        ("nova", "135.58"),
+    ]

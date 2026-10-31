@@ -381,18 +381,19 @@ async def _maybe_warn_low_balance() -> None:
     One dedupe key per supplier, so a quiet G2B does not silence a draining
     NOVA. Six hours, so a wallet sitting under the threshold overnight pings
     ops once rather than on every tick.
+
+    Every wallet read is also logged (``integrations.supplier_balance``), muted
+    suppliers included: an hourly trail of each balance is what lets someone
+    reconcile a supplier's charges afterwards — whether NOVA kept the money
+    for a ``FAILED`` order was unanswerable without one (2026-10-31).
     """
     settings = get_settings()
     threshold = float(settings.supplier_low_balance_threshold)
-    if threshold <= 0:
-        return
     from yupay.modules.fulfillment.service import _set_redis_dedupe
     from yupay.modules.fulfillment.suppliers import REGISTRY
 
     muted = set(settings.supplier_low_balance_muted)
     for slug in _WALLET_SUPPLIERS:
-        if slug in muted:
-            continue
         fulfiller = REGISTRY.get(slug)
         if fulfiller is None or not fulfiller.available or not isinstance(fulfiller, _HasHealth):
             continue
@@ -402,7 +403,13 @@ async def _maybe_warn_low_balance() -> None:
             log.warning("integrations.lowbal.probe_failed", supplier=slug, error=str(exc))
             continue
         balance = _dollar_balance(health, supplier=slug)
-        if balance is None or balance >= threshold:
+        log.info(
+            "integrations.supplier_balance",
+            supplier=slug,
+            balance=health.get("balance"),
+            currency=health.get("currency"),
+        )
+        if threshold <= 0 or slug in muted or balance is None or balance >= threshold:
             continue
         if await _set_redis_dedupe(f"alert:low_balance_warn:{slug}", ttl_seconds=6 * 3600):
             continue
