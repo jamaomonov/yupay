@@ -136,7 +136,7 @@ it("lets an account with no address on file pay, and mails the codes nowhere", a
   const field = await screen.findByPlaceholderText("emailPlaceholder");
   expect(field).toHaveValue("");
 
-  fireEvent.click(await screen.findByRole("button", { name: /\$10/ }));
+  fireEvent.click(await screen.findByRole("button", { name: /^\$10/ }));
   await waitFor(() => {
     expect(screen.getByRole("button", { name: /^pay ·/i })).not.toBeDisabled();
   });
@@ -159,7 +159,7 @@ it("refuses to pay with a half-typed address rather than letting the server 422"
   const field = await screen.findByPlaceholderText("emailPlaceholder");
   fireEvent.change(field, { target: { value: "not-an-address" } });
 
-  fireEvent.click(await screen.findByRole("button", { name: /\$10/ }));
+  fireEvent.click(await screen.findByRole("button", { name: /^\$10/ }));
 
   // Blank is a choice; malformed is a mistake, and the button says which.
   await waitFor(() => {

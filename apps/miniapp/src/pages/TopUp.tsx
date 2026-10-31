@@ -20,6 +20,7 @@ import {
   cartUnits,
   expandPieces,
   type PackCounts,
+  splitRounded,
   stepPack,
 } from "@yupay/utils";
 import { useEffect, useMemo, useState } from "react";
@@ -681,7 +682,13 @@ export default function TopUp() {
     .map((p) => ({ pkg: p, count: cartCounts[p.id] ?? 0 }));
   const cartPieces = cartUnits(cartCounts);
   const isMultiCart = cartPieces > 1;
-  const cartTotal = cartLines.reduce((n, l) => n + l.pkg.price * l.count, 0);
+  // Lines rounded so they add up to the total checkout charges (`splitRounded`):
+  // whole so'm, cents for anything else.
+  const cartSplit = splitRounded(
+    cartLines.map((l) => l.pkg.price * l.count),
+    (activePkg?.priceCode ?? currency) === "UZS" ? 1 : 0.01,
+  );
+  const cartTotal = cartSplit.total;
   const pickPack = (id: string): void => {
     setCounts(addPack(cartCounts, id, true));
     setSelectedPkg(id);
@@ -1500,6 +1507,12 @@ export default function TopUp() {
                   ))}
                 </div>
               )}
+              {/* Said in words: a dimmed «+» alone does not say why. */}
+              {cartPieces >= CART_MAX_UNITS && (
+                <p className="mt-2.5 text-center text-xs text-white/50">
+                  {t("topup.packLimit", { max: CART_MAX_UNITS })}
+                </p>
+              )}
             </div>
           </div>
         )}
@@ -1528,7 +1541,9 @@ export default function TopUp() {
                     <PackageThumb pkg={activePkg} fallback={productImage ?? game.appIcon ?? null} />
                     <div className="min-w-0 flex-1">
                       <p className="line-clamp-1 text-sm font-bold text-white">
-                        {cartLabel} · {game.name}
+                        {/* The header above already says «3 товара»; the card
+                            names the game and lists the packs below. */}
+                        {isMultiCart ? game.name : `${cartLabel} · ${game.name}`}
                       </p>
                       <p className="mt-0.5 line-clamp-1 text-xs text-white/40">
                         {accountRequired
@@ -1555,14 +1570,14 @@ export default function TopUp() {
                       className="mt-3 space-y-1.5 border-t pt-3"
                       style={{ borderColor: "hsl(var(--border))" }}
                     >
-                      {cartLines.map((l) => (
+                      {cartLines.map((l, i) => (
                         <div key={l.pkg.id} className="flex items-center justify-between gap-3">
                           <span className="min-w-0 truncate text-[13px] font-semibold text-white">
                             {l.pkg.label}
                             <span className="ml-1.5 font-normal text-white/45">× {l.count}</span>
                           </span>
                           <span className="flex-shrink-0 text-[13px] text-white/70">
-                            {formatMoney(l.pkg.price * l.count, l.pkg.priceCode)}
+                            {formatMoney(cartSplit.lines[i] ?? 0, l.pkg.priceCode)}
                           </span>
                         </div>
                       ))}
@@ -1950,9 +1965,9 @@ function PackageCard({
         disabled={soldOut}
         aria-pressed={active}
         aria-disabled={soldOut}
-        className={`relative w-full rounded-2xl p-3.5 text-left transition-all duration-150 ${
+        className={`relative flex w-full flex-col items-start rounded-2xl p-3.5 text-left transition-all duration-150 ${
           soldOut ? "cursor-not-allowed opacity-45" : ""
-        } ${active ? "pb-14" : ""}`}
+        }`}
         style={{
           background: active ? "hsl(var(--surface-3))" : "hsl(var(--surface-2))",
           border: active ? "1.5px solid hsl(var(--primary) / 0.8)" : "1px solid hsl(var(--border))",
@@ -1998,33 +2013,45 @@ function PackageCard({
             {pkg.notice.badge}
           </span>
         )}
+
+        {/* Room for the stepper on every card — a «+» hint until picked — so
+            a pick never makes its row taller. */}
+        {!soldOut && (
+          <span aria-hidden className="mt-auto flex h-11 w-full items-end justify-end pt-2">
+            {!active && (
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/15 text-white/60">
+                <Plus size={16} strokeWidth={2.6} />
+              </span>
+            )}
+          </span>
+        )}
       </button>
       {/* Beside the card's button — a button cannot hold buttons — laid over
-        its padded foot. */}
+        its reserved foot. 44px buttons: tapped with a thumb. */}
       {active && (
         <div className="absolute inset-x-3 bottom-3 flex items-center justify-between gap-2">
           <button
             type="button"
-            aria-label={t("topup.packLess")}
+            aria-label={t("topup.packLess", { name: pkg.label })}
             onClick={() => {
               onStep(-1);
             }}
-            className="flex h-8 w-8 items-center justify-center rounded-xl bg-white/10 text-white"
+            className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/10 text-white"
           >
-            <Minus size={15} strokeWidth={2.6} />
+            <Minus size={18} strokeWidth={2.6} />
           </button>
-          <span className="text-[15px] font-bold tabular-nums text-white">{count}</span>
+          <span className="text-[16px] font-bold tabular-nums text-white">{count}</span>
           <button
             type="button"
-            aria-label={t("topup.packMore")}
+            aria-label={t("topup.packMore", { name: pkg.label })}
             disabled={atLimit}
             onClick={() => {
               onStep(1);
             }}
-            className="flex h-8 w-8 items-center justify-center rounded-xl text-black disabled:opacity-40"
+            className="flex h-11 w-11 items-center justify-center rounded-xl text-black disabled:opacity-40"
             style={{ background: "hsl(var(--primary))" }}
           >
-            <Plus size={15} strokeWidth={2.6} />
+            <Plus size={18} strokeWidth={2.6} />
           </button>
         </div>
       )}

@@ -161,8 +161,9 @@
     "many": "{count} товаров",
     "other": "{count} товара"
   },
-  "topup.packLess": "Убрать один",
-  "topup.packMore": "Добавить ещё один",
+  "topup.packLess": "Убрать один: {name}",
+  "topup.packMore": "Добавить ещё один: {name}",
+  "topup.packLimit": "Не больше {max} штук в одном заказе",
   "topup.fillFieldTitle": "Заполните поле",
   "topup.openInTgTitle": "Откройте в Telegram",
   "topup.openInTgBody": "Оплата доступна только из Telegram Mini App",

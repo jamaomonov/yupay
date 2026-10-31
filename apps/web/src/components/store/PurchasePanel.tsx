@@ -8,6 +8,7 @@ import {
   expandPieces,
   formatMoney,
   type PackCounts,
+  splitRounded,
   stepPack,
 } from "@yupay/utils";
 import { ArrowUpRight, Check, Info, Loader2, Minus, Plus, X } from "lucide-react";
@@ -1117,13 +1118,18 @@ function UnitPackTiles({
   );
 }
 
-/** «− 3 +» at the foot of a pack in the order (`@yupay/utils` pack-cart). */
+/** «− 3 +» at the foot of a pack in the order (`@yupay/utils` pack-cart).
+ *  Laid over the tile's reserved foot (`PACK_FOOT`), so picking a pack does not
+ *  make its row taller. 44px buttons: a phone tile is tapped with a thumb. */
 function PackStepper({
+  name,
   count,
   atLimit,
   onStep,
   t,
 }: {
+  /** The pack, for the buttons' spoken names — «−» alone says nothing. */
+  name: string;
   count: number;
   /** The order holds the most pieces the API takes — «+» stops there. */
   atLimit: boolean;
@@ -1131,25 +1137,25 @@ function PackStepper({
   t: (key: string, values?: Record<string, string>) => string;
 }) {
   const btn =
-    "focus-visible:ring-primary rounded-btn flex h-9 w-9 shrink-0 items-center justify-center transition focus-visible:outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-40";
+    "focus-visible:ring-primary rounded-btn flex h-11 w-11 shrink-0 items-center justify-center transition focus-visible:outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-40";
   return (
     <div className="absolute inset-x-3 bottom-3 flex items-center justify-between gap-2">
       <button
         type="button"
-        aria-label={t("packLess")}
+        aria-label={t("packLess", { name })}
         onClick={() => {
           onStep(-1);
         }}
         className={`${btn} bg-muted text-foreground hover:bg-border`}
       >
-        <Minus size={16} strokeWidth={2.6} />
+        <Minus size={18} strokeWidth={2.6} />
       </button>
       <span className="font-display text-[16px] font-bold tabular-nums" aria-live="polite">
         {count}
       </span>
       <button
         type="button"
-        aria-label={t("packMore")}
+        aria-label={t("packMore", { name })}
         title={atLimit ? t("packLimit", { max: String(CART_MAX_UNITS) }) : undefined}
         disabled={atLimit}
         onClick={() => {
@@ -1157,11 +1163,15 @@ function PackStepper({
         }}
         className={`${btn} bg-primary text-primary-foreground hover:bg-primary-2`}
       >
-        <Plus size={16} strokeWidth={2.6} />
+        <Plus size={18} strokeWidth={2.6} />
       </button>
     </div>
   );
 }
+
+/** Every buyable pack tile keeps this much room at its foot — the stepper's
+ *  place once picked, a «+» hint before — so a pick never shifts the grid. */
+const PACK_FOOT = "mt-auto flex h-11 w-full shrink-0 items-center justify-end";
 
 export function PurchasePanel({
   products,
@@ -1400,9 +1410,11 @@ export function PurchasePanel({
     .filter((s) => (cartCounts[s.id] ?? 0) > 0)
     .map((s) => ({ sku: s, count: cartCounts[s.id] ?? 0 }));
   const cartPieces = cartUnits(cartCounts);
-  const cartTotal = cartLines.every((l) => l.sku.display_price)
-    ? cartLines.reduce((n, l) => n + Number(l.sku.display_price?.amount ?? 0) * l.count, 0)
+  // Lines rounded so they add up to the total checkout charges (`splitRounded`).
+  const cartSplit = cartLines.every((l) => l.sku.display_price)
+    ? splitRounded(cartLines.map((l) => Number(l.sku.display_price?.amount ?? 0) * l.count))
     : null;
+  const cartTotal = cartSplit?.total ?? null;
   // More than one piece: the summary lists them instead of naming one pack.
   const isMultiCart = cartPieces > 1;
   const lineName = (s: SkuOut): string => displayDenomination(s.denomination ?? s.sku_code);
@@ -1806,7 +1818,7 @@ export function PurchasePanel({
             ? formatUzs(locale, Math.round(qtyTotal))
             : "—"
         : isMultiCart && cartTotal !== null
-          ? formatUzs(locale, Math.round(cartTotal))
+          ? formatUzs(locale, cartTotal)
           : skuPrice(locale, selSku);
   // What the summary calls the pick. A typed amount names itself — «$10 →
   // Steam Wallet», not the SKU's «Любая сумма», which said nothing about what
@@ -2268,7 +2280,7 @@ export function PurchasePanel({
                               onClick={() => {
                                 if (!active) pickPack(sku, product);
                               }}
-                              className={`focus-visible:ring-primary focus-visible:ring-offset-bg relative flex w-full flex-col items-start gap-2 rounded-lg border p-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${active ? "pb-[60px]" : ""} ${
+                              className={`focus-visible:ring-primary focus-visible:ring-offset-bg relative flex w-full flex-col items-start gap-2 rounded-lg border p-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
                                 soldOut
                                   ? "border-border bg-card cursor-not-allowed opacity-45"
                                   : active
@@ -2311,8 +2323,17 @@ export function PurchasePanel({
                               phone tile has no room beside the image for «До 30
                               уровня», and here it cannot push the price. */}
                               {sku.notice?.badge && !soldOut && (
-                                <span className="bg-gold/12 text-gold mt-auto rounded-full px-2 py-0.5 text-[12px] font-semibold leading-tight">
+                                <span className="bg-gold/12 text-gold rounded-full px-2 py-0.5 text-[12px] font-semibold leading-tight">
                                   {sku.notice.badge}
+                                </span>
+                              )}
+                              {!soldOut && (
+                                <span aria-hidden className={PACK_FOOT}>
+                                  {!active && (
+                                    <span className="rounded-btn border-border-2 text-tx-mute flex h-11 w-11 items-center justify-center border">
+                                      <Plus size={18} strokeWidth={2.6} />
+                                    </span>
+                                  )}
                                 </span>
                               )}
                             </button>
@@ -2320,6 +2341,7 @@ export function PurchasePanel({
                               cannot hold buttons — and laid over its padded foot. */}
                             {active && (
                               <PackStepper
+                                name={displayDenomination(sku.denomination ?? sku.sku_code)}
                                 count={count}
                                 atLimit={cartPieces >= CART_MAX_UNITS}
                                 onStep={(d) => {
@@ -2356,7 +2378,7 @@ export function PurchasePanel({
             <div className="border-border/70 mt-4 flex items-center justify-between gap-3 border-b pb-4 lg:mt-3 lg:pb-3">
               {isMultiCart ? (
                 <div className="flex w-full flex-col gap-2">
-                  {cartLines.map((l) => (
+                  {cartLines.map((l, i) => (
                     <div key={l.sku.id} className="flex items-baseline justify-between gap-3">
                       <span className="min-w-0 text-[14px] font-semibold">
                         {lineName(l.sku)}
@@ -2365,11 +2387,8 @@ export function PurchasePanel({
                         </span>
                       </span>
                       <span className="shrink-0 whitespace-nowrap text-[14px] font-semibold tabular-nums">
-                        {l.sku.display_price
-                          ? formatUzs(
-                              locale,
-                              Math.round(Number(l.sku.display_price.amount) * l.count),
-                            )
+                        {cartSplit
+                          ? formatUzs(locale, cartSplit.lines[i] ?? 0)
                           : skuPrice(locale, l.sku)}
                       </span>
                     </div>
@@ -2380,6 +2399,12 @@ export function PurchasePanel({
                       {selectedPriceLabel}
                     </span>
                   </div>
+                  {/* Said here, not only in a «+» tooltip a phone never shows. */}
+                  {cartPieces >= CART_MAX_UNITS && (
+                    <p className="text-tx-dim text-[12px]">
+                      {t("packLimit", { max: String(CART_MAX_UNITS) })}
+                    </p>
+                  )}
                 </div>
               ) : selSku ? (
                 <>

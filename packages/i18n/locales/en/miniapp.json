@@ -161,8 +161,9 @@
     "many": "{count} items",
     "other": "{count} items"
   },
-  "topup.packLess": "Remove one",
-  "topup.packMore": "Add one more",
+  "topup.packLess": "Remove one: {name}",
+  "topup.packMore": "Add one more: {name}",
+  "topup.packLimit": "Up to {max} items in one order",
   "topup.fillFieldTitle": "Fill in the field",
   "topup.openInTgTitle": "Open in Telegram",
   "topup.openInTgBody": "Payment is only available from the Telegram Mini App",

@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { addPack, CART_MAX_UNITS, cartUnits, expandPieces, stepPack } from "./pack-cart";
+import {
+  addPack,
+  CART_MAX_UNITS,
+  cartUnits,
+  expandPieces,
+  splitRounded,
+  stepPack,
+} from "./pack-cart";
 
 describe("pack cart", () => {
   it("adds a pack once and keeps the rest of the order", () => {
@@ -35,5 +42,17 @@ describe("pack cart", () => {
       (sku_id) => ({ sku_id, qty: 1 }),
     );
     expect(lines.map((l) => l.sku_id)).toEqual(["p110", "p110", "p110", "p341"]);
+  });
+
+  it("rounds lines so they add up to the rounded total", () => {
+    // Rounded one by one the lines add up to 70 771 under a 70 772 total.
+    const { lines, total } = splitRounded([35266.2, 35505.4]);
+    expect(total).toBe(70772);
+    expect(lines).toEqual([35266, 35506]); // the 0.4 lost more than the 0.2
+    expect(splitRounded([35265.7, 35505.1]).lines).toEqual([35266, 35505]); // plain rounding
+    const cents = splitRounded([0.335, 0.335, 0.335], 0.01);
+    expect(Math.round(cents.lines.reduce((n, x) => n + x, 0) * 100)).toBe(
+      Math.round(cents.total * 100),
+    );
   });
 });

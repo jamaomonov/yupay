@@ -161,8 +161,9 @@
     "many": "{count} ta mahsulot",
     "other": "{count} ta mahsulot"
   },
-  "topup.packLess": "Bittasini olib tashlash",
-  "topup.packMore": "Yana bitta qoʻshish",
+  "topup.packLess": "Bittasini olib tashlash: {name}",
+  "topup.packMore": "Yana bitta qoʻshish: {name}",
+  "topup.packLimit": "Bitta buyurtmada {max} tadan koʻp emas",
   "topup.fillFieldTitle": "Maydonni to'ldiring",
   "topup.openInTgTitle": "Telegram'da oching",
   "topup.openInTgBody": "To'lov faqat Telegram Mini App orqali mavjud",

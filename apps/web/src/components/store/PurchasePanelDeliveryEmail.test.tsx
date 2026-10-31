@@ -143,7 +143,7 @@ it("sends where a signed-in buyer asked for their codes", async () => {
   // Editable: one order going somewhere else is a normal thing to want.
   fireEvent.change(field, { target: { value: "elsewhere@example.com" } });
 
-  fireEvent.click(await screen.findByRole("button", { name: /\$10/ }));
+  fireEvent.click(await screen.findByRole("button", { name: /^\$10/ }));
   await waitFor(() => {
     expect(screen.getByRole("button", { name: /^pay ·/i })).not.toBeDisabled();
   });

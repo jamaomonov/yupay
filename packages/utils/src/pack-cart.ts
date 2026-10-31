@@ -42,3 +42,34 @@ export function expandPieces<T>(
 ): T[] {
   return lines.flatMap(({ skuId, count }) => Array.from({ length: count }, () => line(skuId)));
 }
+
+/**
+ * Line amounts rounded so they add up to the rounded total — never a total one
+ * so'm off its own lines. The total is the raw sum rounded once, which is what
+ * checkout charges (`orders.service._round_to_payable` rounds the order, not
+ * each line). Lines are split by largest remainder: each starts rounded down,
+ * and the units still missing go to the lines that lost the most to rounding,
+ * so a line moves off its own rounded figure only when the sum forces it.
+ *
+ * @param raw - Each line's unrounded amount.
+ * @param quantum - The smallest payable unit: 1 for so'm, 0.01 for cents.
+ */
+export function splitRounded(
+  raw: readonly number[],
+  quantum = 1,
+): { lines: number[]; total: number } {
+  const units = raw.map((x) => x / quantum);
+  const totalUnits = Math.round(units.reduce((n, x) => n + x, 0));
+  const floors = units.map((x) => Math.floor(x + 1e-9));
+  let missing = totalUnits - floors.reduce((n, x) => n + x, 0);
+  const byLoss = units
+    .map((x, i) => ({ i, loss: x - (floors[i] ?? 0) }))
+    .sort((a, b) => b.loss - a.loss);
+  for (const { i } of byLoss) {
+    if (missing <= 0) break;
+    floors[i] = (floors[i] ?? 0) + 1;
+    missing -= 1;
+  }
+  const toAmount = (u: number): number => Math.round(u * quantum * 100) / 100;
+  return { lines: floors.map(toAmount), total: toAmount(totalUnits) };
+}
