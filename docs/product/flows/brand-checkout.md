@@ -26,6 +26,15 @@ rules as of 2026-10-26 (design review of the live pages):
 - **A game sold two ways** (Standoff 2: by player id, promo codes) is one
   catalogue tile that opens the main way; «По ID / Промокод» links switch between
   the two pages, each with its own URL and search copy.
+- **Several packs in one order** (2026-10-31, web and mini app): a tap puts a
+  pack in the order and turns its tile into «− N +»; more packs add lines. The
+  panel lists them with a total («4 товара · 70 771 сум»). Every piece is sent
+  as its own `qty: 1` line (`@yupay/utils` pack-cart, at most 20 an order), so
+  each is its own fulfilment task: one supplier call per pack, and one failed
+  piece is retried or refunded alone (admin partial refund). The order page
+  folds identical pieces back into one line «× 3». A free amount (Steam) or a
+  unit SKU (Stars) is still one line and empties the cart. Not in the mobile
+  app yet.
 - **The phone's bottom bar** shows the pack and the total, never cut, and a lime
   button that says what it does: «Оплатить» or «Перейти к оплате».
 

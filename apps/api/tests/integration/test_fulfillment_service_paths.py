@@ -169,6 +169,41 @@ async def test_start_for_order_rerun_reuses_existing_tasks(
     assert [t.id for t in rerun] == [first.id]
 
 
+async def test_a_pack_cart_gets_one_task_per_piece(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """«110 × 3 + 341» on one payment: the storefront sends every piece as its
+    own ``qty: 1`` line (``@yupay/utils`` pack-cart), and each becomes its own
+    task — one supplier call per pack, retried or refunded alone."""
+    a = _seed_unit(db_session, slug="cart-a")
+    b = _seed_unit(db_session, slug="cart-b")
+    await db_session.commit()
+    token = await _login_user(integration_client, tg_id=953)
+    line = lambda sku_id: {"sku_id": sku_id, "qty": 1, "fulfillment_data": {}}  # noqa: E731
+    r = await integration_client.post(
+        "/api/v1/orders",
+        headers={"Authorization": f"Bearer {token}", "Idempotency-Key": "fs-order-953-cart-pad"},
+        json={"currency": "USD", "items": [line(a), line(a), line(a), line(b)]},
+    )
+    assert r.status_code == 201, r.text
+    order = r.json()
+    assert len(order["items"]) == 4
+    assert Decimal(order["total_usd"]) == Decimal("6.00")
+    await _pay(integration_client, token=token, order_id=order["id"], tag="953")
+
+    tasks = (
+        (
+            await db_session.execute(
+                select(FulfillmentTask).where(FulfillmentTask.order_id == order["id"])
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(tasks) == 4
+    assert len({t.order_item_id for t in tasks}) == 4
+
+
 # ---------- stub suppliers: fail at start, cancel hook errors ----------
 
 

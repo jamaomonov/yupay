@@ -5,13 +5,23 @@ import {
   ChevronRight,
   ExternalLink,
   Globe,
+  Minus,
   Package as PackageIcon,
+  Plus,
   Send,
   Settings,
   ShieldCheck,
   Star,
   Zap,
 } from "lucide-react";
+import {
+  addPack,
+  CART_MAX_UNITS,
+  cartUnits,
+  expandPieces,
+  type PackCounts,
+  stepPack,
+} from "@yupay/utils";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useParams } from "wouter";
 
@@ -404,6 +414,9 @@ export default function TopUp() {
   // the wrong question is the whole failure mode this gate exists to prevent.
   const [checkResults, setCheckResults] = useState<Record<string, PlayerCheckVerdict | null>>({});
   const [selectedPkg, setSelectedPkg] = useState<string>("");
+  // How many of each fixed pack is in the order (`@yupay/utils` pack-cart);
+  // `selectedPkg` stays the pack last picked.
+  const [counts, setCounts] = useState<PackCounts>({});
   // Confirmation before an irreversible payment. Declared here with the other
   // hooks — the component has early returns further down, and a `useState`
   // below one of them is a conditional hook.
@@ -463,6 +476,7 @@ export default function TopUp() {
   // "10" from a previous variable-amount product never bleeds into the next.
   useEffect(() => {
     setAmountInput("");
+    setCounts({});
   }, [selectedProductSlug]);
 
   // On every route change to a different game: start the typed fields empty.
@@ -480,6 +494,8 @@ export default function TopUp() {
   // that brand's own last-remembered fields as *suggestions* only.
   useEffect(() => {
     setCheckResults({});
+    // Another brand's packs are other SKUs; a cart cannot carry over.
+    setCounts({});
     if (!brandSlug) {
       setSuggestions({});
       return;
@@ -646,6 +662,46 @@ export default function TopUp() {
       ? packagePrice(parsedQty, qtyRate.amount)
       : null;
 
+  // Several packs in one order — «110 × 3 + 341».
+  const activeFixed = activePkg !== undefined && !isVariableSelected && !isUnitSelected;
+  // Only packs of what is on screen: a region switch reuses the panel for
+  // another brand's SKUs, and a cart must not carry them over.
+  const keptCounts = Object.fromEntries(
+    Object.entries(counts).filter(([id]) => fixedPackages.some((p) => p.id === id)),
+  );
+  // A pack selected without a tap (an only SKU, «Купить снова») counts as one.
+  const cartCounts: PackCounts =
+    !activePkg || !activeFixed
+      ? {}
+      : Object.keys(keptCounts).length > 0
+        ? keptCounts
+        : { [activePkg.id]: 1 };
+  const cartLines = fixedPackages
+    .filter((p) => (cartCounts[p.id] ?? 0) > 0)
+    .map((p) => ({ pkg: p, count: cartCounts[p.id] ?? 0 }));
+  const cartPieces = cartUnits(cartCounts);
+  const isMultiCart = cartPieces > 1;
+  const cartTotal = cartLines.reduce((n, l) => n + l.pkg.price * l.count, 0);
+  const pickPack = (id: string): void => {
+    setCounts(addPack(cartCounts, id, true));
+    setSelectedPkg(id);
+  };
+  const stepCart = (id: string, delta: 1 | -1): void => {
+    haptic("select");
+    const next = stepPack(cartCounts, id, delta);
+    setCounts(next);
+    if (next[id] === undefined && id === selectedPkg) setSelectedPkg(Object.keys(next)[0] ?? "");
+  };
+  // What the order is called on the review screen: the pack, or how many.
+  const cartLabel = isMultiCart ? tn("topup.cartPieces", cartPieces) : (activePkg?.label ?? "");
+  const cartNotices = [
+    ...new Set(
+      (activeFixed ? cartLines.map((l) => l.pkg) : activePkg ? [activePkg] : [])
+        .map((x) => x.notice?.text)
+        .filter((x): x is string => Boolean(x)),
+    ),
+  ];
+
   const priceCode = isVariableSelected
     ? (activePkg?.ratePerDollar?.currency ?? currency)
     : (activePkg?.priceCode ?? currency);
@@ -653,7 +709,9 @@ export default function TopUp() {
     ? (variableTotal ?? 0)
     : isUnitSelected
       ? (qtyTotal ?? 0)
-      : (activePkg?.price ?? 0);
+      : activeFixed
+        ? cartTotal
+        : (activePkg?.price ?? 0);
   // Gates the CTA: a variable-amount SKU needs a live rate (the FX trust gate
   // didn't reject it) and a parsed, in-bounds, two-decimals-or-fewer amount; a
   // unit SKU needs the same, but a whole in-bounds quantity instead.
@@ -797,7 +855,16 @@ export default function TopUp() {
   const confirmRows = [
     {
       label: t("topup.confirmItem"),
-      value: [game?.name, activePkg?.label].filter(Boolean).join(" · "),
+      value: isMultiCart
+        ? [
+            game?.name,
+            cartLines
+              .map((l) => (l.count > 1 ? `${l.pkg.label} × ${String(l.count)}` : l.pkg.label))
+              .join(", "),
+          ]
+            .filter(Boolean)
+            .join(" · ")
+        : [game?.name, activePkg?.label].filter(Boolean).join(" · "),
     },
     ...requiredFields
       .filter((f) => (fulfillment[f.key] ?? "").trim() !== "")
@@ -884,6 +951,9 @@ export default function TopUp() {
       const result = await checkout.mutateAsync({
         skuId: activePkg.id,
         fulfillmentData,
+        ...(activeFixed && isMultiCart
+          ? { packs: cartLines.map((l) => ({ skuId: l.pkg.id, count: l.count })) }
+          : {}),
         currency,
         provider: PROVIDER_BY_METHOD_FULL[paymentMethod] ?? "click_miniapp",
         // Sent as a fixed-2-decimal string so the server never has to
@@ -1028,7 +1098,7 @@ export default function TopUp() {
                 {t("topup.reviewTitle")}
               </p>
               <p className="line-clamp-1 text-xs text-white/40">
-                {[game.name, activePkg?.label].filter(Boolean).join(" · ")}
+                {[game.name, cartLabel].filter(Boolean).join(" · ")}
               </p>
             </div>
           </div>
@@ -1412,11 +1482,15 @@ export default function TopUp() {
                     <PackageCard
                       key={pkg.id}
                       pkg={pkg}
-                      active={selectedPkg === pkg.id}
+                      count={cartCounts[pkg.id] ?? 0}
+                      atLimit={cartPieces >= CART_MAX_UNITS}
+                      onStep={(d) => {
+                        stepCart(pkg.id, d);
+                      }}
                       fallbackImage={productImage}
                       onSelect={() => {
                         haptic("select");
-                        setSelectedPkg(pkg.id);
+                        if ((cartCounts[pkg.id] ?? 0) === 0) pickPack(pkg.id);
                         // A package and the free amount are two answers to one
                         // question. Dropping the typed number here keeps the
                         // field from resurrecting it when it is focused again.
@@ -1454,7 +1528,7 @@ export default function TopUp() {
                     <PackageThumb pkg={activePkg} fallback={productImage ?? game.appIcon ?? null} />
                     <div className="min-w-0 flex-1">
                       <p className="line-clamp-1 text-sm font-bold text-white">
-                        {activePkg.label} · {game.name}
+                        {cartLabel} · {game.name}
                       </p>
                       <p className="mt-0.5 line-clamp-1 text-xs text-white/40">
                         {accountRequired
@@ -1473,9 +1547,27 @@ export default function TopUp() {
                           ? qtyTotal !== null
                             ? formatMoney(qtyTotal, priceCode)
                             : "—"
-                          : formatMoney(activePkg.price, activePkg.priceCode)}
+                          : formatMoney(finalPrice, activePkg.priceCode)}
                     </p>
                   </div>
+                  {isMultiCart && (
+                    <div
+                      className="mt-3 space-y-1.5 border-t pt-3"
+                      style={{ borderColor: "hsl(var(--border))" }}
+                    >
+                      {cartLines.map((l) => (
+                        <div key={l.pkg.id} className="flex items-center justify-between gap-3">
+                          <span className="min-w-0 truncate text-[13px] font-semibold text-white">
+                            {l.pkg.label}
+                            <span className="ml-1.5 font-normal text-white/45">× {l.count}</span>
+                          </span>
+                          <span className="flex-shrink-0 text-[13px] text-white/70">
+                            {formatMoney(l.pkg.price * l.count, l.pkg.priceCode)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   {/* Every field the buyer typed on step 1 — with the resolved
                       nickname next to the raw id wherever "Проверить" confirmed
                       one, so this is the last look before the acquirer redirect
@@ -1617,21 +1709,26 @@ export default function TopUp() {
 
             <PromoField
               items={
-                activePkg
-                  ? [
-                      {
-                        sku_id: activePkg.id,
-                        qty: isUnitSelected ? (parsedQty ?? 1) : 1,
-                        ...(isVariableSelected && parsedAmount !== null
-                          ? {
-                              amount_usd: (amountAsUsd ?? parsedAmount).toFixed(
-                                perUsd !== null ? 6 : 2,
-                              ),
-                            }
-                          : {}),
-                      },
-                    ]
-                  : []
+                activeFixed
+                  ? expandPieces(
+                      cartLines.map((l) => ({ skuId: l.pkg.id, count: l.count })),
+                      (sku_id) => ({ sku_id, qty: 1 }),
+                    )
+                  : activePkg
+                    ? [
+                        {
+                          sku_id: activePkg.id,
+                          qty: isUnitSelected ? (parsedQty ?? 1) : 1,
+                          ...(isVariableSelected && parsedAmount !== null
+                            ? {
+                                amount_usd: (amountAsUsd ?? parsedAmount).toFixed(
+                                  perUsd !== null ? 6 : 2,
+                                ),
+                              }
+                            : {}),
+                        },
+                      ]
+                    : []
               }
               currency={currency}
               isLoggedIn={me.data != null}
@@ -1806,7 +1903,7 @@ export default function TopUp() {
         rows={confirmRows}
         total={formatMoney(promo ? Math.round(Number(promo.totalAfter)) : finalPrice, priceCode)}
         warning={t(accountRequired ? "topup.confirmWarning" : "topup.confirmWarningVoucher")}
-        {...(activePkg?.notice && { notice: activePkg.notice.text })}
+        {...(cartNotices.length > 0 && { notice: cartNotices.join(" ") })}
         // A field-less product (a gift card) has nothing to attest to — the
         // old `!hasVerifiableField` alone was true for it too (`.some()` on
         // an empty array), which blocked checkout on a checkbox that
@@ -1825,74 +1922,113 @@ export default function TopUp() {
 // ─── Package card ─────────────────────────────────────────────────────────────
 function PackageCard({
   pkg,
-  active,
+  count,
+  atLimit,
+  onStep,
   fallbackImage,
   onSelect,
 }: {
   pkg: Package;
-  active: boolean;
+  /** How many of this pack are in the order; above zero it is selected. */
+  count: number;
+  /** The order holds the most pieces the API takes — «+» stops there. */
+  atLimit: boolean;
+  onStep: (delta: 1 | -1) => void;
   fallbackImage: string | null;
   onSelect: () => void;
 }) {
   const { t } = useT();
+  const active = count > 0;
   // Gift cards run out. A sold-out card stays on the grid rather than
   // disappearing — a denomination that vanishes between visits reads as a
   // pricing change, while a dimmed one reads as "come back later".
   const soldOut = !pkg.inStock;
   return (
-    <button
-      onClick={onSelect}
-      disabled={soldOut}
-      aria-disabled={soldOut}
-      className={`relative rounded-2xl p-3.5 text-left transition-all duration-150 ${
-        soldOut ? "cursor-not-allowed opacity-45" : ""
-      }`}
-      style={{
-        background: active ? "hsl(var(--surface-3))" : "hsl(var(--surface-2))",
-        border: active ? "1.5px solid hsl(var(--primary) / 0.8)" : "1px solid hsl(var(--border))",
-        boxShadow: active ? "0 0 0 3px hsl(var(--primary) / 0.1)" : "none",
-      }}
-      data-testid={`btn-pkg-${pkg.id}`}
-    >
-      {pkg.badge && (
-        <div
-          className="absolute -top-2 left-3 rounded-md px-2 py-0.5 text-[9px] font-bold tracking-wider"
-          style={{ background: pkg.badge.color, color: "#fff" }}
-        >
-          {pkg.badge.label}
+    <div className="relative flex">
+      <button
+        onClick={onSelect}
+        disabled={soldOut}
+        aria-pressed={active}
+        aria-disabled={soldOut}
+        className={`relative w-full rounded-2xl p-3.5 text-left transition-all duration-150 ${
+          soldOut ? "cursor-not-allowed opacity-45" : ""
+        } ${active ? "pb-14" : ""}`}
+        style={{
+          background: active ? "hsl(var(--surface-3))" : "hsl(var(--surface-2))",
+          border: active ? "1.5px solid hsl(var(--primary) / 0.8)" : "1px solid hsl(var(--border))",
+          boxShadow: active ? "0 0 0 3px hsl(var(--primary) / 0.1)" : "none",
+        }}
+        data-testid={`btn-pkg-${pkg.id}`}
+      >
+        {pkg.badge && (
+          <div
+            className="absolute -top-2 left-3 rounded-md px-2 py-0.5 text-[9px] font-bold tracking-wider"
+            style={{ background: pkg.badge.color, color: "#fff" }}
+          >
+            {pkg.badge.label}
+          </div>
+        )}
+
+        {active && (
+          <div
+            className="absolute right-2.5 top-2.5 flex h-5 w-5 items-center justify-center rounded-full"
+            style={{ background: "hsl(var(--primary))" }}
+          >
+            <Check size={11} strokeWidth={3} className="text-black" />
+          </div>
+        )}
+
+        <div className="mb-1.5 flex items-center gap-2">
+          <PackageThumb pkg={pkg} fallback={fallbackImage} />
+          <span className="text-base font-bold leading-none text-white">{pkg.label}</span>
         </div>
-      )}
 
-      {active && (
-        <div
-          className="absolute right-2.5 top-2.5 flex h-5 w-5 items-center justify-center rounded-full"
-          style={{ background: "hsl(var(--primary))" }}
-        >
-          <Check size={11} strokeWidth={3} className="text-black" />
-        </div>
-      )}
+        {pkg.region && pkg.region !== "GLOBAL" && (
+          <p className="mb-2 text-[11px] text-white/40">
+            {t("orders.region", { region: pkg.region })}
+          </p>
+        )}
 
-      <div className="mb-1.5 flex items-center gap-2">
-        <PackageThumb pkg={pkg} fallback={fallbackImage} />
-        <span className="text-base font-bold leading-none text-white">{pkg.label}</span>
-      </div>
-
-      {pkg.region && pkg.region !== "GLOBAL" && (
-        <p className="mb-2 text-[11px] text-white/40">
-          {t("orders.region", { region: pkg.region })}
+        <p className="text-sm font-bold text-white">
+          {soldOut ? t("topup.outOfStock") : formatMoney(pkg.price, pkg.priceCode)}
         </p>
-      )}
 
-      <p className="text-sm font-bold text-white">
-        {soldOut ? t("topup.outOfStock") : formatMoney(pkg.price, pkg.priceCode)}
-      </p>
-
-      {pkg.notice?.badge && !soldOut && (
-        <span className="mt-2 inline-block max-w-full truncate rounded-full bg-amber-400/15 px-2 py-0.5 text-[11px] font-semibold text-amber-300">
-          {pkg.notice.badge}
-        </span>
+        {pkg.notice?.badge && !soldOut && (
+          <span className="mt-2 inline-block max-w-full truncate rounded-full bg-amber-400/15 px-2 py-0.5 text-[11px] font-semibold text-amber-300">
+            {pkg.notice.badge}
+          </span>
+        )}
+      </button>
+      {/* Beside the card's button — a button cannot hold buttons — laid over
+        its padded foot. */}
+      {active && (
+        <div className="absolute inset-x-3 bottom-3 flex items-center justify-between gap-2">
+          <button
+            type="button"
+            aria-label={t("topup.packLess")}
+            onClick={() => {
+              onStep(-1);
+            }}
+            className="flex h-8 w-8 items-center justify-center rounded-xl bg-white/10 text-white"
+          >
+            <Minus size={15} strokeWidth={2.6} />
+          </button>
+          <span className="text-[15px] font-bold tabular-nums text-white">{count}</span>
+          <button
+            type="button"
+            aria-label={t("topup.packMore")}
+            disabled={atLimit}
+            onClick={() => {
+              onStep(1);
+            }}
+            className="flex h-8 w-8 items-center justify-center rounded-xl text-black disabled:opacity-40"
+            style={{ background: "hsl(var(--primary))" }}
+          >
+            <Plus size={15} strokeWidth={2.6} />
+          </button>
+        </div>
       )}
-    </button>
+    </div>
   );
 }
 

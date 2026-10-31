@@ -1,8 +1,16 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { formatMoney } from "@yupay/utils";
-import { ArrowUpRight, Check, Info, Loader2, X } from "lucide-react";
+import {
+  addPack,
+  CART_MAX_UNITS,
+  cartUnits,
+  expandPieces,
+  formatMoney,
+  type PackCounts,
+  stepPack,
+} from "@yupay/utils";
+import { ArrowUpRight, Check, Info, Loader2, Minus, Plus, X } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -1109,6 +1117,52 @@ function UnitPackTiles({
   );
 }
 
+/** «− 3 +» at the foot of a pack in the order (`@yupay/utils` pack-cart). */
+function PackStepper({
+  count,
+  atLimit,
+  onStep,
+  t,
+}: {
+  count: number;
+  /** The order holds the most pieces the API takes — «+» stops there. */
+  atLimit: boolean;
+  onStep: (delta: 1 | -1) => void;
+  t: (key: string, values?: Record<string, string>) => string;
+}) {
+  const btn =
+    "focus-visible:ring-primary rounded-btn flex h-9 w-9 shrink-0 items-center justify-center transition focus-visible:outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-40";
+  return (
+    <div className="absolute inset-x-3 bottom-3 flex items-center justify-between gap-2">
+      <button
+        type="button"
+        aria-label={t("packLess")}
+        onClick={() => {
+          onStep(-1);
+        }}
+        className={`${btn} bg-muted text-foreground hover:bg-border`}
+      >
+        <Minus size={16} strokeWidth={2.6} />
+      </button>
+      <span className="font-display text-[16px] font-bold tabular-nums" aria-live="polite">
+        {count}
+      </span>
+      <button
+        type="button"
+        aria-label={t("packMore")}
+        title={atLimit ? t("packLimit", { max: String(CART_MAX_UNITS) }) : undefined}
+        disabled={atLimit}
+        onClick={() => {
+          onStep(1);
+        }}
+        className={`${btn} bg-primary text-primary-foreground hover:bg-primary-2`}
+      >
+        <Plus size={16} strokeWidth={2.6} />
+      </button>
+    </div>
+  );
+}
+
 export function PurchasePanel({
   products,
   locale,
@@ -1153,6 +1207,9 @@ export function PurchasePanel({
     const only = primarySkus[0];
     return only && only.in_stock !== false ? only.id : undefined;
   });
+  // How many of each fixed pack is in the order (`@yupay/utils` pack-cart). `skuId`
+  // stays the pack last picked — the one whose product the form belongs to.
+  const [counts, setCounts] = useState<PackCounts>({});
   const [form, setForm] = useState<Record<string, string>>({});
   // Each checkable field's latest player-check verdict, reported by
   // `CheckablePlayerField` from the check itself and filed under the product +
@@ -1324,6 +1381,46 @@ export function PurchasePanel({
       break;
     }
   }
+  const selSkuFixed =
+    selSku !== undefined && !(selSku.variable_amount ?? false) && !isUnitSku(selSku);
+  // Only packs of what is on screen: a region switch reuses the panel for
+  // another brand's SKUs, and a cart must not carry them over.
+  const keptCounts = Object.fromEntries(
+    Object.entries(counts).filter(([id]) => selProduct?.skus.some((s) => s.id === id)),
+  );
+  // A pack selected without a tap (an only SKU, «Купить снова») counts as one.
+  const cartCounts: PackCounts =
+    !selSku || !selSkuFixed
+      ? {}
+      : Object.keys(keptCounts).length > 0
+        ? keptCounts
+        : { [selSku.id]: 1 };
+  // The packs in the order, in the catalogue's order.
+  const cartLines = (selProduct?.skus ?? [])
+    .filter((s) => (cartCounts[s.id] ?? 0) > 0)
+    .map((s) => ({ sku: s, count: cartCounts[s.id] ?? 0 }));
+  const cartPieces = cartUnits(cartCounts);
+  const cartTotal = cartLines.every((l) => l.sku.display_price)
+    ? cartLines.reduce((n, l) => n + Number(l.sku.display_price?.amount ?? 0) * l.count, 0)
+    : null;
+  // More than one piece: the summary lists them instead of naming one pack.
+  const isMultiCart = cartPieces > 1;
+  const lineName = (s: SkuOut): string => displayDenomination(s.denomination ?? s.sku_code);
+  const pickPack = (sku: SkuOut, product: ProductDetail): void => {
+    setCounts(
+      addPack(
+        cartCounts,
+        sku.id,
+        Object.keys(cartCounts).every((id) => product.skus.some((s) => s.id === id)),
+      ),
+    );
+    setSkuId(sku.id);
+  };
+  const stepCart = (id: string, delta: 1 | -1): void => {
+    const next = stepPack(cartCounts, id, delta);
+    setCounts(next);
+    if (next[id] === undefined && id === skuId) setSkuId(Object.keys(next)[0]);
+  };
   // The account fields belong to the brand's catalogue, not to the price the
   // buyer happens to pick — so they render from the first product until a
   // selection narrows it down. Hanging them off `selProduct` alone meant that
@@ -1505,31 +1602,49 @@ export function PurchasePanel({
       ? variableTotal
       : selSkuUnit
         ? qtyTotal
-        : selSku.display_price
-          ? Number(selSku.display_price.amount)
-          : null;
+        : cartTotal;
 
   // The cart line, built once. The promo preview and the order that follows
   // must price the *same* thing — two places assembling this is exactly how a
   // quote and its order come to disagree.
-  const orderItem = useMemo(
-    () =>
-      !selSku
-        ? null
-        : {
-            sku_id: selSku.id,
-            // A unit SKU (Telegram Stars) is bought as a real quantity, not the
-            // usual single line + `amount_usd`.
-            qty: selSkuUnit ? (parsedQty ?? 1) : 1,
-            fulfillment_data: form,
-            ...(selSkuVariable && amountAsUsd !== null
-              ? // Always dollars on the wire. Six decimals because one unit is
-                // rarely a round cent; the server snaps it back to a whole unit.
-                { amount_usd: amountAsUsd.toFixed(perUsd !== null ? 6 : 2) }
-              : {}),
-          },
-    [selSku, selSkuUnit, parsedQty, form, selSkuVariable, amountAsUsd, perUsd],
-  );
+  // The packs as a string, so the memo below — and the promo quote keyed on its
+  // result — changes when the order does, not on every render.
+  const packsKey = JSON.stringify(cartLines.map((l) => [l.sku.id, l.count]));
+  const orderItems = useMemo(() => {
+    if (!selSku) return [];
+    if (selSkuFixed) {
+      // Our own `packsKey` above — a known shape.
+      const packs = JSON.parse(packsKey) as [string, number][];
+      return expandPieces(
+        packs.map(([skuId, count]) => ({ skuId, count })),
+        (sku_id) => ({ sku_id, qty: 1, fulfillment_data: form }),
+      );
+    }
+    return [
+      {
+        sku_id: selSku.id,
+        // A unit SKU (Telegram Stars) is bought as a real quantity, not the
+        // usual single line + `amount_usd`.
+        qty: selSkuUnit ? (parsedQty ?? 1) : 1,
+        fulfillment_data: form,
+        ...(selSkuVariable && amountAsUsd !== null
+          ? // Always dollars on the wire. Six decimals because one unit is
+            // rarely a round cent; the server snaps it back to a whole unit.
+            { amount_usd: amountAsUsd.toFixed(perUsd !== null ? 6 : 2) }
+          : {}),
+      },
+    ];
+  }, [
+    selSku,
+    selSkuFixed,
+    packsKey,
+    selSkuUnit,
+    parsedQty,
+    form,
+    selSkuVariable,
+    amountAsUsd,
+    perUsd,
+  ]);
 
   // A render-time signal for the promo field. Deliberately *not* the handler's
   // own `isLoggedIn`, which also checks the access token at submit time: that
@@ -1548,7 +1663,7 @@ export function PurchasePanel({
   });
   // What the buyer is about to order, as one string: the pending order and the
   // ledger's refusal are both tied to exactly this cart.
-  const cartKey = JSON.stringify({ orderItem, email, promo: promo?.code ?? null });
+  const cartKey = JSON.stringify({ orderItems, email, promo: promo?.code ?? null });
   const walletState = walletTile({
     // `isLoading` matters: the access token is memory-only, so a cold load
     // re-mints it and `user` is null for a beat. Treating that as "guest" told
@@ -1690,7 +1805,9 @@ export function PurchasePanel({
           : qtyTotal !== null
             ? formatUzs(locale, Math.round(qtyTotal))
             : "—"
-        : skuPrice(locale, selSku);
+        : isMultiCart && cartTotal !== null
+          ? formatUzs(locale, Math.round(cartTotal))
+          : skuPrice(locale, selSku);
   // What the summary calls the pick. A typed amount names itself — «$10 →
   // Steam Wallet», not the SKU's «Любая сумма», which said nothing about what
   // was about to be bought.
@@ -1701,12 +1818,22 @@ export function PurchasePanel({
       ? `${typedAmount.toLocaleString(numberLocale(locale))} ${selSku.amount_unit}`
       : typedAmount !== null && selSkuVariable
         ? `$${typedAmount.toLocaleString(numberLocale(locale))} → ${selProduct?.name ?? ""}`
-        : displayDenomination(selSku.denomination ?? selSku.sku_code);
+        : isMultiCart
+          ? t("cartPieces", { count: cartPieces })
+          : displayDenomination(selSku.denomination ?? selSku.sku_code);
   // `selectedPriceLabel` holds the full "temporarily unavailable" sentence
   // when the FX trust gate rejected the rate — that sentence belongs on the
   // card/hint, never glued onto "Оплатить" or the mobile summary line.
   const priceUnavailable =
     (selSkuVariable && variableRate === null) || (selSkuUnit && unitRate === null);
+  // Every pack's own plate, once each — a cart can hold two packs that carry one.
+  const notices = [
+    ...new Set(
+      (selSkuFixed ? cartLines.map((l) => l.sku) : selSku ? [selSku] : [])
+        .map((x) => x.notice?.text)
+        .filter((x): x is string => Boolean(x)),
+    ),
+  ];
 
   // Nothing in the flow ever asked the buyer to look at what they typed before
   // the money left. `pay()` redirects to the acquirer on the next line, and a
@@ -1722,7 +1849,18 @@ export function PurchasePanel({
   const confirmRows = [
     {
       label: t("confirmItem"),
-      value: [selProduct?.name, selSku?.denomination].filter(Boolean).join(" · "),
+      value: isMultiCart
+        ? [
+            selProduct?.name,
+            cartLines
+              .map((l) =>
+                l.count > 1 ? `${lineName(l.sku)} × ${String(l.count)}` : lineName(l.sku),
+              )
+              .join(", "),
+          ]
+            .filter(Boolean)
+            .join(" · ")
+        : [selProduct?.name, selSku?.denomination].filter(Boolean).join(" · "),
     },
     ...fields
       .filter((f) => (form[f.key]?.trim() ?? "") !== "")
@@ -1761,15 +1899,15 @@ export function PurchasePanel({
       }
 
       // Built above, so the promo preview and this order price the same cart.
-      // `canPay` already guarantees it is non-null by the time we get here.
-      if (!orderItem) return;
+      // `canPay` already guarantees it is non-empty by the time we get here.
+      if (orderItems.length === 0) return;
       // Collected at submit, not at mount: the value that matters is the one in
       // force when the purchase was made. Omitted entirely when the browser
       // yields nothing, so the server stores {} rather than a bag of nulls.
       const hints = collectClientHints();
       const orderBody = {
         currency: "UZS",
-        items: [orderItem],
+        items: orderItems,
         // `guest_email` is the guest's identity on the order and cannot be
         // set for a signed-in buyer; `delivery_email` is where their mail
         // goes. Sending neither is what left them without their codes.
@@ -2114,69 +2252,83 @@ export function PurchasePanel({
                     {[...fixedSkus]
                       .sort((a, b) => Number(a.in_stock === false) - Number(b.in_stock === false))
                       .map((sku) => {
-                        const active = sku.id === skuId;
+                        const count = cartCounts[sku.id] ?? 0;
+                        const active = count > 0;
                         const img = sku.image_url ?? product.image_url;
                         // Gift cards run out. `in_stock` is absent on an older
                         // API, so anything but an explicit `false` stays sellable
                         // — a missing field must never empty the shelf.
                         const soldOut = sku.in_stock === false;
                         return (
-                          <button
-                            key={sku.id}
-                            type="button"
-                            aria-pressed={active}
-                            disabled={soldOut}
-                            onClick={() => {
-                              setSkuId(sku.id);
-                            }}
-                            className={`focus-visible:ring-primary focus-visible:ring-offset-bg relative flex flex-col items-start gap-2 rounded-lg border p-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
-                              soldOut
-                                ? "border-border bg-card cursor-not-allowed opacity-45"
-                                : active
-                                  ? "border-primary bg-primary/10"
-                                  : "border-border bg-card hover:border-border-2"
-                            }`}
-                          >
-                            <span className="rounded-btn relative h-12 w-12 overflow-hidden">
-                              {img && (
-                                <Image
-                                  src={img}
-                                  alt=""
-                                  fill
-                                  unoptimized={!isOptimizable(img)}
-                                  sizes="48px"
-                                  className="object-contain"
-                                />
-                              )}
-                            </span>
-                            {/* The price is what a buyer scans a 12-card grid for; it used to be
+                          <div key={sku.id} className="relative flex">
+                            <button
+                              type="button"
+                              aria-pressed={active}
+                              disabled={soldOut}
+                              onClick={() => {
+                                if (!active) pickPack(sku, product);
+                              }}
+                              className={`focus-visible:ring-primary focus-visible:ring-offset-bg relative flex w-full flex-col items-start gap-2 rounded-lg border p-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${active ? "pb-[60px]" : ""} ${
+                                soldOut
+                                  ? "border-border bg-card cursor-not-allowed opacity-45"
+                                  : active
+                                    ? "border-primary bg-primary/10"
+                                    : "border-border bg-card hover:border-border-2"
+                              }`}
+                            >
+                              <span className="rounded-btn relative h-12 w-12 overflow-hidden">
+                                {img && (
+                                  <Image
+                                    src={img}
+                                    alt=""
+                                    fill
+                                    unoptimized={!isOptimizable(img)}
+                                    sizes="48px"
+                                    className="object-contain"
+                                  />
+                                )}
+                              </span>
+                              {/* The price is what a buyer scans a 12-card grid for; it used to be
                               12px muted mono under a 15px bold name. Names also
                               clamp to two lines, so "Advanced Battle Pass
                               Activation Card" no longer makes its row 370px tall
                               while "100 Bonds" makes the next one 250px, which
                               left the prices at different heights per row. */}
-                            <span
-                              title={sku.denomination ?? sku.sku_code}
-                              className="font-display line-clamp-2 min-h-[2.5em] text-[14px] font-semibold leading-tight tracking-[-0.01em]"
-                            >
-                              {displayDenomination(sku.denomination ?? sku.sku_code)}
-                            </span>
-                            {/* Straight under a two-line name box, so prices line
+                              <span
+                                title={sku.denomination ?? sku.sku_code}
+                                className="font-display line-clamp-2 min-h-[2.5em] text-[14px] font-semibold leading-tight tracking-[-0.01em]"
+                              >
+                                {displayDenomination(sku.denomination ?? sku.sku_code)}
+                              </span>
+                              {/* Straight under a two-line name box, so prices line
                               up across a row however the names wrap; Inter, not
                               mono, and as large as the name — it is what the
                               grid is scanned for. */}
-                            <span className="text-foreground text-[16px] font-bold tabular-nums">
-                              {soldOut ? t("outOfStock") : skuPrice(locale, sku)}
-                            </span>
-                            {/* At the tile's foot, not in a corner: a two-column
+                              <span className="text-foreground text-[16px] font-bold tabular-nums">
+                                {soldOut ? t("outOfStock") : skuPrice(locale, sku)}
+                              </span>
+                              {/* At the tile's foot, not in a corner: a two-column
                               phone tile has no room beside the image for «До 30
                               уровня», and here it cannot push the price. */}
-                            {sku.notice?.badge && !soldOut && (
-                              <span className="bg-gold/12 text-gold mt-auto rounded-full px-2 py-0.5 text-[12px] font-semibold leading-tight">
-                                {sku.notice.badge}
-                              </span>
+                              {sku.notice?.badge && !soldOut && (
+                                <span className="bg-gold/12 text-gold mt-auto rounded-full px-2 py-0.5 text-[12px] font-semibold leading-tight">
+                                  {sku.notice.badge}
+                                </span>
+                              )}
+                            </button>
+                            {/* Beside the tile's button, not inside it — a button
+                              cannot hold buttons — and laid over its padded foot. */}
+                            {active && (
+                              <PackStepper
+                                count={count}
+                                atLimit={cartPieces >= CART_MAX_UNITS}
+                                onStep={(d) => {
+                                  stepCart(sku.id, d);
+                                }}
+                                t={t}
+                              />
                             )}
-                          </button>
+                          </div>
                         );
                       })}
                   </div>
@@ -2202,7 +2354,34 @@ export function PurchasePanel({
             </h2>
 
             <div className="border-border/70 mt-4 flex items-center justify-between gap-3 border-b pb-4 lg:mt-3 lg:pb-3">
-              {selSku ? (
+              {isMultiCart ? (
+                <div className="flex w-full flex-col gap-2">
+                  {cartLines.map((l) => (
+                    <div key={l.sku.id} className="flex items-baseline justify-between gap-3">
+                      <span className="min-w-0 text-[14px] font-semibold">
+                        {lineName(l.sku)}
+                        <span className="text-tx-mute ml-1.5 font-normal tabular-nums">
+                          × {l.count}
+                        </span>
+                      </span>
+                      <span className="shrink-0 whitespace-nowrap text-[14px] font-semibold tabular-nums">
+                        {l.sku.display_price
+                          ? formatUzs(
+                              locale,
+                              Math.round(Number(l.sku.display_price.amount) * l.count),
+                            )
+                          : skuPrice(locale, l.sku)}
+                      </span>
+                    </div>
+                  ))}
+                  <div className="border-border/70 mt-1 flex items-baseline justify-between gap-3 border-t pt-2">
+                    <span className="text-tx-mute text-[13px] font-semibold">{selectedName}</span>
+                    <span className="font-display shrink-0 whitespace-nowrap text-lg font-bold">
+                      {selectedPriceLabel}
+                    </span>
+                  </div>
+                </div>
+              ) : selSku ? (
                 <>
                   <span className="min-w-0 text-[15px] font-semibold">{selectedName}</span>
                   <span className="font-display shrink-0 whitespace-nowrap text-lg font-bold">
@@ -2213,11 +2392,14 @@ export function PurchasePanel({
                 <span className="text-tx-mute text-sm">{t("selectPack")}</span>
               )}
             </div>
-            {selSku?.notice && (
-              <p className="bg-gold/12 text-gold mt-3 rounded-xl px-3 py-2.5 text-[13px] font-semibold leading-snug lg:py-2 lg:text-[12.5px]">
-                {selSku.notice.text}
+            {notices.map((text) => (
+              <p
+                key={text}
+                className="bg-gold/12 text-gold mt-3 rounded-xl px-3 py-2.5 text-[13px] font-semibold leading-snug lg:py-2 lg:text-[12.5px]"
+              >
+                {text}
               </p>
-            )}
+            ))}
 
             {fields.length > 0 && (
               <div className="mt-5 flex flex-col gap-4 lg:mt-4 lg:gap-3">
@@ -2461,7 +2643,7 @@ export function PurchasePanel({
                 checkout takes one. The field says what it is waiting for. */}
             <PromoField
               locale={locale}
-              items={orderItem ? [orderItem] : []}
+              items={orderItems}
               currency="UZS"
               isLoggedIn={isSignedIn}
               onChange={(next) => {
@@ -2577,7 +2759,7 @@ export function PurchasePanel({
         totalLabel={t("confirmTotal")}
         totalValue={selectedPriceLabel}
         warning={accountRequired ? t("confirmWarning") : t("confirmWarningVoucher")}
-        notice={selSku?.notice?.text}
+        notice={notices.length > 0 ? notices.join(" ") : undefined}
         // A field-less product (a gift card) has nothing to attest to — the
         // old `!hasVerifiableField` alone was true for it too (`.some()` on
         // an empty array), which blocked checkout on a checkbox that

@@ -78,10 +78,35 @@ function ItemThumb({ item }: { item: OrderItemOut }) {
   );
 }
 
-export function OrderItems({ items }: { items: OrderItemOut[] }) {
+/** Pieces of one pack bought together arrive as separate `qty: 1` lines (one
+ *  supplier call each, `@yupay/utils` pack-cart); the buyer reads them as one line,
+ *  «× 3», with the account it went to shown once. A variable-amount line (its
+ *  own amount) and a skin (its own trade) keep their own rows. */
+export function groupLines(items: OrderItemOut[]): OrderItemOut[] {
+  const out: OrderItemOut[] = [];
+  const at = new Map<string, number>();
+  for (const item of items) {
+    const key =
+      item.display?.variable_amount || isSkinItem(item)
+        ? null
+        : `${item.sku_id}|${JSON.stringify(item.fulfillment_data)}`;
+    const i = key === null ? undefined : at.get(key);
+    const prev = i === undefined ? undefined : out[i];
+    if (prev !== undefined && i !== undefined) {
+      out[i] = { ...prev, qty: prev.qty + item.qty };
+      continue;
+    }
+    if (key !== null) at.set(key, out.length);
+    out.push(item);
+  }
+  return out;
+}
+
+export function OrderItems({ items: raw }: { items: OrderItemOut[] }) {
   const t = useTranslations("web.orders");
   const locale = useLocale();
-  if (items.length === 0) return null;
+  if (raw.length === 0) return null;
+  const items = groupLines(raw);
   return (
     <section className="space-y-2.5">
       <h3 className="text-tx-dim text-[11px] font-semibold uppercase tracking-[0.08em]">

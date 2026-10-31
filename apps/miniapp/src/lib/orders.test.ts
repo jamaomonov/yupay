@@ -279,6 +279,26 @@ describe("performCheckout", () => {
     expect(mockApiGet).toHaveBeenCalledWith("/api/v1/payments/providers");
   });
 
+  it("sends every piece of a pack cart as its own qty-1 line", async () => {
+    await performCheckout(qc, {
+      skuId: "ff-341",
+      fulfillmentData: { player_id: "777" },
+      packs: [
+        { skuId: "ff-110", count: 2 },
+        { skuId: "ff-341", count: 1 },
+      ],
+      provider: "wallet",
+    });
+
+    const line = (sku_id: string) => ({ sku_id, qty: 1, fulfillment_data: { player_id: "777" } });
+    expect(mockApiPost).toHaveBeenNthCalledWith(
+      1,
+      "/api/v1/orders",
+      expect.objectContaining({ items: [line("ff-110"), line("ff-110"), line("ff-341")] }),
+      expect.anything(),
+    );
+  });
+
   // Task 8: a unit SKU (Telegram Stars) is bought as a real quantity, not the
   // usual single line + `amount_usd`.
   it("sends a unit SKU's tapped/typed count as qty, with no amount_usd", async () => {

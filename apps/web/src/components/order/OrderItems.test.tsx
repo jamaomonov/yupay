@@ -131,3 +131,13 @@ it("shows a skin as the skin bought, with its float and none of the checkout int
   expect(screen.queryByText("Listing Id")).not.toBeInTheDocument();
   expect(screen.queryByText("Waxpeer Name")).not.toBeInTheDocument();
 });
+
+it("folds pieces of one pack bought together into one line with a qty", () => {
+  const pack = display({ variable_amount: false, denomination: "110 Diamonds" });
+  const piece = (id: string) =>
+    item({ id, sku_id: "ff-110", display: pack, fulfillment_data: { player_id: "777" } });
+  wrap(<OrderItems items={[piece("a"), piece("b"), piece("c")]} />);
+  expect(screen.getAllByText("Steam · 110 Diamonds")).toHaveLength(1);
+  expect(screen.getByText("Qty: 3")).toBeInTheDocument();
+  expect(screen.getAllByText("777")).toHaveLength(1);
+});

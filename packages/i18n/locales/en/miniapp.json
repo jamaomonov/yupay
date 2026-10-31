@@ -155,6 +155,14 @@
   "topup.noAccount": "No account details needed",
   "topup.pickPackageTitle": "Pick a package",
   "topup.pickPackageBody": "Choose a denomination first",
+  "topup.cartPieces": {
+    "one": "{count} item",
+    "few": "{count} items",
+    "many": "{count} items",
+    "other": "{count} items"
+  },
+  "topup.packLess": "Remove one",
+  "topup.packMore": "Add one more",
   "topup.fillFieldTitle": "Fill in the field",
   "topup.openInTgTitle": "Open in Telegram",
   "topup.openInTgBody": "Payment is only available from the Telegram Mini App",

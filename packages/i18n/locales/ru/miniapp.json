@@ -155,6 +155,14 @@
   "topup.noAccount": "Без передачи аккаунта",
   "topup.pickPackageTitle": "Выберите пакет",
   "topup.pickPackageBody": "Сначала укажи номинал",
+  "topup.cartPieces": {
+    "one": "{count} товар",
+    "few": "{count} товара",
+    "many": "{count} товаров",
+    "other": "{count} товара"
+  },
+  "topup.packLess": "Убрать один",
+  "topup.packMore": "Добавить ещё один",
   "topup.fillFieldTitle": "Заполните поле",
   "topup.openInTgTitle": "Откройте в Telegram",
   "topup.openInTgBody": "Оплата доступна только из Telegram Mini App",

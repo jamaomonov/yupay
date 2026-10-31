@@ -8,6 +8,8 @@
 
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 
+import { expandPieces } from "@yupay/utils";
+
 import { ApiError, apiGet, apiPost, newIdempotencyKey } from "./api";
 import { useMe } from "./auth";
 import { collectClientHints } from "./client-hints";
@@ -272,6 +274,10 @@ export interface CreateOrderInput {
    *  mirrors `yupay.modules.catalog.unit_sku.is_unit_sku` on the server.
    *  Every other line defaults to `qty: 1` when this is left unset. */
   qty?: number;
+  /** Several fixed packs in one order — «110 × 3 + 341». Every piece goes as
+   *  its own `qty: 1` line (`@yupay/utils` pack-cart), and `skuId`/`qty` are
+   *  then ignored. Unset or empty: the one line above. */
+  packs?: readonly { skuId: string; count: number }[];
   /** A partner promo code, as typed. The server resolves it again for itself,
    *  so a code that went stale since the preview yields an order at full price
    *  rather than the price the button showed — read `discount_charged` on the
@@ -340,6 +346,7 @@ export async function performCheckout(
     provider = "mock",
     amountUsd,
     qty,
+    packs,
     affiliateCode,
     orderIdempotencyKey,
   }: CreateOrderInput & {
@@ -371,14 +378,21 @@ export async function performCheckout(
       currency,
       ...(hints ? { client_hints: hints } : {}),
       ...(affiliateCode !== undefined ? { affiliate_code: affiliateCode } : {}),
-      items: [
-        {
-          sku_id: skuId,
-          qty: qty ?? 1,
-          fulfillment_data: fulfillmentData,
-          ...(amountUsd !== undefined ? { amount_usd: amountUsd } : {}),
-        },
-      ],
+      items:
+        packs && packs.length > 0
+          ? expandPieces(packs, (sku_id) => ({
+              sku_id,
+              qty: 1,
+              fulfillment_data: fulfillmentData,
+            }))
+          : [
+              {
+                sku_id: skuId,
+                qty: qty ?? 1,
+                fulfillment_data: fulfillmentData,
+                ...(amountUsd !== undefined ? { amount_usd: amountUsd } : {}),
+              },
+            ],
     },
     { idempotencyKey: orderIdempotencyKey ?? newIdempotencyKey("order") },
   );
