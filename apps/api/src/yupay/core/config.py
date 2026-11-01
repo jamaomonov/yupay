@@ -203,6 +203,18 @@ class Settings(BaseSettings):
         default=10, description="Max sensitive auth hits per window per IP."
     )
     auth_ip_guard_window_seconds: int = Field(default=60)
+    auth_register_daily_max: int = Field(
+        default=10,
+        description=(
+            "Email/password registrations one IP may make per 24 h, on top of the "
+            "per-minute guard. 152 accounts on one inbox in an hour (2026-11-01) "
+            "slipped under the per-minute one. Sized for a carrier NAT."
+        ),
+    )
+    auth_verify_email_cooldown_seconds: int = Field(
+        default=600,
+        description="At most one re-sent verification email per mailbox in this window.",
+    )
     auth_ip_guard_subject_max: int = Field(
         default=10,
         description=(

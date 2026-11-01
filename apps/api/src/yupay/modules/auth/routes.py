@@ -5,6 +5,7 @@ Mounted under ``/api/v1/auth`` by :mod:`yupay.api.v1`.
 
 from __future__ import annotations
 
+import hashlib
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Cookie, Depends, Header, Request, Response, status
@@ -12,8 +13,9 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.api.v1.deps import db_session
+from yupay.core.client_ip import client_ip
 from yupay.core.config import get_settings
-from yupay.core.errors import UnauthorizedError, ValidationError
+from yupay.core.errors import RateLimitedError, UnauthorizedError, ValidationError
 from yupay.core.idempotency import IDEMPOTENCY_HEADER, normalize_idempotency_key
 from yupay.core.logging import get_logger
 from yupay.modules.auth import steam as steam_openid
@@ -25,7 +27,8 @@ from yupay.modules.auth.cookies import (
 )
 from yupay.modules.auth.deps import current_user
 from yupay.modules.auth.dev_login import dev_admin_login
-from yupay.modules.auth.ip_guard import guard_ip
+from yupay.modules.auth.ip_guard import guard_ip, hit_counter
+from yupay.modules.auth.mailbox import mailbox_key
 from yupay.modules.auth.schemas import (
     AdminDevLoginIn,
     ForgotPasswordIn,
@@ -122,6 +125,32 @@ def _web_base(request: Request, locale: str) -> str:
     return f"{base.rstrip('/')}/{locale}"
 
 
+async def _guard_register_daily(request: Request) -> None:
+    """A per-IP ceiling per 24 h, which the per-minute guard is too short to be."""
+    settings = get_settings()
+    window = 86_400
+    if await hit_counter(
+        f"auth:register-day:{client_ip(request)}",
+        limit=settings.auth_register_daily_max,
+        window=window,
+    ):
+        raise RateLimitedError("too many registrations from this address", retry_after=window)
+
+
+async def _verify_mail_cooling_down(email: str) -> bool:
+    """Whether this mailbox was sent a verification link within the cooldown.
+
+    Keyed by the mailbox (``a+x@gmail.com`` is ``a@gmail.com``), hashed, and not
+    by IP, so rotating addresses cannot flood one inbox through us either.
+    """
+    digest = hashlib.sha256(mailbox_key(email).encode()).hexdigest()[:32]
+    return await hit_counter(
+        f"auth:verify-mail:{digest}",
+        limit=1,
+        window=get_settings().auth_verify_email_cooldown_seconds,
+    )
+
+
 @router.post(
     "/register",
     response_model=RegisterOut,
@@ -143,6 +172,7 @@ async def register_route(
     # to an arbitrary address, so without this it is an unbounded
     # account-enumeration and verification-email-bomb relay.
     await guard_ip(request, bucket="register", subject=body.email)
+    await _guard_register_daily(request)
     user = await register_user(
         db,
         email=body.email,
@@ -417,6 +447,8 @@ async def resend_verification_route(
 ) -> None:
     """Non-enumerating: always returns 204 regardless of whether the email is known."""
     await guard_ip(request, bucket="resend-verification", subject=body.email)
+    if await _verify_mail_cooling_down(body.email):
+        return  # still 204: the answer never says whether a mail went out
     await resend_verification(db, email=body.email, verify_link_base=_web_base(request, "ru"))
 
 

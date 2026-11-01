@@ -38,6 +38,7 @@ from yupay.core.redis import get_redis
 from yupay.modules.auth import google, steam
 from yupay.modules.auth import jwt as authjwt
 from yupay.modules.auth import telegram as tg
+from yupay.modules.auth.mailbox import mailbox_taken
 from yupay.modules.auth.models import AuthSession
 from yupay.modules.auth.security import (
     email_hash,
@@ -176,6 +177,9 @@ async def register_user(
     """
     s = settings or get_settings()
     normalised = email.strip().lower()
+    # ``a+x@gmail.com`` is ``a@gmail.com``'s inbox: one mailbox, one account.
+    if await mailbox_taken(db, normalised):
+        raise ConflictError("email already registered")
     user = User(
         id=new_id(),
         email=normalised,

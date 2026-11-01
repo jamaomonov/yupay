@@ -400,6 +400,28 @@ out because carrier NAT would sum strangers. **Residual:** fresh accounts with f
 fresh recipients are separate buyers to this rule — the risk module's other rules and the
 new-buyer limits are what see them. Trusted accounts are exempt by the owner's choice.
 
+## Registration as an inbox-flooding relay (2026-11-01)
+
+152 email/password accounts were opened on one Gmail inbox in an hour, each
+`name+b…@gmail.com`: Gmail delivers every `+tag` (and ignores dots), so
+uniqueness on the raw address let the form send a verification email per
+variant into one inbox — the "subscription bombing" pattern used to bury a
+victim's bank alerts. None was verified; nothing else was touched. Three
+controls now:
+
+- **One mailbox, one account.** `auth/mailbox.py` maps an address to the inbox
+  it delivers to (`+tag` dropped everywhere, dots too on Gmail) and
+  registration refuses a mailbox a live account already holds (409, as for an
+  exact duplicate). The stored email is never rewritten.
+- **A daily per-IP cap** on registration (`AUTH_REGISTER_DAILY_MAX`, 10 / 24 h)
+  on top of the per-minute `ip_guard`, which the burst slipped under.
+- **One re-sent verification email per mailbox per 10 minutes**
+  (`AUTH_VERIFY_EMAIL_COOLDOWN_SECONDS`), keyed by the hashed mailbox rather
+  than the IP; the endpoint still answers 204 either way.
+
+Cloudflare Turnstile on the form is the next step if it comes back from many
+addresses.
+
 ## Out of scope (we do not handle)
 
 - Card data (PAN, CVV) — all card collection redirected to hosted provider fields.
