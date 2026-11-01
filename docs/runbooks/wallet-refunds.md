@@ -45,6 +45,30 @@ curl -X POST https://api.yupay.uz/api/v1/payments/admin/<payment_id>/refund \
   **keeps** its current state (e.g. `delivered`). Partial refunds are an
   accounting concern, not an FSM transition.
 
+## One line of a cart failed, the rest were delivered
+
+Admin UI → the order → «Позиции» → **Вернуть на баланс** under the failed line
+(`POST /api/v1/admin/payments/order-items/{order_item_id}/refund-to-wallet`,
+`Idempotency-Key` required; `payments/line_refund.py`). Do **not** press the
+payment's «Возврат на баланс» — that returns the whole payment, delivered lines
+included.
+
+What it does, in one transaction:
+
+- cancels the line's task (it must be `failed` or already `cancelled`; at least one
+  other line must be delivered — otherwise refund the whole payment);
+- credits the line's share of the payment, in proportion to the lines' USD prices
+  and rounded down (whole so'm for UZS), onto the buyer's balance — ledger key
+  `refund_line:<order_item_id>`, so a replay never credits twice;
+- marks the line `refunded`, the payment `partially_refunded` (every whole-payment
+  refund then refuses it, and so does an acquirer's cancel), and writes an
+  `order.line_refunded` event;
+- closes the order as `delivered` once every other line is delivered or paid back.
+
+Guest, merchant and balance top-up orders are refused. Before this button existed
+(2026-11-01) the same case was closed by hand: cancel the task, credit the balance
+with a manual adjustment, then set the order `delivered` in SQL.
+
 ## Symptom: "I refunded a wallet order but the balance didn't go up"
 
 1. **Confirm it was a wallet payment.** In the admin payment detail, `provider`

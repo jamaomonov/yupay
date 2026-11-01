@@ -2321,6 +2321,80 @@ async def reopen_task(db: AsyncSession, *, task_id: str, admin_id: str) -> Fulfi
     return task
 
 
+#: The order event a line refund writes (``payments.line_refund``). Settlement
+#: reads it: a cancelled task whose line was paid back no longer holds the order
+#: open.
+LINE_REFUNDED_EVENT: Final[str] = "order.line_refunded"
+
+
+async def release_line_for_refund(db: AsyncSession, *, order_item_id: str) -> FulfillmentTask:
+    """Stop one undeliverable line for good, so its money can go back.
+
+    The fulfilment half of the admin's «Вернуть позицию на баланс». Locks every
+    task of the order in drain order (deadlock-free, see
+    :func:`_existing_tasks_for_order`) before the caller touches the payment or
+    the order row. The line's task must have stopped — ``failed`` (cancelled
+    here) or already ``cancelled`` — and at least one sibling must have been
+    delivered: an order with nothing delivered goes back whole, through the
+    payment's own «Возврат на баланс».
+
+    Args:
+        db: Session; the caller commits.
+        order_item_id: The line being refunded.
+
+    Returns:
+        The line's task, now ``cancelled``.
+
+    Raises:
+        NotFoundError: No task for that line.
+        ConflictError: The task is still running or delivered, or no other
+            line of the order was delivered.
+    """
+    order_id = (
+        await db.execute(select(OrderItem.order_id).where(OrderItem.id == order_item_id))
+    ).scalar_one_or_none()
+    if order_id is None:
+        raise NotFoundError("order item not found")
+    tasks = await _existing_tasks_for_order(db, order_id, for_update=True)
+    task = next((t for t in tasks if t.order_item_id == order_item_id), None)
+    if task is None:
+        raise NotFoundError("fulfilment task not found")
+    if task.status not in ("failed", "cancelled"):
+        raise ConflictError(
+            "only a failed or cancelled line can be refunded",
+            reason="line_not_stopped",
+            extra={"status": task.status},
+        )
+    if not any(t.status == "succeeded" for t in tasks if t.id != task.id):
+        raise ConflictError(
+            "nothing else on this order was delivered; refund the whole payment",
+            reason="nothing_delivered",
+        )
+    if task.status == "failed":
+        await _apply_cancel(db, task=task, reason="line_refund")
+        await db.flush()
+    return task
+
+
+async def settle_order_if_done(db: AsyncSession, *, order_id: str) -> None:
+    """Close the order as delivered when every line is delivered or paid back.
+
+    Public seam over :func:`_try_settle_order` for the line refund, which runs
+    outside the drain path.
+    """
+    await _try_settle_order(db, order_id=order_id)
+
+
+async def _refunded_line_ids(db: AsyncSession, order_id: str) -> set[str]:
+    """Lines of the order whose money went back through a line refund."""
+    rows = await db.execute(
+        select(OrderEvent.payload["order_item_id"].astext).where(
+            OrderEvent.order_id == order_id, OrderEvent.kind == LINE_REFUNDED_EVENT
+        )
+    )
+    return {r for r in rows.scalars().all() if r}
+
+
 #: Routes whose in-flight work we can stop ourselves: stock we issue from our
 #: own warehouse, and the human queue. Every other route is a supplier.
 _SELF_STOPPABLE_ROUTES: frozenset[str] = frozenset({INVENTORY_ROUTE, "manual"})
@@ -3151,7 +3225,15 @@ async def _try_settle_order(db: AsyncSession, *, order_id: str) -> None:
     if not tasks:
         return
     if any(t.status != "succeeded" for t in tasks):
-        return
+        # A line paid back by an admin (``release_line_for_refund``) no longer
+        # holds the order open; it closes on the lines that were delivered.
+        refunded = await _refunded_line_ids(db, order_id)
+        if any(
+            t.status != "succeeded"
+            and not (t.status == "cancelled" and t.order_item_id in refunded)
+            for t in tasks
+        ):
+            return
 
     moment = now()
     order.status = "delivered"

@@ -33443,6 +33443,81 @@
         ]
       }
     },
+    "/api/v1/admin/payments/order-items/{order_item_id}/refund-to-wallet": {
+      "post": {
+        "description": "\u00ab\u0412\u0435\u0440\u043d\u0443\u0442\u044c \u043f\u043e\u0437\u0438\u0446\u0438\u044e \u043d\u0430 \u0431\u0430\u043b\u0430\u043d\u0441\u00bb: one failed line back, the order closes on the rest.\n\nSee :mod:`yupay.modules.payments.line_refund`.",
+        "operationId": "admin_refund_line_to_wallet_api_v1_admin_payments_order_items__order_item_id__refund_to_wallet_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_item_id",
+            "required": true,
+            "schema": {
+              "title": "Order Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentAdminOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Admin refund of one undelivered order line to the customer's YuPay balance",
+        "tags": [
+          "admin:payments"
+        ]
+      }
+    },
     "/api/v1/admin/payments/providers": {
       "get": {
         "operationId": "admin_list_providers_route_api_v1_admin_payments_providers_get",

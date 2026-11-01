@@ -604,3 +604,61 @@ it("books a refund made in Click's cabinet with its number", async () => {
     );
   });
 });
+
+function cartLine(id: string, state: string): OrderAdminOut["items"][number] {
+  return {
+    id,
+    sku_id: "sku",
+    qty: 1,
+    unit_price_usd: "1.00",
+    fulfillment_state: state,
+    fulfillment_data: {},
+    supplier_order_id: null,
+    display: null,
+    skin_trade: null,
+  };
+}
+
+it("pays one failed cart line back to the balance", async () => {
+  mockWithPayment(
+    makeOrder({
+      status: "fulfilling",
+      user_id: "user-1",
+      guest_email: null,
+      events: [],
+      items: [cartLine("i-ok", "delivered"), cartLine("i-bad", "failed")],
+    }),
+  );
+  vi.spyOn(window, "confirm").mockReturnValue(true);
+  renderPage();
+
+  const buttons = await screen.findAllByRole("button", { name: "Вернуть на баланс" });
+  expect(buttons).toHaveLength(1);
+  fireEvent.click(buttons[0]!);
+
+  await waitFor(() => {
+    expect(mockedApiPost).toHaveBeenCalledWith(
+      "/api/v1/admin/payments/order-items/i-bad/refund-to-wallet",
+      {},
+      expect.objectContaining({
+        "Idempotency-Key": expect.stringMatching(/^admin-refund-line-/),
+      }),
+    );
+  });
+});
+
+it("offers no line refund when nothing on the order was delivered", async () => {
+  mockWithPayment(
+    makeOrder({
+      status: "fulfilling",
+      user_id: "user-1",
+      guest_email: null,
+      events: [],
+      items: [cartLine("i-a", "failed"), cartLine("i-b", "failed")],
+    }),
+  );
+  renderPage();
+
+  expect(await screen.findByRole("button", { name: /Возврат на баланс/ })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Вернуть на баланс" })).not.toBeInTheDocument();
+});

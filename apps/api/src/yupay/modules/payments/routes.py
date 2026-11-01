@@ -24,6 +24,7 @@ from yupay.modules.auth.security import email_hash
 from yupay.modules.orders.models import Order
 from yupay.modules.orders.service import Actor
 from yupay.modules.payments import (
+    line_refund,
     provider_admin,
     provider_analytics,
     provider_cancel,
@@ -426,6 +427,28 @@ async def admin_refund_payment_to_wallet(
         admin_id=admin.id,
         reason=body.reason,
         idempotency_key=key,
+    )
+    return PaymentAdminOut.model_validate(payment)
+
+
+@admin_router.post(
+    "/order-items/{order_item_id}/refund-to-wallet",
+    response_model=PaymentAdminOut,
+    summary="Admin refund of one undelivered order line to the customer's YuPay balance",
+)
+async def admin_refund_line_to_wallet(
+    order_item_id: str,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    admin: Annotated[User, Depends(require_admin)],
+    idempotency_key: Annotated[str | None, Header(alias=IDEMPOTENCY_HEADER)] = None,
+) -> PaymentAdminOut:
+    """«Вернуть позицию на баланс»: one failed line back, the order closes on the rest.
+
+    See :mod:`yupay.modules.payments.line_refund`.
+    """
+    key = _require_idempotency_key(idempotency_key)
+    payment = await line_refund.refund_line_to_wallet(
+        db, order_item_id=order_item_id, admin_id=admin.id, idempotency_key=key
     )
     return PaymentAdminOut.model_validate(payment)
 

@@ -231,6 +231,26 @@ export function OrderDetailPage() {
     },
   });
 
+  // One failed line of a cart back onto the balance; the order then closes as
+  // delivered on the lines that were. The server refuses anything else.
+  const refundLine = useMutation<PaymentAdminOut, ApiError, { itemId: string; key: string }>({
+    mutationFn: ({ itemId, key }) =>
+      apiPost<PaymentAdminOut>(
+        `/api/v1/admin/payments/order-items/${itemId}/refund-to-wallet`,
+        {},
+        { "Idempotency-Key": key },
+      ),
+    onSuccess: () => {
+      toast.success("Позиция возвращена на баланс");
+      void qc.invalidateQueries({ queryKey: ["admin", "orders"] });
+      void qc.invalidateQueries({ queryKey: ["admin", "payments"] });
+      void qc.invalidateQueries({ queryKey: qk.order(orderId) });
+    },
+    onError: (err) => {
+      toast.error(extractApiMessage(err));
+    },
+  });
+
   // Paynet refuses a cancel from its cabinet once the goods shipped (306). For
   // a dead code or currency that never arrived the operator lifts that for
   // one payment; the cancel in Paynet's cabinet then refunds the card.
@@ -483,7 +503,17 @@ export function OrderDetailPage() {
         {/* ----- left column: summary + timeline ----- */}
         <section className="space-y-6 lg:col-span-2">
           <SummaryCard order={order} />
-          <ItemsCard order={order} />
+          <ItemsCard
+            order={order}
+            refunding={refundLine.isPending}
+            onRefundLine={(it) => {
+              if (!window.confirm("Вернуть эту позицию на баланс клиента и закрыть заказ?")) return;
+              refundLine.mutate({
+                itemId: it.id,
+                key: `admin-refund-line-${crypto.randomUUID()}`,
+              });
+            }}
+          />
           <EconomicsCard orderId={order.id} />
           <Timeline events={order.events} status={order.status} orderId={order.id} />
         </section>
@@ -741,7 +771,22 @@ function SummaryCard({ order }: { order: OrderAdminOut }) {
   );
 }
 
-function ItemsCard({ order }: { order: OrderAdminOut }) {
+interface ItemsCardProps {
+  order: OrderAdminOut;
+  refunding: boolean;
+  onRefundLine: (item: OrderAdminOut["items"][number]) => void;
+}
+
+function ItemsCard({ order, refunding, onRefundLine }: ItemsCardProps) {
+  // A failed line can go back alone only while the order is open, on a
+  // customer's balance, and when something else on it was delivered —
+  // otherwise the payment's own «Возврат на баланс» is the right button.
+  const lineRefundable =
+    order.user_id !== null &&
+    !order.merchant_id &&
+    order.purpose !== "wallet_topup" &&
+    (order.status === "paid" || order.status === "fulfilling") &&
+    order.items.some((i) => i.fulfillment_state === "delivered");
   return (
     <div className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)]">
       <header className="flex items-center gap-2 border-b px-4 py-3">
@@ -817,6 +862,18 @@ function ItemsCard({ order }: { order: OrderAdminOut }) {
                 </td>
                 <td className="px-3 py-2.5">
                   <StatusChip domain="fulfillmentState" value={it.fulfillment_state} />
+                  {lineRefundable && it.fulfillment_state === "failed" && (
+                    <button
+                      type="button"
+                      disabled={refunding}
+                      onClick={() => {
+                        onRefundLine(it);
+                      }}
+                      className="mt-1.5 block text-xs font-medium text-[var(--accent)] hover:underline disabled:opacity-50"
+                    >
+                      Вернуть на баланс
+                    </button>
+                  )}
                 </td>
                 <td className="px-3 py-2.5">
                   {it.supplier_order_id ? (

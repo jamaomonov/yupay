@@ -1401,7 +1401,12 @@ def refunded_to_wallet(payment: Payment) -> bool:
     cancel it afterwards (Payme, Uzum, Paynet) must be refused, or the customer would
     get it twice — once on the balance, once on the card.
     """
-    return ((payment.extra_metadata or {}).get("last_refund") or {}).get("refunded_to") == "wallet"
+    meta = payment.extra_metadata or {}
+    # A line refund (``line_refund``) also put money on the balance: a cancel of
+    # the whole payment on top would pay that line twice.
+    if meta.get("line_refunds"):
+        return True
+    return (meta.get("last_refund") or {}).get("refunded_to") == "wallet"
 
 
 async def refund_order_to_wallet(
