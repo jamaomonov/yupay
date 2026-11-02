@@ -191,6 +191,26 @@ async def test_a_taken_address_answers_like_a_new_one(
     assert users == 1
 
 
+async def test_registering_an_unconfirmed_address_again_mails_the_link(
+    integration_client: AsyncClient, sent: list[dict[str, str]]
+) -> None:
+    """Prod, 2026-11-02: an operator who registered in September and never
+    confirmed registered again, saw «Проверьте почту», and nothing was sent —
+    the taken-address branch mailed only a reset, and only to a confirmed
+    account. The second registration now mails the confirmation link."""
+    assert (await _register(integration_client, "stale@acme.example.com")).status_code == 201
+    sent.clear()
+
+    again = await _register(integration_client, "stale@acme.example.com")
+
+    assert again.status_code == 201
+    assert len(sent) == 1
+    confirmed = await integration_client.post(
+        f"{BASE}/confirm", json={"token": _token_from(sent[0])}
+    )
+    assert confirmed.status_code == 200, confirmed.text
+
+
 async def test_a_rotated_refresh_token_is_dead(
     integration_client: AsyncClient, sent: list[dict[str, str]]
 ) -> None:

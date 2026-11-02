@@ -108,8 +108,11 @@ async def register(body: CabinetRegisterIn, db: Db, request: Request) -> Respons
         # The address already has an account. Answering 409 told a prober
         # which addresses are resellers; answer exactly as for a new one, and
         # send the owner what they most likely need — a way back in. The mail
-        # also keeps both branches the same length of work.
+        # also keeps both branches the same length of work. An account never
+        # confirmed gets its confirmation link instead: a reset needs a
+        # confirmed address, so before this it was mailed nothing at all.
         await _mail_reset_if_any(db, email=body.email, base=base)
+        await _mail_confirm_if_pending(db, email=body.email, base=base)
         return Response(status_code=status.HTTP_201_CREATED)
     # A failed send leaves an account that exists with an unconfirmed address,
     # which `/confirm/resend` repairs. Failing the request would roll the
@@ -168,6 +171,19 @@ async def _mail_reset_if_any(db: AsyncSession, *, email: str, base: str) -> None
         )
 
 
+async def _mail_confirm_if_pending(db: AsyncSession, *, email: str, base: str) -> None:
+    """Mail a fresh confirmation link if an unconfirmed account has this address."""
+    found = await cabinet_auth.resend_confirmation(db, email=email)
+    if found is not None:
+        user, token = found
+        await _mail_link(
+            to=user.email,
+            content=merchant_confirm_email(link=f"{base}/confirm?token={token}"),
+            event="merchant.cabinet.confirm_mail_failed",
+            user_id=user.id,
+        )
+
+
 @router.post(
     "/password/reset",
     response_model=CabinetTokensOut,
@@ -198,16 +214,7 @@ async def resend_confirmation(body: CabinetEmailIn, db: Db, request: Request) ->
     demand, and its owner has nothing to do with the link anyway.
     """
     await guard_ip(request, bucket="merchant_confirm_resend", subject=body.email.lower())
-    base = _cabinet_base()
-    found = await cabinet_auth.resend_confirmation(db, email=body.email)
-    if found is not None:
-        user, token = found
-        await _mail_link(
-            to=user.email,
-            content=merchant_confirm_email(link=f"{base}/confirm?token={token}"),
-            event="merchant.cabinet.confirm_mail_failed",
-            user_id=user.id,
-        )
+    await _mail_confirm_if_pending(db, email=body.email, base=_cabinet_base())
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
