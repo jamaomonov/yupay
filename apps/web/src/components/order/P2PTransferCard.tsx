@@ -67,9 +67,7 @@ export function P2PTransferCard({
       </div>
 
       <Field label={`${t("p2pCard")} · ${details.network.toUpperCase()}`} value={details.pan}>
-        <span className="whitespace-nowrap font-mono text-base tracking-[0.06em] sm:text-xl">
-          {details.pan}
-        </span>
+        <span className="font-mono text-base tracking-[0.06em] sm:text-xl">{details.pan}</span>
       </Field>
 
       <div>
@@ -129,10 +127,10 @@ function Field({
               })
               .catch(() => undefined);
           }}
-          className="border-border hover:border-border-2 rounded-btn flex shrink-0 items-center gap-1.5 border px-3 py-2 text-xs font-semibold"
+          className="border-border hover:border-border-2 rounded-btn flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-1.5 border px-3 py-2 text-xs font-semibold"
         >
           {copied ? <Check size={14} /> : <Copy size={14} />}
-          {copied ? t("p2pCopied") : t("p2pCopy")}
+          <span className="sr-only sm:not-sr-only">{copied ? t("p2pCopied") : t("p2pCopy")}</span>
         </button>
       </div>
     </div>

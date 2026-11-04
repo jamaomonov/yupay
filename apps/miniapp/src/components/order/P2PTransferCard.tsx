@@ -71,9 +71,7 @@ export function P2PTransferCard({
         label={`${t("success.p2p.card")} · ${details.network.toUpperCase()}`}
         value={details.pan}
       >
-        <span className="whitespace-nowrap font-mono text-[15px] tracking-[0.05em] text-white">
-          {details.pan}
-        </span>
+        <span className="font-mono text-[15px] tracking-[0.05em] text-white">{details.pan}</span>
       </Field>
 
       <div>
