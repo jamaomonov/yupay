@@ -3,6 +3,7 @@
 import { X } from "lucide-react";
 import Image from "next/image";
 import { useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 
 import { isOptimizable } from "@/lib/image";
 
@@ -108,7 +109,10 @@ export function WhereToFindModal({
 
   const stepImages = images ?? [];
 
-  return (
+  // Portalled to <body>: the purchase panel that opens this sits in a
+  // `lg:sticky` aside, and sticky makes a stacking context — inside it
+  // z-[100] lost to the hero's z-10, which painted over the dialog on desktop.
+  return createPortal(
     <div
       role="dialog"
       aria-modal="true"
@@ -168,30 +172,32 @@ export function WhereToFindModal({
                       <span className="text-tx-mute text-[13px] font-medium">{img.caption}</span>
                     )}
                   </div>
-                  {/* Portrait box: a phone screenshot's own shape. `object-contain`
-                      letterboxes rather than crops, so the circled id near the
-                      edge of the source screenshot is never cut off. */}
-                  <div className="border-border bg-card-2 relative aspect-[3/4] w-full overflow-hidden rounded-xl border">
-                    <Image
-                      src={img.url}
-                      // A visible caption already says what the step is —
-                      // announcing the same text again as alt would have a
-                      // screen reader read it twice. Only fall back to the
-                      // meaningful "Step N of M" alt when there's no caption
-                      // shown next to the image.
-                      alt={img.caption ? "" : img.alt}
-                      fill
-                      unoptimized={!isOptimizable(img.url)}
-                      sizes="(min-width: 460px) 412px, 100vw"
-                      className="object-contain"
-                    />
-                  </div>
+                  {/* The screenshot's own shape: landscape desktop shots and
+                      portrait phone shots both fit without an empty frame.
+                      The width/height only reserve space until it loads;
+                      `object-contain` under the height cap letterboxes rather
+                      than crops, so a circled id near the edge stays visible. */}
+                  <Image
+                    src={img.url}
+                    // A visible caption already says what the step is —
+                    // announcing the same text again as alt would have a
+                    // screen reader read it twice. Only fall back to the
+                    // meaningful "Step N of M" alt when there's no caption
+                    // shown next to the image.
+                    alt={img.caption ? "" : img.alt}
+                    width={824}
+                    height={560}
+                    unoptimized={!isOptimizable(img.url)}
+                    sizes="(min-width: 460px) 412px, 100vw"
+                    className="border-border bg-card-2 h-auto max-h-[60vh] w-full rounded-xl border object-contain"
+                  />
                 </li>
               ))}
             </ol>
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
