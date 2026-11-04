@@ -161,7 +161,7 @@ export function WhereToFindModal({
           )}
 
           {stepImages.length > 0 && (
-            <ol className={`flex flex-col gap-4${body ? "mt-5" : ""}`}>
+            <ol className={body ? "mt-5 flex flex-col gap-4" : "flex flex-col gap-4"}>
               {stepImages.map((img, i) => (
                 <li key={`${String(i)}-${img.url}`} className="flex flex-col gap-2">
                   <div className="flex items-center gap-2">
