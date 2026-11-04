@@ -526,8 +526,14 @@ export default async function BrandPage({
                   />
                 </span>
               )}
-              {/* Name next to the logo — big and white (the H1). */}
+              {/* Name next to the logo — big and white. The small verb above
+                  it is part of the H1 on purpose: a bare «Bigo Live» heading
+                  carried none of the words people search with, and the
+                  verb reads as a label, so the hero looks the same. */}
               <h1 className="font-display text-[clamp(1.6rem,3.2vw,2.5rem)] font-bold leading-none tracking-[-0.025em] text-white">
+                <span className="mb-1.5 block font-sans text-[13px] font-medium tracking-normal text-white/60 sm:text-sm">
+                  {t(`h1Verb${v}`)}
+                </span>
                 {brand.name}
               </h1>
             </div>

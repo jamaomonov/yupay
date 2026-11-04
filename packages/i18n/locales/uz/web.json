@@ -414,6 +414,8 @@
     "brandMetaDescriptionVoucher": "{name} ni O'zbekistonda sotib oling: kod to'lovdan so'ng darhol. Narxlar so'mda, Click, Payme yoki Uzum orqali to'lov — YuPay.",
     "etaChipVoucher": "Kod 1–5 daqiqada",
     "instructionsTitleVoucher": "Qanday faollashtirish",
+    "h1Verb": "Toʻldirish",
+    "h1VerbVoucher": "Sotib olish",
     "howToLinkVoucher": "Qanday sotib olish va faollashtirish",
     "howToTitleVoucher": "{name} ni O'zbekistonda qanday sotib olish",
     "howToMetaTitleVoucher": "{name} ni O'zbekistonda so'mga qanday sotib olish — YuPay",
