@@ -55,9 +55,9 @@ from yupay.modules.payments.api import webhook_router as payments_webhook_router
 from yupay.modules.paynet.api import router as paynet_router
 from yupay.modules.promo.api import admin_router as promo_admin_router
 from yupay.modules.promo.api import router as promo_router
+from yupay.modules.push.api import router as push_router
 from yupay.modules.realtime.api import router as realtime_router
 from yupay.modules.reviews.api import admin_router as reviews_admin_router
-from yupay.modules.push.api import router as push_router
 from yupay.modules.reviews.api import router as reviews_router
 from yupay.modules.skins.api import admin_ops_router as skins_admin_ops_router
 from yupay.modules.skins.api import admin_router as skins_admin_router
