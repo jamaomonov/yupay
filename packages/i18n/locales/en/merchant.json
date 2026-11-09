@@ -286,7 +286,9 @@
     "showMore": "Show more",
     "skuCount": "{count, plural, one {# item} other {# items}}",
     "loading": "Loading the catalogue…",
-    "perHundred": "per 100"
+    "perHundred": "per 100",
+    "inStock": "In stock: {count}",
+    "outOfStock": "Out of stock"
   },
   "docs": {
     "title": "Documentation",

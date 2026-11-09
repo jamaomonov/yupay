@@ -29,6 +29,8 @@ export interface Sku {
   max_amount_usd: string | null;
   /** Artwork for this line. `null` where neither the SKU nor the product has one. */
   image_url: string | null;
+  /** Supplier's codes as of the hourly check. `null` = not counted (top-ups); `0` = out of stock. */
+  stock: number | null;
   updated_at: string;
 }
 

@@ -1512,6 +1512,7 @@ cursor you have to reconcile.
               "name": "60 UC",
               "price_usd": "1.06",
               "image_url": "https://cdn.yupay.uz/skus/pubgm-60.png",
+              "stock": null,
               "updated_at": "2026-09-07T08:14:22.918431Z"
             }
           ]
@@ -1540,6 +1541,10 @@ cursor you have to reconcile.
   own file, or the product's when the denomination has none (the same
   fallback the storefront uses). `null` when neither is uploaded; never a
   missing key, so you can draw a placeholder instead of a broken image.
+- **`stock`** is how many codes the supplier holds for a gift card or voucher
+  line, as of the last hourly check. `null` means not counted — a top-up is
+  minted on order and never runs out. `0` means out of stock: an order for it
+  is refused with `out_of_stock`. A count is a snapshot, not a reservation.
 - **`updated_at`** is that SKU's own last-modified stamp. **There are no price
   webhooks:** poll this endpoint (once a minute is plenty — see the rate
   limits) and act on the SKUs whose `updated_at` moved. One caveat, so you can
@@ -1765,7 +1770,7 @@ ticket:
 | `variable_amount` | A customer-chooses-the-amount SKU (e.g. a Steam wallet top-up). | Not orderable in v1. Ask support.        |
 
 > **A SKU in `/catalog` is not a promise that we can fill it.** The price list
-> says "sellable to you at this price"; it does not consult supplier stock, and
+> says "sellable to you at this price". Its `stock` is up to an hour old, and
 > stock moves as other resellers draw on the same pool. `item_unavailable` is
 > where you find out, so handle it as an ordinary outcome rather than an
 > exception.

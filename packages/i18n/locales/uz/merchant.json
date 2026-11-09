@@ -286,7 +286,9 @@
     "showMore": "Yana koʻrsatish",
     "skuCount": "{count, plural, one {# ta pozitsiya} other {# ta pozitsiya}}",
     "loading": "Katalog yuklanmoqda…",
-    "perHundred": "100 tasi"
+    "perHundred": "100 tasi",
+    "inStock": "Mavjud: {count}",
+    "outOfStock": "Mavjud emas"
   },
   "docs": {
     "title": "Hujjatlar",

@@ -438,6 +438,7 @@ async def test_catalog_returns_the_b2b_visible_tree(
         "min_amount_usd",
         "max_amount_usd",
         "image_url",
+        "stock",
         "updated_at",
     }
     assert set(product) == {"product_id", "slug", "name", "required_fields", "skus"}
@@ -481,6 +482,8 @@ async def test_catalog_returns_the_b2b_visible_tree(
     assert sku["min_amount_usd"] is None
     assert sku["max_amount_usd"] is None
     assert sku["image_url"] is None
+    # Never swept, so not counted: null, not zero.
+    assert sku["stock"] is None
     assert sku["updated_at"]
 
 

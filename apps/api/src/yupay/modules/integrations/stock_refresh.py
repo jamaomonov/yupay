@@ -34,10 +34,12 @@ is ~12 800 rows, which is 129 requests to find the ten mappings we actually
 have. Each mapping is processed in its own transaction so one failure does not
 roll back the rest — the same shape as ``price_refresh``.
 
-The count is never exposed to customers; only the derived ``Sku.in_stock``
-boolean is. Observed live, "800 Robux Global" moved 423 → 422 between two calls
-seconds apart, which is exactly why a number on the page would be a promise we
-cannot keep.
+The count is never exposed to retail customers; only the derived
+``Sku.in_stock`` boolean is. Observed live, "800 Robux Global" moved 423 → 422
+between two calls seconds apart, which is exactly why a number on the storefront
+would be a promise we cannot keep. Resellers do see it (``MerchantSkuOut.stock``,
+owner's call 2026-11-09): they plan bulk buys around it, and the field says it
+is an hourly snapshot, not a reservation.
 """
 
 from __future__ import annotations

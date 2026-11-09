@@ -40,18 +40,22 @@ export function SkuRows({
             {item.skus.map((sku) => {
               const price = sku.kind === "fixed" ? sku.price_usd : sku.unit_price_usd;
               const active = selected?.sku_id === sku.sku_id;
+              // An empty line stays in the list, greyed and unclickable: a
+              // reseller should see it exists and is out, not wonder where it went.
+              const soldOut = sku.stock === 0;
               return (
                 <button
                   key={sku.sku_id}
                   type="button"
+                  disabled={soldOut}
                   onClick={() => {
                     onPick(sku);
                   }}
                   aria-pressed={active}
-                  className={`flex min-h-12 items-center gap-3 rounded-lg border px-3 py-2 text-left transition ${
+                  className={`flex min-h-12 items-center gap-3 rounded-lg border px-3 py-2 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${
                     active
                       ? "border-primary bg-card-2"
-                      : "border-border bg-card hover:border-border-2"
+                      : "border-border bg-card enabled:hover:border-border-2"
                   }`}
                 >
                   {sku.image_url !== null && (
@@ -62,7 +66,16 @@ export function SkuRows({
                       <img src={sku.image_url} alt="" className="h-full w-full object-contain" />
                     </span>
                   )}
-                  <span className="min-w-0 flex-1 truncate text-sm font-medium">{sku.name}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium">{sku.name}</span>
+                    {typeof sku.stock === "number" && (
+                      <span
+                        className={`block text-[11.5px] ${soldOut ? "text-danger" : "text-tx-dim"}`}
+                      >
+                        {soldOut ? t("outOfStock") : t("inStock", { count: sku.stock })}
+                      </span>
+                    )}
+                  </span>
                   <span className="flex shrink-0 items-baseline gap-1 font-mono text-sm">
                     {price && sku.kind === "unit" && perHundred(price) !== null ? (
                       <>

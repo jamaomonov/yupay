@@ -146,7 +146,7 @@ export default function BrandPage() {
     if (autoPicked.current || !brand) return;
     autoPicked.current = true;
     const only = soleSku(brand);
-    if (only !== null) {
+    if (only !== null && only.stock !== 0) {
       setSelected(only);
       setCount(only.kind === "unit" ? String(only.min_qty ?? 1) : "1");
     }
@@ -574,7 +574,14 @@ export default function BrandPage() {
 
               <button
                 type="button"
-                disabled={busy || placed !== null || total === null || !affordable || !formOk}
+                disabled={
+                  busy ||
+                  placed !== null ||
+                  total === null ||
+                  !affordable ||
+                  !formOk ||
+                  selected.stock === 0
+                }
                 onClick={() => {
                   setTouched(Object.fromEntries(fields.map((f) => [f.key, true])));
                   void order();

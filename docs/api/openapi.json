@@ -11140,6 +11140,19 @@
             "title": "Sku Id",
             "type": "string"
           },
+          "stock": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Codes the supplier holds for this line, from the last hourly check. `null` means not counted: a top-up is minted on order and never runs out. `0` means out of stock, and an order for it is refused with `item_unavailable` / `out_of_stock`. A count is a snapshot, not a reservation \u2014 it can move before your order lands.",
+            "title": "Stock"
+          },
           "unit": {
             "anyOf": [
               {

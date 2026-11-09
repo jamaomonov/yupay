@@ -286,7 +286,9 @@
     "showMore": "Показать ещё",
     "skuCount": "{count, plural, one {# позиция} few {# позиции} many {# позиций} other {# позиции}}",
     "loading": "Загружаем каталог…",
-    "perHundred": "за 100"
+    "perHundred": "за 100",
+    "inStock": "В наличии: {count}",
+    "outOfStock": "Нет в наличии"
   },
   "docs": {
     "title": "Документация",

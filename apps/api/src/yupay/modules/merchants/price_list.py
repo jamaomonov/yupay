@@ -51,7 +51,9 @@ Note what is deliberately **not** filtered here, because the difference is the
 rule: retail ``active``, brand maintenance and supplier stock all move between
 a merchant's poll and their order, so the order path is where a merchant
 learns about them and a catalog absence would only be stale in the other
-direction. ``variable_amount`` is permanent — it cannot become orderable while
+direction. Supplier stock is still *shown*, as ``stock`` on each row, so the
+cabinet can grey out an empty line; it is just not a reason to drop one.
+``variable_amount`` is permanent — it cannot become orderable while
 it is set — which is why it belongs in the WHERE clause and they do not.
 
 Steam-gift SKUs are a v1 non-goal and need no rule of their own: the single
@@ -637,6 +639,8 @@ def _row(sku: Sku, *, unit: Decimal, price: Decimal, image_url: str | None) -> M
     on a contract surface an explicit keyword is checked by the type checker,
     and ``**common`` is not. ``image_url`` is the SKU's own artwork, or the
     product's when the line has none — the same fallback the storefront uses.
+    ``stock`` is the supplier's count as the hourly sweep left it
+    (``integrations.stock_refresh``); ``None`` is untracked, never zero.
     """
     name = sku.denomination or sku.sku_code
     # A variable-amount row's ``price_usd`` is a face-value placeholder, not a
@@ -653,6 +657,7 @@ def _row(sku: Sku, *, unit: Decimal, price: Decimal, image_url: str | None) -> M
             min_amount_usd=sku.min_amount_usd,
             max_amount_usd=sku.max_amount_usd,
             image_url=image_url,
+            stock=sku.supplier_stock,
             updated_at=sku.updated_at,
         )
     if is_unit_sku(sku):
@@ -667,6 +672,7 @@ def _row(sku: Sku, *, unit: Decimal, price: Decimal, image_url: str | None) -> M
             min_qty=sku.min_qty,
             max_qty=sku.max_qty,
             image_url=image_url,
+            stock=sku.supplier_stock,
             updated_at=sku.updated_at,
         )
     return MerchantSkuOut(
@@ -677,6 +683,7 @@ def _row(sku: Sku, *, unit: Decimal, price: Decimal, image_url: str | None) -> M
         price_usd=price,
         retail_price_usd=retail,
         image_url=image_url,
+        stock=sku.supplier_stock,
         updated_at=sku.updated_at,
     )
 

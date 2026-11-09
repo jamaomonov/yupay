@@ -316,6 +316,17 @@ class MerchantSkuOut(BaseModel):
             "a broken image."
         ),
     )
+    stock: int | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Codes the supplier holds for this line, from the last hourly check. "
+            "`null` means not counted: a top-up is minted on order and never runs out. "
+            "`0` means out of stock, and an order for it is refused with "
+            "`item_unavailable` / `out_of_stock`. A count is a snapshot, not a "
+            "reservation — it can move before your order lands."
+        ),
+    )
     updated_at: datetime = Field(
         description=(
             "When this line last changed. Poll the catalog and compare it to tell what "
