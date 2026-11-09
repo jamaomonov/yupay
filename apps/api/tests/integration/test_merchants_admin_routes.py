@@ -826,7 +826,7 @@ async def test_bulk_markup_needs_exactly_one_target(
 # ---------- API keys (M2, Task 2) ----------
 
 
-async def test_create_api_key_returns_the_secret_once_and_stores_it_encrypted(
+async def test_create_api_key_returns_the_key_once_and_stores_its_secret_encrypted(
     integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
 ) -> None:
     merchant_id = await _create_merchant(integration_client, admin_headers)
@@ -839,12 +839,13 @@ async def test_create_api_key_returns_the_secret_once_and_stores_it_encrypted(
 
     assert r.status_code == 201, r.text
     body = r.json()
-    secret = body["secret"]
-    assert body["key_id"].startswith("ypm_")
-    assert secret
-    assert secret != body["key_id"]
+    api_key = body["api_key"]
+    # One value (ADR-0103): the public key id is its start, the secret its rest.
+    assert body["key_id"].startswith("ypk_")
+    assert api_key.startswith(body["key_id"])
+    secret = api_key[len(body["key_id"]) :]
+    assert len(secret) == 43
     assert body["label"] == "prod server"
-    assert body["ip_allowlist"] is None
 
     row = (
         await db_session.execute(
@@ -871,6 +872,7 @@ async def test_create_api_key_returns_the_secret_once_and_stores_it_encrypted(
     )
     assert listed.status_code == 200, listed.text
     assert "secret" not in json.dumps(listed.json())
+    assert secret not in json.dumps(listed.json())
     assert listed.json()["items"][0]["key_id"] == body["key_id"]
     assert listed.json()["items"][0]["last_used_at"] is None
     assert listed.json()["items"][0]["revoked_at"] is None
@@ -901,14 +903,15 @@ async def test_two_keys_can_live_at_once_and_list_newest_first(
     assert labels == ["new", "old"]
 
 
-async def test_create_api_key_rejects_an_unparseable_allowlist_entry(
+async def test_create_api_key_refuses_a_per_key_allowlist(
     integration_client: AsyncClient, admin_headers: dict[str, str]
 ) -> None:
+    """The list is the merchant's now (ADR-0103); a stale client must hear so."""
     merchant_id = await _create_merchant(integration_client, admin_headers)
     r = await integration_client.post(
         f"/api/v1/admin/merchants/{merchant_id}/api-keys",
         headers=admin_headers,
-        json={"ip_allowlist": ["203.0.113.0/24", "not-an-address"]},
+        json={"ip_allowlist": ["203.0.113.0/24"]},
     )
     assert r.status_code == 422
 
@@ -944,8 +947,8 @@ async def test_create_api_key_replay_never_returns_the_secret_twice(
 
     assert first.status_code == 201, first.text
     assert second.status_code == 201, second.text
-    assert first.json()["secret"] is not None
-    assert second.json()["secret"] is None
+    assert first.json()["api_key"] is not None
+    assert second.json()["api_key"] is None
     assert second.json()["key_id"] == first.json()["key_id"]
     rows = (
         (

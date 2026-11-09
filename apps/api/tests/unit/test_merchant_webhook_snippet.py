@@ -21,7 +21,8 @@ from yupay.modules.merchants import signing
 
 _README = Path(__file__).resolve().parents[2] / "src/yupay/modules/merchants/README.md"
 _SECTION = "### Verifying a delivery"
-_SECRET = "ypmw_test_secret_value"
+_API_KEY = "ypk_" + "k" * 75
+_OTHER_KEY = "ypk_" + "o" * 75
 
 
 def _snippet_verify() -> Callable[[dict[str, str], bytes], bool]:
@@ -32,7 +33,7 @@ def _snippet_verify() -> Callable[[dict[str, str], bytes], bool]:
     assert block is not None, f"no python block under {_SECTION!r}"
     namespace: dict[str, Any] = {}
     exec(compile(block.group(1), str(_README), "exec"), namespace)
-    namespace["SECRET"] = _SECRET
+    namespace["API_KEY"] = _API_KEY
     verify = namespace["verify"]
     assert callable(verify)
     return verify  # type: ignore[no-any-return]
@@ -50,7 +51,10 @@ def _signed(body: bytes, *, timestamp: str) -> dict[str, str]:
         "X-Yupay-Timestamp": timestamp,
         "X-Yupay-Delivery": "01a0aaaa-bbbb-7ccc-8ddd-eeeeffff0000",
         "X-Yupay-Event": "order.status_changed",
-        "X-Yupay-Signature": signing.expected_signature(_SECRET, message),
+        # Another live key's digest first: the snippet must find its own in the list.
+        "X-Yupay-Key-Signature": ",".join(
+            signing.expected_signature(key, message) for key in (_OTHER_KEY, _API_KEY)
+        ),
     }
 
 
@@ -109,5 +113,16 @@ def test_a_stale_delivery_is_rejected(
     body = b'{"event":"order.status_changed"}'
     headers = _signed(body, timestamp="1757000000")
     monkeypatch.setattr("time.time", lambda: 1_757_000_000.0 + 301)
+
+    assert verify(headers, body) is False
+
+
+def test_a_signature_by_another_key_only_is_rejected(
+    verify: Callable[[dict[str, str], bytes], bool], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    body = b'{"event":"order.status_changed"}'
+    headers = _signed(body, timestamp="1757000000")
+    headers["X-Yupay-Key-Signature"] = headers["X-Yupay-Key-Signature"].split(",")[0]
+    monkeypatch.setattr("time.time", lambda: 1_757_000_000.0)
 
     assert verify(headers, body) is False

@@ -14,7 +14,7 @@ import { routing } from "@/i18n/routing";
 import { apiBaseUrl, bodySchema, endpoints, typeLabel } from "@/lib/contract";
 import { exampleJson } from "@/lib/example";
 import { techArticle } from "@/lib/jsonld";
-import { LANGUAGES, canonicalString, sampleFor } from "@/lib/samples";
+import { LANGUAGES, sampleFor } from "@/lib/samples";
 import { alternates, dayStamp, localeUrl, ROBOTS } from "@/lib/seo";
 
 export const dynamicParams = false;
@@ -197,13 +197,6 @@ export default async function OperationPage({
             code: sampleFor(language.id, sample),
           }))}
         />
-        <div className="border-border bg-card mt-4 rounded-xl border p-4">
-          <p className="text-tx-dim text-[11px] font-semibold tracking-wide">{t("canonical")}</p>
-          <pre className="text-tx-mute mt-2 overflow-x-auto font-mono text-xs leading-[1.7]">
-            <code>{canonicalString(sample)}</code>
-          </pre>
-          <p className="text-tx-dim mt-3 text-xs leading-relaxed">{t("canonicalHint")}</p>
-        </div>
       </aside>
     </div>
   );

@@ -410,7 +410,7 @@ export function MerchantDetail() {
 
       {tab === "integration" && (
         <>
-          <MerchantKeysCard merchantId={id} />
+          <MerchantKeysCard merchant={merchant} onChange={patchList} />
           <MerchantWebhookCard merchantId={id} />
         </>
       )}

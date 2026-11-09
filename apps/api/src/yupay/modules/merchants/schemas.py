@@ -66,6 +66,9 @@ class MerchantOut(BaseModel):
     #: merchant, or ``None`` for the catalogue price everyone else pays.
     #: Negative is the ordinary case — a negotiated rate for volume.
     markup_adjustment_pp: Decimal | None = None
+    #: Addresses allowed to call ``/merchant/v1`` with any of this merchant's
+    #: keys (ADR-0103); ``None`` = no filter.
+    api_ip_allowlist: list[str] | None = None
 
 
 class MerchantListOut(BaseModel):
@@ -208,20 +211,29 @@ class ApiKeyCreateIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     label: str = Field(default="", max_length=64)
-    #: Addresses or CIDR blocks allowed to use the key; ``None``/omitted means
-    #: no filter. Bounded at 32 entries because ``auth.address_allowed`` walks
-    #: the list on every machine-API request.
-    ip_allowlist: list[str] | None = Field(default=None, max_length=MAX_ENTRIES)
 
-    #: Shared with the cabinet's own create DTO rather than re-derived: two
-    #: tables of what an address is would drift, and the drift is silent.
-    _entries_parse = field_validator("ip_allowlist")(normalize_allowlist)
+
+class MerchantIpAllowlistIn(BaseModel):
+    """Body of ``PUT /admin/merchants/{id}/api-ip-allowlist``; ``[]`` = no filter.
+
+    Shared validator with the cabinet's own DTO: two tables of what an address
+    is would drift, and the drift is silent.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    entries: list[str] = Field(default_factory=list, max_length=MAX_ENTRIES)
+
+    @field_validator("entries")
+    @classmethod
+    def _entries_parse(cls, value: list[str]) -> list[str]:
+        return normalize_allowlist(value) or []
 
 
 class ApiKeyOut(BaseModel):
     """One machine credential, as the admin surface sees it.
 
-    There is deliberately no ``secret`` field: the secret exists only in the
+    There is deliberately no ``api_key`` field: the key exists only in the
     response to the call that minted it (:class:`ApiKeyCreatedOut`), and this
     is the shape every read returns.
     """
@@ -230,7 +242,6 @@ class ApiKeyOut(BaseModel):
 
     key_id: str
     label: str
-    ip_allowlist: list[str] | None
     last_used_at: datetime | None
     revoked_at: datetime | None
     created_at: datetime
@@ -243,15 +254,15 @@ class ApiKeyListOut(BaseModel):
 
 
 class ApiKeyCreatedOut(ApiKeyOut):
-    """Result of minting a key — the ONLY response that ever carries a secret.
+    """Result of minting a key — the ONLY response that ever carries the key.
 
-    ``secret`` is ``None`` on an idempotent replay. The replay snapshot is
+    ``api_key`` is ``None`` on an idempotent replay. The replay snapshot is
     stored in ``idempotent_responses``, a table with no reaper, and a usable
     credential sitting there in the clear forever is worse than making a
     retry after a lost response say so: revoke the key and issue another.
     """
 
-    secret: str | None
+    api_key: str | None
 
 
 class WebhookSetIn(BaseModel):
@@ -426,6 +437,7 @@ __all__ = [
     "DepositCreditIn",
     "DepositCreditOut",
     "MerchantCreateIn",
+    "MerchantIpAllowlistIn",
     "MerchantListOut",
     "MerchantOut",
     "MerchantTxnListOut",

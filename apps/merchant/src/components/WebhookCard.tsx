@@ -52,14 +52,19 @@ export function WebhookCard({ locale }: { locale: string }) {
     void loadHook();
   }, [loadHook]);
 
-  /** Every write here: one key, one refresh, and the API's own words on a refusal. */
-  const write = (run: () => Promise<WebhookWithSecret | Webhook>) => {
+  /** Every write here: one key, one refresh, and the API's own words on a refusal.
+   *
+   * `revealSecret` only on «Сменить секрет». Setting the URL also mints a hook
+   * secret on the first call, but a `ypk_` key signs deliveries by itself
+   * (`X-Yupay-Key-Signature`, ADR-0103), so a new integration never needs it
+   * and the panel would be one more value to wonder about. */
+  const write = (run: () => Promise<WebhookWithSecret | Webhook>, revealSecret = false) => {
     setBusy(true);
     setError(null);
     setSent(false);
     void run()
       .then((result) => {
-        if ("secret" in result && result.secret !== null) setSecret(result.secret);
+        if (revealSecret && "secret" in result && result.secret !== null) setSecret(result.secret);
         return loadHook();
       })
       .catch((cause: unknown) => {
@@ -274,13 +279,15 @@ export function WebhookCard({ locale }: { locale: string }) {
                     disabled={busy}
                     onClick={() => {
                       const key = newKey();
-                      write(() =>
-                        confirming === "rotate"
-                          ? api<WebhookWithSecret>("/webhook/rotate-secret", {
-                              method: "POST",
-                              idempotencyKey: key,
-                            })
-                          : api<Webhook>("/webhook", { method: "DELETE", idempotencyKey: key }),
+                      write(
+                        () =>
+                          confirming === "rotate"
+                            ? api<WebhookWithSecret>("/webhook/rotate-secret", {
+                                method: "POST",
+                                idempotencyKey: key,
+                              })
+                            : api<Webhook>("/webhook", { method: "DELETE", idempotencyKey: key }),
+                        confirming === "rotate",
                       );
                     }}
                     className="bg-danger rounded-btn px-3 py-1.5 text-xs font-semibold text-[hsl(var(--bg))] disabled:opacity-50"

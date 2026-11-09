@@ -199,21 +199,26 @@ export interface TransactionsPage {
 /** A machine credential as Settings lists it — never with its secret. */
 export interface ApiKey {
   id: string;
+  /** Public. A `ypk_` key's start, or an older key's `X-Merchant-Key` value. */
   key_id: string;
   label: string;
-  ip_allowlist: string[] | null;
   created_at: string;
   last_used_at: string | null;
   revoked_at: string | null;
 }
 
-/** The create call's answer: the one moment the secret is readable. */
+/** The create call's answer: the one moment the API key is readable. */
 export interface IssuedKey {
+  /** The whole `ypk_…` key — the one value an integration needs. */
+  api_key: string;
   key_id: string;
-  secret: string;
   label: string;
-  ip_allowlist: string[] | null;
   created_at: string;
+}
+
+/** The merchant's API IP allowlist; empty means no filter. One list, every key. */
+export interface IpAllowlist {
+  entries: string[];
 }
 
 /** The configured endpoint and how it has been behaving. */

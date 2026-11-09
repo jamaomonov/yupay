@@ -1,10 +1,18 @@
-"""Signed-request authentication for the machine API ``/merchant/v1``.
+"""Authentication for the machine API ``/merchant/v1``.
+
+Two credentials are accepted (ADR-0103). A **single-value key** —
+``Authorization: Bearer ypk_…``, the one string a new integration needs — is
+checked by lookup + constant-time compare. The original **signed request**
+(``X-Merchant-Key`` / ``-Timestamp`` / ``-Signature``, HMAC with the ``ypms_``
+secret) keeps working unchanged for every merchant already integrated on it.
+The IP allowlist is the **merchant's** (``Merchant.api_ip_allowlist``), shared by
+all its keys; the per-key column is no longer read.
 
 The FastAPI dependency a reseller's server passes before any endpoint of the
-machine API runs. Verifies the HMAC signature described in this module's
-README (and built by ``signing``), then applies the account-level gates that
-are not about the credential at all: the merchant's freeze state, the key's
-optional IP allowlist, and the two-axis rate guard.
+machine API runs. Verifies the credential (bearer key, or the HMAC signature
+described in this module's README and built by ``signing``), then applies the
+account-level gates that are not about the credential at all: the merchant's
+freeze state, the merchant's optional IP allowlist, and the two-axis rate guard.
 
 **Import this module directly, never through ``merchants.api``.** It binds to
 ``api.v1.deps.db_session`` so an endpoint's session and this dependency's are
@@ -26,7 +34,8 @@ a form endpoint would need the body read hoisted into middleware.
 
 1. **IP axis of the rate guard**, before anything is parsed — an unauthenticated
    flood must cost us one Redis INCR, not a database round-trip.
-2. **Headers present**, **timestamp strictly numeric and fresh**. These get
+2. **Headers present**, **timestamp strictly numeric and fresh** (signed path
+   only; a bearer key skips straight to 3). These get
    their own error codes: a clock 400 seconds out is the single most common
    integration bug and telling the merchant so leaks nothing about any
    credential.
@@ -128,6 +137,8 @@ log = get_logger("yupay.merchants.auth")
 #: The three request headers. Documented in the module README, which is what
 #: third parties implement against — renaming one is a breaking change to a
 #: contract nobody but its owner can redeploy.
+#: The single-value key (ADR-0103) rides the standard header, ``Bearer ypk_…``.
+AUTHORIZATION_HEADER = "Authorization"
 KEY_HEADER = "X-Merchant-Key"
 TIMESTAMP_HEADER = "X-Merchant-Timestamp"
 SIGNATURE_HEADER = "X-Merchant-Signature"
@@ -346,10 +357,94 @@ def _secret_of(key: MerchantApiKey | None) -> str:
         return _DUMMY_SECRET
 
 
+def _bearer_token(request: Request) -> str | None:
+    """The ``Authorization: Bearer`` value, or ``None`` when the header is absent.
+
+    A present header with another scheme reads as an empty token, so it fails as
+    bad credentials rather than falling through to the signed scheme with a
+    confusing "headers missing" error.
+    """
+    raw = request.headers.get(AUTHORIZATION_HEADER)
+    if raw is None:
+        return None
+    scheme, _, value = raw.strip().partition(" ")
+    return value.strip() if scheme.lower() == "bearer" else ""
+
+
+async def _load_key(db: AsyncSession, key_id: str) -> tuple[MerchantApiKey | None, Merchant | None]:
+    row = (
+        await db.execute(
+            select(MerchantApiKey, Merchant)
+            .join(Merchant, Merchant.id == MerchantApiKey.merchant_id)
+            .where(MerchantApiKey.key_id == key_id)
+        )
+    ).one_or_none()
+    if row is None:
+        return None, None
+    key, merchant = row
+    return key, merchant
+
+
+async def _verify_bearer(db: AsyncSession, token: str) -> tuple[MerchantApiKey, Merchant]:
+    """Check a single-value ``ypk_`` key (ADR-0103). Same 401 for every failure.
+
+    The secret half is compared against the row's (or a dummy, for an unknown
+    or revoked key), so all three failures cost one decrypt-or-not and one
+    constant-time compare — the same "Timing shape" as the signed path.
+
+    Raises:
+        UnauthorizedError: Malformed, unknown, revoked or wrong key.
+    """
+    parts = signing.split_api_key(token)
+    key_id, provided = parts if parts is not None else ("", "")
+    key, merchant = await _load_key(db, key_id) if key_id else (None, None)
+    secret_ok = signing.api_key_matches(_secret_of(key), provided)
+    if key is None or merchant is None or key.revoked_at is not None or not secret_ok:
+        raise UnauthorizedError(_INVALID_DETAIL, code=CODE_INVALID_CREDENTIALS)
+    return key, merchant
+
+
+async def _verify_signed(request: Request, db: AsyncSession) -> tuple[MerchantApiKey, Merchant]:
+    """Check the original HMAC-signed request (``ypm_`` id + ``ypms_`` secret).
+
+    Raises:
+        UnauthorizedError: Headers missing, timestamp outside the window, or the
+            credential did not verify.
+    """
+    key_id = request.headers.get(KEY_HEADER, "")
+    timestamp = request.headers.get(TIMESTAMP_HEADER, "")
+    provided = request.headers.get(SIGNATURE_HEADER, "")
+    if not key_id or not timestamp or not provided:
+        raise UnauthorizedError(
+            f"send {AUTHORIZATION_HEADER}: Bearer <API key> "
+            f"(or {KEY_HEADER}, {TIMESTAMP_HEADER} and {SIGNATURE_HEADER} for a signed request)",
+            code=CODE_MISSING_CREDENTIALS,
+        )
+    _fresh_timestamp(timestamp)
+
+    raw_path, raw_query = request_target(request)
+    # Starlette caches the body on the request, so reading it here does not
+    # consume it for a byte-body endpoint — see the module docstring for the
+    # form-endpoint exception.
+    message = signing.canonical_message(
+        timestamp=timestamp,
+        method=request.method,
+        raw_path=raw_path,
+        raw_query=raw_query,
+        body=await request.body(),
+    )
+    key, merchant = await _load_key(db, key_id)
+    # Always computed, always compared — see "Timing shape" in the module docstring.
+    signature_ok = signing.signature_matches(_secret_of(key), message, provided)
+    if key is None or merchant is None or key.revoked_at is not None or not signature_ok:
+        raise UnauthorizedError(_INVALID_DETAIL, code=CODE_INVALID_CREDENTIALS)
+    return key, merchant
+
+
 async def merchant_auth(
     request: Request, db: Annotated[AsyncSession, Depends(db_session)]
 ) -> Merchant:
-    """Authenticate a signed ``/merchant/v1`` request and return the merchant.
+    """Authenticate a ``/merchant/v1`` request (bearer key or signed) and return the merchant.
 
     See the module docstring for the order of the checks and why. Nothing
     here logs the secret or the signature: the structured logger redacts
@@ -377,47 +472,16 @@ async def merchant_auth(
         UnauthorizedError: 401 — headers missing, timestamp outside the
             window, or the credential did not verify.
         ForbiddenError: 403 — the merchant is frozen, or the caller's address
-            is not on this key's allowlist.
+            is not on the merchant's allowlist.
     """
     settings = get_settings()
     await guard_ip(request, bucket=RATE_BUCKET)
 
-    key_id = request.headers.get(KEY_HEADER, "")
-    timestamp = request.headers.get(TIMESTAMP_HEADER, "")
-    provided = request.headers.get(SIGNATURE_HEADER, "")
-    if not key_id or not timestamp or not provided:
-        raise UnauthorizedError(
-            f"{KEY_HEADER}, {TIMESTAMP_HEADER} and {SIGNATURE_HEADER} are all required",
-            code=CODE_MISSING_CREDENTIALS,
-        )
-    _fresh_timestamp(timestamp)
-
-    raw_path, raw_query = request_target(request)
-    # Starlette caches the body on the request, so reading it here does not
-    # consume it for a byte-body endpoint — see the module docstring for the
-    # form-endpoint exception.
-    message = signing.canonical_message(
-        timestamp=timestamp,
-        method=request.method,
-        raw_path=raw_path,
-        raw_query=raw_query,
-        body=await request.body(),
-    )
-    row = (
-        await db.execute(
-            select(MerchantApiKey, Merchant)
-            .join(Merchant, Merchant.id == MerchantApiKey.merchant_id)
-            .where(MerchantApiKey.key_id == key_id)
-        )
-    ).one_or_none()
-    key: MerchantApiKey | None = None
-    merchant: Merchant | None = None
-    if row is not None:
-        key, merchant = row
-    # Always computed, always compared — see "Timing shape" in the module docstring.
-    signature_ok = signing.signature_matches(_secret_of(key), message, provided)
-    if key is None or merchant is None or key.revoked_at is not None or not signature_ok:
-        raise UnauthorizedError(_INVALID_DETAIL, code=CODE_INVALID_CREDENTIALS)
+    bearer = _bearer_token(request)
+    if bearer is not None:
+        key, merchant = await _verify_bearer(db, bearer)
+    else:
+        key, merchant = await _verify_signed(request, db)
 
     over_key = await hit_counter(
         _RATE_KEY.format(key_id=key.key_id),
@@ -434,21 +498,19 @@ async def merchant_auth(
         raise ForbiddenError(
             "merchant account is frozen; contact support", code=CODE_MERCHANT_FROZEN
         )
-    if key.ip_allowlist is not None and not key.ip_allowlist:
-        # An operator who hand-edited a row to ``{}`` to block a key got the
-        # opposite. ``key_id`` is the public half — it travels in a plaintext
-        # header on every request and is shown in the cabinet — so it is safe
-        # to name here, and naming it is the only way to find the row.
+    allowlist = merchant.api_ip_allowlist
+    if allowlist is not None and not allowlist:
+        # An operator who hand-edited the row to ``{}`` to block the merchant
+        # got the opposite: an empty list means no filter, same as NULL.
         log.warning(
-            "merchant_api_key_empty_allowlist",
-            key_id=key.key_id,
-            merchant_id=key.merchant_id,
-            hint="an empty ip_allowlist means NO filter, same as NULL; "
-            "delete the key or set addresses to restrict it",
+            "merchant_api_empty_allowlist",
+            merchant_id=merchant.id,
+            hint="an empty api_ip_allowlist means NO filter, same as NULL; "
+            "freeze the merchant or set addresses to restrict it",
         )
-    if not address_allowed(key.ip_allowlist, client_ip(request)):
+    if not address_allowed(allowlist, client_ip(request)):
         raise ForbiddenError(
-            "this API key does not allow requests from that address",
+            "this merchant's API does not allow requests from that address",
             code=CODE_IP_NOT_ALLOWED,
         )
 
@@ -457,6 +519,7 @@ async def merchant_auth(
 
 
 __all__ = [
+    "AUTHORIZATION_HEADER",
     "CODE_INVALID_CREDENTIALS",
     "CODE_IP_NOT_ALLOWED",
     "CODE_MERCHANT_FROZEN",

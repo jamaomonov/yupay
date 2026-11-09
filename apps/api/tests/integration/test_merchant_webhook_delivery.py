@@ -43,7 +43,7 @@ from yupay.core.outbound_errors import (
     ResponseTooLargeError,
 )
 from yupay.modules.merchants import admin as merchants_admin
-from yupay.modules.merchants import webhook_delivery, webhook_outcome, webhook_retry
+from yupay.modules.merchants import credentials, webhook_delivery, webhook_outcome, webhook_retry
 from yupay.modules.merchants import webhooks as hooks
 from yupay.modules.merchants.models import (
     WEBHOOK_LAST_ERROR_MAX,
@@ -252,6 +252,62 @@ async def test_a_delivery_is_signed_with_the_documented_canonical_string(
     # they parse.
     row = await _row(db_session, delivery_id)
     assert json.loads(call["body"]) == row.payload
+
+
+async def test_each_live_api_key_also_signs_the_delivery(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ADR-0103: a merchant on the single ``ypk_`` key verifies with that key.
+
+    ``X-Yupay-Key-Signature`` carries the same canonical string signed with each
+    live key, newest first; a revoked key signs nothing, and the old
+    ``X-Yupay-Signature`` is still there for verifiers built on the hook secret.
+    """
+    merchant_id, _ = await _merchant_with_hook(db_session)
+    old = await credentials.create_api_key(db_session, merchant_id=merchant_id)
+    new = await credentials.create_api_key(db_session, merchant_id=merchant_id)
+    gone = await credentials.create_api_key(db_session, merchant_id=merchant_id)
+    await credentials.revoke_api_key(db_session, merchant_id=merchant_id, key_id=gone.key.key_id)
+    delivery_id = _enqueue(db_session, merchant_id)
+    await db_session.commit()
+    sender = _install(monkeypatch, _Sender(_ok()))
+
+    await webhook_delivery.drain_pending_deliveries(db_session)
+
+    call = sender.calls[0]
+    headers = call["headers"]
+    message = "\n".join(
+        (
+            headers["X-Yupay-Timestamp"],
+            delivery_id,
+            hooks.EVENT_ORDER_STATUS_CHANGED,
+            hashlib.sha256(call["body"]).hexdigest(),
+        )
+    ).encode()
+    expected = {
+        key.api_key: hmac.new(key.api_key.encode(), message, hashlib.sha256).hexdigest()
+        for key in (old, new, gone)
+    }
+    signatures = headers["X-Yupay-Key-Signature"].split(",")
+    assert expected[old.api_key] in signatures
+    assert expected[new.api_key] in signatures
+    assert expected[gone.api_key] not in signatures
+    assert len(signatures) == 2
+    assert headers["X-Yupay-Signature"]
+    assert not any(k.api_key in value for k in (old, new) for value in headers.values())
+
+
+async def test_no_api_key_means_no_key_signature_header(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    merchant_id, _ = await _merchant_with_hook(db_session)
+    _enqueue(db_session, merchant_id)
+    await db_session.commit()
+    sender = _install(monkeypatch, _Sender(_ok()))
+
+    await webhook_delivery.drain_pending_deliveries(db_session)
+
+    assert "X-Yupay-Key-Signature" not in sender.calls[0]["headers"]
 
 
 async def test_the_signature_is_keyed_by_the_secret_decrypted_at_send_time(

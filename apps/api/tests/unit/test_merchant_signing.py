@@ -261,3 +261,30 @@ def test_the_webhook_headers_are_named_once_and_are_not_the_inbound_ones() -> No
         "X-Yupay-Signature",
     }
     assert not any(name.lower().startswith("x-merchant-") for name in names)
+
+
+# ---------- the single-value API key (ADR-0103) ----------
+
+
+def test_a_minted_api_key_splits_back_into_its_two_halves() -> None:
+    key_id, secret = signing.new_api_key()
+    token = key_id + secret
+
+    assert token.startswith("ypk_")
+    assert len(key_id) == signing.API_KEY_ID_LENGTH
+    assert len(token) == 79
+    assert signing.split_api_key(token) == (key_id, secret)
+
+
+@pytest.mark.parametrize(
+    "token",
+    ["", "ypk_", "ypk_" + "A" * 74, "ypk_" + "A" * 76, "ypm_" + "A" * 75, "ypk_" + "A" * 74 + "="],
+)
+def test_anything_not_shaped_like_a_key_does_not_split(token: str) -> None:
+    assert signing.split_api_key(token) is None
+
+
+def test_the_secret_compare_is_exact() -> None:
+    assert signing.api_key_matches("abc", "abc")
+    assert not signing.api_key_matches("abc", "abd")
+    assert not signing.api_key_matches("abc", "")

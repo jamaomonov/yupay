@@ -273,6 +273,12 @@ your own calls, had two snippets. That was backwards: a wrong signature on your
 own request answers `401`, so you debug it in a minute; an unverified webhook
 answers nothing at all, and an accepted forgery is silent.
 
+The code below verifies with your **API key** (`ypk_…`, ADR-0103), against
+`X-Yupay-Key-Signature`: one HMAC per live key, comma-separated. Integrations
+built before it verify `X-Yupay-Signature` with the `ypmw_` webhook secret —
+that header is still sent, unchanged, and the same code works with `SECRET`
+in place of `API_KEY` and that header in place of this one.
+
 Three things the code below is doing on purpose:
 
 - **Hash the raw bytes you received**, never a re-serialised object. Parsing
@@ -289,7 +295,7 @@ Python (Flask; `request.get_data()` is the raw body, `request.json` is not):
 ```python
 import hashlib, hmac, time
 
-SECRET = "ypmw_…"  # the webhook secret — a different credential from ypms_
+API_KEY = "ypk_…"  # the same key you call the API with
 TOLERANCE_SECONDS = 300
 
 
@@ -303,8 +309,10 @@ def verify(headers: dict[str, str], body: bytes) -> bool:
             hashlib.sha256(body).hexdigest(),
         )
     ).encode()
-    expected = hmac.new(SECRET.encode(), canonical, hashlib.sha256).hexdigest()
-    if not hmac.compare_digest(expected, headers.get("X-Yupay-Signature", "")):
+    expected = hmac.new(API_KEY.encode(), canonical, hashlib.sha256).hexdigest()
+    # One signature per live key, comma-separated (two during a rotation).
+    sent = headers.get("X-Yupay-Key-Signature", "").split(",")
+    if not any(hmac.compare_digest(expected, s.strip()) for s in sent):
         return False
     # Your own replay window; we do not impose one on you.
     return ts.isdigit() and abs(time.time() - int(ts)) <= TOLERANCE_SECONDS
@@ -316,7 +324,7 @@ it unless you pass `verify`):
 ```js
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
-const SECRET = "ypmw_…";
+const API_KEY = "ypk_…"; // the same key you call the API with
 const TOLERANCE_SECONDS = 300;
 
 function verify(headers, body /* Buffer */) {
@@ -327,10 +335,12 @@ function verify(headers, body /* Buffer */) {
     headers["x-yupay-event"] ?? "",
     createHash("sha256").update(body).digest("hex"),
   ].join("\n");
-  const expected = createHmac("sha256", SECRET).update(canonical).digest("hex");
-  const got = headers["x-yupay-signature"] ?? "";
-  if (expected.length !== got.length) return false;
-  if (!timingSafeEqual(Buffer.from(expected), Buffer.from(got))) return false;
+  const expected = Buffer.from(createHmac("sha256", API_KEY).update(canonical).digest("hex"));
+  // One signature per live key, comma-separated (two during a rotation).
+  const sent = (headers["x-yupay-key-signature"] ?? "")
+    .split(",")
+    .map((s) => Buffer.from(s.trim()));
+  if (!sent.some((s) => s.length === expected.length && timingSafeEqual(s, expected))) return false;
   return /^\d+$/.test(ts) && Math.abs(Date.now() / 1000 - Number(ts)) <= TOLERANCE_SECONDS;
 }
 ```
@@ -982,13 +992,18 @@ back through the route stack, same rule as `affiliate.routes`):
   order-time margin floor is the guard (spec §8.3).
 
 - `POST /admin/merchants/{id}/api-keys` — mint a machine credential
-  (`label?`, `ip_allowlist?`). **The secret is in this response and nowhere
-  else, ever.** `GET .../api-keys` lists every key ever issued, newest
+  (`label?`): one `ypk_…` string, `api_key` (ADR-0103). **It is in this
+  response and nowhere else, ever.** `GET .../api-keys` lists every key ever issued, newest
   first, revoked ones included, and its response model has no `secret`
   field at all. `DELETE .../api-keys/{key_id}` revokes: it sets
   `revoked_at`, is naturally idempotent (a second call returns the FIRST
   timestamp rather than moving it), and matches on `(merchant_id, key_id)`
   so one merchant's id in the path can never revoke another's credential.
+
+- `PUT /admin/merchants/{id}/api-ip-allowlist` (`entries`) — replace the
+  merchant's IP allowlist, shared by every key; `[]` turns it off. Answers the
+  merchant row, which now carries `api_ip_allowlist`. The cabinet has the same
+  pair at `GET`/`PUT /merchant/cabinet/api-ip-allowlist`.
 
 - `PUT /admin/merchants/{id}/webhook` — point the merchant's outgoing
   webhook at a URL. **The signing secret is in this response and nowhere
@@ -1089,26 +1104,41 @@ offline before you have an account.
 
 ### Credentials
 
-Support issues a key from the admin surface and hands over two values:
+**One value since ADR-0103.** A key issued from the cabinet (Настройки →
+«Создать ключ») or by support is a single string:
 
-| Value    | Example                                     | Notes                                              |
-| -------- | ------------------------------------------- | -------------------------------------------------- |
-| `key_id` | `ypm_9j2v…` (36 chars)                      | Public. Sent on every request.                     |
-| `secret` | `ypms_Rk8…` (48 chars, 256 bits of entropy) | **Shown once.** Store it; we cannot show it again. |
+| Value     | Example                     | Notes                                              |
+| --------- | --------------------------- | -------------------------------------------------- |
+| `api_key` | `ypk_9j2v…` (79 characters) | **Shown once.** Store it; we cannot show it again. |
+
+Send it on every request, and that is the whole scheme:
+
+```
+Authorization: Bearer ypk_9j2v…
+```
+
+No timestamp, no signature, no canonical string. Its first 36 characters are
+the public key id (the cabinet lists keys by it); the rest is the secret. The
+same key verifies our webhooks (`X-Yupay-Key-Signature`, below).
+
+**Keys issued before November 2026** are a `key_id` (`ypm_…`, public) plus a
+`secret` (`ypms_…`) and authenticate with the signed scheme in the next
+sections. They keep working, unchanged; nothing has to be redeployed. To move to
+the single key, issue a `ypk_` key, deploy it, revoke the old one.
 
 Several keys can be live at the same time, which is what makes rotation
 zero-downtime: issue the new one, deploy it, then revoke the old one.
 
-We hold the secret **encrypted at rest** (XSalsa20-Poly1305 under an
-application key that is not in the database), which is what lets us verify
-your signature without keeping key material in the clear. Honest boundary: a
-stolen database dump on its own yields nothing usable; an attacker holding
-both the dump and the application key is another matter, and the controls that
-bound that are revocation and the per-key IP allowlist.
+We hold the secret half **encrypted at rest** (XSalsa20-Poly1305 under an
+application key that is not in the database), which is what lets us check it and
+sign webhooks with it without keeping key material in the clear. Honest
+boundary: a stolen database dump on its own yields nothing usable; an attacker
+holding both the dump and the application key is another matter, and the
+controls that bound that are revocation and the IP allowlist.
 
-### The signature
+### The signature (keys issued before November 2026)
 
-Three headers on every request:
+A `ypm_` key sends three headers on every request:
 
 ```
 X-Merchant-Key:       <key_id>
@@ -1411,16 +1441,16 @@ tighter ones simply bind first.
 
 ### IP allowlist
 
-A key with an allowlist only authenticates from those addresses; entries are
-single addresses (`198.51.100.7`) or CIDR blocks (`203.0.113.0/24`), IPv4 or
-IPv6, and host bits inside a block are ignored when matching. No allowlist
-means no filter.
+**One list per merchant, for every key** (ADR-0103). With a list set, any of
+your keys only authenticates from those addresses; entries are single addresses
+(`198.51.100.7`) or CIDR blocks (`203.0.113.0/24`), IPv4 or IPv6, and host bits
+inside a block are ignored when matching. An empty list means no filter.
 
-**Ask support to set one when the key is issued.** The allowlist is fixed at
-issue time — there is no endpoint that edits it, and no self-service cabinet in
-v1 — so changing it means issuing a new key and revoking the old one. That is
-the same zero-downtime rotation described above, so it costs a deploy, not an
-outage.
+Edit it in the cabinet (Настройки → «Разрешённые IP»); it applies at once, to
+every key, and every operator on the account is mailed when it changes. **If
+your server has an IPv6 address, add it too** — a host with both will usually
+reach us over IPv6, and a list holding only the IPv4 address answers
+`403 ip_not_allowed`.
 
 ## Endpoints (`/merchant/v1`)
 
@@ -2245,8 +2275,15 @@ Two event types, and they are the complete v1 list:
 
 ### The signature
 
-Four fields joined by single LF bytes (`0x0A`), HMAC-SHA256 under your `ypmw_`
-secret — the secret's UTF-8 bytes are the key, with **no derivation step**:
+Four fields joined by single LF bytes (`0x0A`), HMAC-SHA256 keyed by your
+**API key** (`ypk_…`, ADR-0103) — its UTF-8 bytes are the key, with **no
+derivation step**. The result is in `X-Yupay-Key-Signature`: one hex digest per
+live `ypk_` key, comma-separated, so during a rotation both keys verify; accept
+the delivery if your digest is one of them.
+
+`X-Yupay-Signature` carries the same canonical string keyed by the `ypmw_`
+webhook secret instead. It is still sent on every delivery, so a verifier built
+on it before the single key keeps working unchanged:
 
 ```
 canonical = timestamp + "\n" + delivery_id + "\n" + event_type + "\n" + sha256_hex(body)
@@ -2464,8 +2501,8 @@ everything here except step 6.
 A `key_id` and a `secret` (see "Credentials"). Ask for two more things in the
 same conversation, because both are cheaper to arrange now than later:
 
-- **an IP allowlist**, if your calls leave from fixed addresses. It is fixed
-  when the key is issued, so adding one later means a new key.
+- **an IP allowlist**, if your calls leave from fixed addresses. You can also
+  set and change it yourself in the cabinet, for all keys at once.
 - **a cheap SKU to test on.** A live order spends real money from your
   deposit; there is no sandbox and no test mode, and an order that reaches
   fulfilment cannot be undone by either side.
@@ -2701,7 +2738,7 @@ is percent-encoded and **the encoded form is what you sign**
 | Machine-API wire DTOs (the third-party contract)            | `machine_schemas.py` — additive changes only                                                                                                                                                                                                                                                                                                                                                                                            |
 | A request the schema itself refused (`422 invalid_request`) | `core/errors.py::problem_json_validation_handler` — registered app-wide by `bootstrap`, **scoped to this prefix**, matched by path segment so a future `/merchant/v1beta` does not inherit it; every other path is delegated to FastAPI's own handler byte for byte, because the generated TS client types every operation in the repo from the `HTTPValidationError` schema. The OpenAPI half is `machine_routes._VALIDATION_PROBLEM`. |
 | Admin-surface DTOs                                          | `schemas.py`                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| Cabinet HTTP surface (`/merchant/cabinet`)                  | `cabinet_routes.py` (the signed-in reads and writes) and `cabinet_auth_routes.py` (everything that runs **before** there is a session) — the browser's BFF, **not** part of the contract above. Mounted by `bootstrap` beside `/merchant/v1` and deliberately _not_ on its rate-limit exemption list.                                                                                                                                   |
+| Cabinet HTTP surface (`/merchant/cabinet`)                  | `cabinet_routes.py` (the signed-in reads and writes), `cabinet_key_routes.py` (API keys and the IP allowlist), `cabinet_webhook_routes.py` and `cabinet_auth_routes.py` (everything that runs **before** there is a session) — the browser's BFF, **not** part of the contract above. Mounted by `bootstrap` beside `/merchant/v1` and deliberately _not_ on its rate-limit exemption list.                                             |
 | Cabinet sessions (register / confirm / login / refresh)     | `cabinet_auth.py` over `merchant_sessions`; `cabinet_deps.current_merchant_user` is the dependency every cabinet read sits behind                                                                                                                                                                                                                                                                                                       |
 | Cabinet DTOs                                                | `cabinet_schemas.py` — free to change with the app that reads it, which is why they are not `machine_schemas.py`                                                                                                                                                                                                                                                                                                                        |
 | The cabinet's Orders list (no machine-API twin)             | `cabinet_orders.py` — keyset paging, a closed filter set, money from the ledger, and `_sku_labels` for the product's name (`sku_code`/`sku_name`/`brand_name`, one query, no per-row lookup)                                                                                                                                                                                                                                            |

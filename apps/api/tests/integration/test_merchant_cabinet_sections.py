@@ -422,14 +422,15 @@ async def test_a_key_is_issued_once_and_never_shown_again(
     )
     assert created.status_code == 201, created.text
     body = created.json()
-    assert body["secret"]
+    assert body["api_key"].startswith(body["key_id"])
+    assert body["key_id"].startswith("ypk_")
     assert body["label"] == "staging"
 
     listed = await integration_client.get(f"{BASE}/api-keys", headers=_auth(access))
     assert listed.status_code == 200
     rows = listed.json()
     assert [row["key_id"] for row in rows] == [body["key_id"]]
-    assert all("secret" not in row for row in rows)
+    assert all("secret" not in row and "api_key" not in row for row in rows)
 
 
 async def test_revoking_a_key_leaves_it_listed_and_stamped(
@@ -729,41 +730,47 @@ async def test_the_timezone_is_the_callers_own_and_must_be_loadable(
     ] == "Asia/Tashkent"
 
 
-async def test_a_key_carries_the_allowlist_it_was_issued_with(
+async def test_one_ip_allowlist_is_edited_for_every_key(
     integration_client: AsyncClient, sent: list[dict[str, str]]
 ) -> None:
-    """Same field, same rules and the same validator as the admin surface.
+    """ADR-0103: the list is the merchant's, edited here, read back trimmed.
 
-    A typo'd entry stored verbatim would never match and would lock the
-    merchant out of their own API with a 403 nobody can explain, so it is
-    refused at the parse boundary — on this surface too, which is the thing
-    a second copy of the validator would eventually stop doing.
+    Same validator as the admin surface: a typo'd entry stored verbatim would
+    never match and would lock the merchant out of their own API with a 403
+    nobody can explain, so it is refused at the parse boundary. Changing the
+    list mails the account — widening it is what an intruder would do first.
     """
     access, _ = await _signed_up(integration_client, sent, "ips@acme.example.com")
+    empty = await integration_client.get(f"{BASE}/api-ip-allowlist", headers=_auth(access))
+    assert empty.status_code == 200, empty.text
+    assert empty.json() == {"entries": []}
+    sent.clear()
 
-    issued = await integration_client.post(
-        f"{BASE}/api-keys",
+    stored = await integration_client.put(
+        f"{BASE}/api-ip-allowlist",
         headers=_auth(access),
-        json={"label": "boxed", "ip_allowlist": ["203.0.113.5", " 10.0.0.0/8 "]},
+        json={"entries": ["203.0.113.5", " 10.0.0.0/8 ", ""]},
     )
-    refused = await integration_client.post(
-        f"{BASE}/api-keys", headers=_auth(access), json={"ip_allowlist": ["not-an-ip"]}
-    )
-    plain = await integration_client.post(
-        f"{BASE}/api-keys", headers=_auth(access), json={"label": "no filter"}
+    refused = await integration_client.put(
+        f"{BASE}/api-ip-allowlist", headers=_auth(access), json={"entries": ["not-an-ip"]}
     )
 
-    assert issued.status_code == 201, issued.text
-    assert issued.json()["ip_allowlist"] == ["203.0.113.5", "10.0.0.0/8"], "entries are trimmed"
+    assert stored.status_code == 200, stored.text
+    assert stored.json()["entries"] == ["203.0.113.5", "10.0.0.0/8"], "entries are trimmed"
     assert refused.status_code == 422
-    assert plain.status_code == 201
-    assert plain.json()["ip_allowlist"] is None, "an omitted list means no filter, not an empty one"
-    listed = {
-        row["key_id"]: row["ip_allowlist"]
-        for row in (await integration_client.get(f"{BASE}/api-keys", headers=_auth(access))).json()
-    }
-    assert len(listed) == 2, "the refused call must not have minted a credential"
-    assert listed[issued.json()["key_id"]] == ["203.0.113.5", "10.0.0.0/8"]
+    read = await integration_client.get(f"{BASE}/api-ip-allowlist", headers=_auth(access))
+    assert read.json()["entries"] == ["203.0.113.5", "10.0.0.0/8"]
+    assert [mail["to"] for mail in sent] == ["ips@acme.example.com"]
+
+    cleared = await integration_client.put(
+        f"{BASE}/api-ip-allowlist", headers=_auth(access), json={"entries": []}
+    )
+    assert cleared.json() == {"entries": []}
+
+    stale = await integration_client.post(
+        f"{BASE}/api-keys", headers=_auth(access), json={"ip_allowlist": ["203.0.113.5"]}
+    )
+    assert stale.status_code == 422, "a per-key list is no longer a thing"
 
 
 async def test_issuing_and_revoking_a_key_tells_the_account(
@@ -782,7 +789,7 @@ async def test_issuing_and_revoking_a_key_tells_the_account(
         f"{BASE}/api-keys", headers=_auth(access), json={"label": "prod"}
     )
     key_id = str(issued.json()["key_id"])
-    secret = str(issued.json()["secret"])
+    secret = str(issued.json()["api_key"])[len(key_id) :]
     await integration_client.delete(f"{BASE}/api-keys/{key_id}", headers=_auth(access))
 
     assert [mail["to"] for mail in sent] == ["notify@acme.example.com"] * 2
@@ -802,7 +809,7 @@ async def test_every_section_refuses_a_signed_out_browser(
     Enumerated rather than spot-checked: a new section added without the
     dependency is the failure this catches, and it is silent otherwise.
     """
-    for path in ("/me", "/catalog", "/orders", "/transactions", "/api-keys"):
+    for path in ("/me", "/catalog", "/orders", "/transactions", "/api-keys", "/api-ip-allowlist"):
         r = await integration_client.get(f"{BASE}{path}")
         assert r.status_code == 401, f"{path} answered {r.status_code}"
     patched = await integration_client.patch(f"{BASE}/me", json={"timezone": "UTC"})

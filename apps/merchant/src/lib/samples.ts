@@ -1,18 +1,19 @@
 /**
- * Signed request samples, per endpoint, in the three languages an integrator
+ * Request samples, per endpoint, in the three languages an integrator
  * actually reaches for.
  *
- * Generated rather than written, for the reason the example bodies are: a
- * hand-written sample is a second copy of the canonical string, and the day
- * somebody adds a field to it the samples are where the drift hides.
+ * `sampleFor` is the default everywhere: one `Authorization: Bearer ypk_…`
+ * header (ADR-0103). `signedSampleFor` is the original HMAC-signed request,
+ * still accepted for keys issued before the single key, and shown only on the
+ * authentication page.
  *
- * **There is no "try it" button on this reference, and there will not be
- * one.** Sending a signed request needs the merchant's secret, and that
- * credential belongs on their server — putting a box on a web page that asks
- * for it would undo the one rule the whole auth design rests on. Running an
- * order from a docs page would also spend real money on a real supplier. The
- * sample is the thing you paste into your own terminal, where your secret
- * already lives.
+ * Generated rather than written, for the reason the example bodies are: a
+ * hand-written sample is a second copy of the contract, and the day somebody
+ * adds a field to it the samples are where the drift hides.
+ *
+ * **There is no "try it" button on this reference.** The key belongs on the
+ * merchant's server, and running an order from a docs page would spend real
+ * money on a real supplier.
  */
 
 export type Language = "curl" | "python" | "node";
@@ -41,7 +42,7 @@ function canonical(method: string, path: string, query: string, hasBody: boolean
   return ["{timestamp}", method, path, query, digest].join("\n");
 }
 
-function curl({ method, path, query, body, baseUrl }: SampleInput): string {
+function signedCurl({ method, path, query, body, baseUrl }: SampleInput): string {
   const url = `${baseUrl}${path}${query === "" ? "" : `?${query}`}`;
   const bodyFile =
     body === null ? "" : `\nBODY='${body.replaceAll("\n", "").replaceAll(/\s+/g, " ")}'`;
@@ -68,7 +69,7 @@ SIG=$(printf '%s' "$CANONICAL" | openssl dgst -sha256 -hmac "$SECRET" -hex | awk
 ${send}`;
 }
 
-function python({ method, path, query, body, baseUrl }: SampleInput): string {
+function signedPython({ method, path, query, body, baseUrl }: SampleInput): string {
   const payload =
     body === null
       ? 'body = b""'
@@ -107,7 +108,7 @@ resp.raise_for_status()
 print(resp.json())`;
 }
 
-function node({ method, path, query, body, baseUrl }: SampleInput): string {
+function signedNode({ method, path, query, body, baseUrl }: SampleInput): string {
   const payload =
     body === null
       ? 'const body = "";'
@@ -141,6 +142,54 @@ if (!response.ok) throw new Error(await response.text());
 console.log(await response.json());`;
 }
 
+function oneLine(body: string): string {
+  return body.replaceAll("\n", "").replaceAll(/\s+/g, " ");
+}
+
+function curl({ method, path, query, body, baseUrl }: SampleInput): string {
+  const url = `${baseUrl}${path}${query === "" ? "" : `?${query}`}`;
+  const auth = `curl -sS -X ${method} "${url}" \\\n  -H "Authorization: Bearer $API_KEY"`;
+  return body === null
+    ? `API_KEY='ypk_your_api_key'\n\n${auth}`
+    : `API_KEY='ypk_your_api_key'\n\n${auth} \\\n  -H "Content-Type: application/json" \\\n  -d '${oneLine(body)}'`;
+}
+
+function python({ method, path, query, body, baseUrl }: SampleInput): string {
+  const send =
+    body === null
+      ? `resp = httpx.request("${method}", BASE + PATH, params=QUERY or None, headers=headers)`
+      : `resp = httpx.request("${method}", BASE + PATH, params=QUERY or None, json=${body}, headers=headers)`;
+  return `import httpx
+
+BASE = "${baseUrl}"
+PATH = "${path}"
+QUERY = "${query}"
+API_KEY = "ypk_your_api_key"
+
+headers = {"Authorization": f"Bearer {API_KEY}"}
+${send}
+resp.raise_for_status()
+print(resp.json())`;
+}
+
+function node({ method, path, query, body, baseUrl }: SampleInput): string {
+  const send =
+    body === null
+      ? `const response = await fetch(url, { method: "${method}", headers });`
+      : `headers["Content-Type"] = "application/json";\nconst response = await fetch(url, {\n  method: "${method}",\n  headers,\n  body: JSON.stringify(${body}),\n});`;
+  return `const BASE = "${baseUrl}";
+const PATH = "${path}";
+const QUERY = "${query}";
+const API_KEY = "ypk_your_api_key";
+
+const url = BASE + PATH + (QUERY ? "?" + QUERY : "");
+const headers = { Authorization: \`Bearer \${API_KEY}\` };
+${send}
+if (!response.ok) throw new Error(await response.text());
+console.log(await response.json());`;
+}
+
+/** The default sample: the single API key as a bearer token (ADR-0103). */
 export function sampleFor(language: Language, input: SampleInput): string {
   switch (language) {
     case "curl":
@@ -149,6 +198,18 @@ export function sampleFor(language: Language, input: SampleInput): string {
       return python(input);
     case "node":
       return node(input);
+  }
+}
+
+/** The original HMAC-signed request, for keys issued before the single key. */
+export function signedSampleFor(language: Language, input: SampleInput): string {
+  switch (language) {
+    case "curl":
+      return signedCurl(input);
+    case "python":
+      return signedPython(input);
+    case "node":
+      return signedNode(input);
   }
 }
 

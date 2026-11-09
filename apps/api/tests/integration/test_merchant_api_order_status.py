@@ -121,7 +121,7 @@ async def _new_key(
     )
     assert r.status_code == 201, r.text
     payload = r.json()
-    return payload["key_id"], payload["secret"]
+    return payload["key_id"], payload["api_key"][len(payload["key_id"]) :]
 
 
 async def _credit(

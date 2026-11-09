@@ -10,6 +10,7 @@ import type { Profile } from "@/lib/types";
 
 import { ApiKeysCard } from "@/components/ApiKeysCard";
 import { useCabinet } from "@/components/CabinetContext";
+import { IpAllowlistCard } from "@/components/IpAllowlistCard";
 import { PageHeading } from "@/components/PageHeading";
 import { WebhookCard } from "@/components/WebhookCard";
 import { api } from "@/lib/api";
@@ -59,6 +60,7 @@ export default function SettingsPage() {
       <PageHeading icon={Settings} title={t("title")} />
 
       <ApiKeysCard />
+      <IpAllowlistCard />
 
       <WebhookCard locale={locale} />
 

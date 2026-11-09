@@ -331,7 +331,9 @@ class CabinetApiKeyOut(BaseModel):
 
     Never carries the secret. That is returned once, by the create call, and
     is not stored in a readable form afterwards — so a list that could show it
-    would mean we had kept it.
+    would mean we had kept it. ``key_id`` is public: for a ``ypk_`` key it is
+    the start of the key, for an older ``ypm_`` key it is the
+    ``X-Merchant-Key`` value.
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -339,11 +341,6 @@ class CabinetApiKeyOut(BaseModel):
     id: str
     key_id: str
     label: str
-    #: Addresses or CIDR blocks allowed to use this key; ``null`` means no
-    #: filter. There is no endpoint that edits it — narrowing a live key's
-    #: allowlist is a rotation, so that a mistake is recoverable by deploying
-    #: the key you still hold rather than by a support call.
-    ip_allowlist: list[str] | None
     created_at: datetime
     last_used_at: datetime | None
     revoked_at: datetime | None
@@ -353,26 +350,43 @@ class CabinetApiKeyCreateIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     #: What this key is for, in the operator's own words ("staging", "billing
-    #: box"). Rotation is "issue, deploy, revoke", and a label is how a person
-    #: tells two live keys apart while both are.
+    #: box"). Optional. Rotation is "issue, deploy, revoke", and a label is how
+    #: a person tells two live keys apart while both are.
     label: str = Field(default="", max_length=64)
-    #: Optional. Same field, same rules and the **same validator** as the
-    #: admin surface's — two tables of what an address is would drift, and an
-    #: entry we accept but ``auth.address_allowed`` cannot match locks a
-    #: merchant out of their own API with a 403 nobody can explain.
-    ip_allowlist: list[str] | None = Field(default=None, max_length=MAX_ENTRIES)
-
-    _entries_parse = field_validator("ip_allowlist")(normalize_allowlist)
 
 
 class CabinetIssuedKeyOut(BaseModel):
-    """The one moment the secret exists outside our encryption."""
+    """The one moment the API key exists outside our encryption (ADR-0103)."""
 
+    #: The whole ``ypk_…`` key — the one value an integration needs.
+    api_key: str
     key_id: str
-    secret: str
     label: str
-    ip_allowlist: list[str] | None
     created_at: datetime
+
+
+class CabinetIpAllowlistOut(BaseModel):
+    """The merchant's API IP allowlist; an empty list means no filter."""
+
+    entries: list[str]
+
+
+class CabinetIpAllowlistIn(BaseModel):
+    """Body of ``PUT /merchant/cabinet/api-ip-allowlist``; ``[]`` turns the filter off.
+
+    Same validator as the admin surface (``allowlist.normalize_allowlist``): an
+    entry we accept but ``auth.address_allowed`` cannot match would lock the
+    merchant out with a 403 nobody can explain.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    entries: list[str] = Field(default_factory=list, max_length=MAX_ENTRIES)
+
+    @field_validator("entries")
+    @classmethod
+    def _entries_parse(cls, value: list[str]) -> list[str]:
+        return normalize_allowlist(value) or []
 
 
 class CabinetWebhookSetIn(BaseModel):
@@ -468,6 +482,8 @@ __all__ = [
     "CabinetDeliveriesOut",
     "CabinetDeliveryRowOut",
     "CabinetEmailIn",
+    "CabinetIpAllowlistIn",
+    "CabinetIpAllowlistOut",
     "CabinetIssuedKeyOut",
     "CabinetLoginIn",
     "CabinetOrderDetailOut",

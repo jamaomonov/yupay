@@ -17,7 +17,7 @@ import type {
   WebhookOut,
 } from "./api";
 
-import { ApiError, api, apiGet, apiPatch, apiPost } from "@/lib/api";
+import { ApiError, api, apiGet, apiPatch, apiPost, apiPut } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 
 vi.mock("@/lib/api", () => ({
@@ -48,6 +48,7 @@ const mockedApiPost = vi.mocked(apiPost);
 // `void`-typed `apiDelete` helper.
 const mockedApi = vi.mocked(api);
 const mockedApiPatch = vi.mocked(apiPatch);
+const mockedApiPut = vi.mocked(apiPut);
 
 const LIST: MerchantListOut = {
   items: [
@@ -58,6 +59,7 @@ const LIST: MerchantListOut = {
       created_at: "2026-09-01T10:00:00Z",
       deposit_balance: "25.00",
       markup_adjustment_pp: null,
+      api_ip_allowlist: ["203.0.113.5"],
     },
   ],
 };
@@ -82,7 +84,6 @@ const KEYS: ApiKeyListOut = {
     {
       key_id: "ypm_live",
       label: "прод-сервер",
-      ip_allowlist: ["203.0.113.5"],
       created_at: "2026-09-01T10:00:00Z",
       last_used_at: "2026-09-20T09:00:00Z",
       revoked_at: null,
@@ -90,7 +91,6 @@ const KEYS: ApiKeyListOut = {
     {
       key_id: "ypm_old",
       label: "старый",
-      ip_allowlist: null,
       created_at: "2026-08-01T10:00:00Z",
       last_used_at: null,
       revoked_at: "2026-09-01T09:00:00Z",
@@ -172,6 +172,7 @@ beforeEach(() => {
   mockedApiPost.mockReset();
   mockedApi.mockReset();
   mockedApiPatch.mockReset();
+  mockedApiPut.mockReset();
   // Route by path rather than "transactions or else": the detail page now
   // also loads the merchant's keys and webhook, and a catch-all that handed
   // both of them the merchant LIST crashed the page on `ip_allowlist.join`.
@@ -593,12 +594,32 @@ it("ignores a double-click while the debit is in flight", async () => {
 // support could not see whether the account had a live key, when it was last
 // used, or whether an IP allowlist was turning their requests away.
 
-it("lists a live key with its last use and its IP filter", async () => {
+it("lists a live key with its last use, and the merchant's one IP list", async () => {
   renderPage(undefined, "integration");
 
   expect(await screen.findByText("ypm_live")).toBeInTheDocument();
   expect(screen.getByText(/прод-сервер/)).toBeInTheDocument();
-  expect(screen.getByText("203.0.113.5")).toBeInTheDocument();
+  // ADR-0103: the allowlist is the merchant's, editable, not a column per key.
+  expect(screen.getByDisplayValue("203.0.113.5")).toBeInTheDocument();
+});
+
+it("saves the IP list for every key at once", async () => {
+  mockedApiPut.mockResolvedValue({
+    ...LIST.items[0],
+    api_ip_allowlist: ["203.0.113.5", "2a01:4f8::/64"],
+  });
+  renderPage(undefined, "integration");
+
+  fireEvent.change(await screen.findByDisplayValue("203.0.113.5"), {
+    target: { value: "203.0.113.5\n\n 2a01:4f8::/64 " },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Сохранить IP" }));
+
+  await waitFor(() => {
+    expect(mockedApiPut).toHaveBeenCalledWith("/api/v1/admin/merchants/m1/api-ip-allowlist", {
+      entries: ["203.0.113.5", "2a01:4f8::/64"],
+    });
+  });
 });
 
 it("keeps a revoked key listed, and offers no way to revoke it twice", async () => {

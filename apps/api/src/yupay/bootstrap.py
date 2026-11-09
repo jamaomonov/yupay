@@ -44,6 +44,7 @@ from yupay.modules.fulfillment.suppliers.g2b_client import close_g2b_pool
 from yupay.modules.merchants.cabinet_auth_routes import (
     router as merchant_cabinet_auth_router,
 )
+from yupay.modules.merchants.cabinet_key_routes import router as merchant_cabinet_key_router
 from yupay.modules.merchants.cabinet_routes import router as merchant_cabinet_router
 from yupay.modules.merchants.cabinet_webhook_routes import (
     router as merchant_cabinet_webhook_router,
@@ -414,6 +415,7 @@ def create_app() -> FastAPI:
     app.include_router(merchant_cabinet_auth_router)
     app.include_router(merchant_cabinet_router)
     app.include_router(merchant_cabinet_webhook_router)
+    app.include_router(merchant_cabinet_key_router)
     app.include_router(p2p_cabinet_router)
 
     # Explicit buckets. The library's per-handler default is (0.1, 0.5, 1),

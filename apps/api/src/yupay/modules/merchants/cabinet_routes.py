@@ -38,11 +38,9 @@ from yupay.modules.auth.ip_guard import guard_ip
 from yupay.modules.merchants import api as merchants_api
 from yupay.modules.merchants import (
     cabinet_export,
-    cabinet_notify,
     cabinet_orders,
     cabinet_stats,
     cabinet_summary,
-    credentials,
     deposit,
     orders,
     price_list,
@@ -50,10 +48,7 @@ from yupay.modules.merchants import (
 )
 from yupay.modules.merchants.cabinet_deps import CurrentUser, Db, merchant_of
 from yupay.modules.merchants.cabinet_schemas import (
-    CabinetApiKeyCreateIn,
-    CabinetApiKeyOut,
     CabinetCatalogSummaryOut,
-    CabinetIssuedKeyOut,
     CabinetOrderDetailOut,
     CabinetOrderIn,
     CabinetOrdersOut,
@@ -422,58 +417,6 @@ async def export_transactions(user: CurrentUser, db: Db) -> Response:
 async def export_catalog(user: CurrentUser, db: Db) -> Response:
     """The same tree ``GET /catalog`` serves, flattened to one row per SKU."""
     return _csv(await cabinet_export.price_list_csv(db, merchant=await merchant_of(db, user)))
-
-
-@router.get("/api-keys", response_model=list[CabinetApiKeyOut], summary="Machine credentials")
-async def list_keys(user: CurrentUser, db: Db) -> list[CabinetApiKeyOut]:
-    merchant = await merchant_of(db, user)
-    rows = await credentials.list_api_keys(db, merchant_id=merchant.id)
-    return [CabinetApiKeyOut.model_validate(row) for row in rows]
-
-
-@router.post(
-    "/api-keys",
-    response_model=CabinetIssuedKeyOut,
-    status_code=status.HTTP_201_CREATED,
-    summary="Issue a machine credential",
-)
-async def create_key(body: CabinetApiKeyCreateIn, user: CurrentUser, db: Db) -> CabinetIssuedKeyOut:
-    """The secret is in this response and nowhere else, ever again.
-
-    Self-serve rather than a support request, which is what makes rotation —
-    issue, deploy, revoke — something a reseller can do at 3am during an
-    incident instead of waiting for our morning.
-    """
-    merchant = await merchant_of(db, user)
-    issued = await credentials.create_api_key(
-        db, merchant_id=merchant.id, label=body.label, ip_allowlist=body.ip_allowlist
-    )
-    log.info("merchant.cabinet.key_created", merchant_id=merchant.id, key_id=issued.key.key_id)
-    await cabinet_notify.notify_security(
-        db, merchant_id=merchant.id, event="api_key_created", detail=issued.key.key_id
-    )
-    return CabinetIssuedKeyOut(
-        key_id=issued.key.key_id,
-        secret=issued.secret,
-        label=issued.key.label,
-        ip_allowlist=issued.key.ip_allowlist,
-        created_at=issued.key.created_at,
-    )
-
-
-@router.delete(
-    "/api-keys/{key_id}",
-    response_model=CabinetApiKeyOut,
-    summary="Revoke a machine credential",
-)
-async def revoke_key(key_id: str, user: CurrentUser, db: Db) -> CabinetApiKeyOut:
-    merchant = await merchant_of(db, user)
-    row = await credentials.revoke_api_key(db, merchant_id=merchant.id, key_id=key_id)
-    log.info("merchant.cabinet.key_revoked", merchant_id=merchant.id, key_id=key_id)
-    await cabinet_notify.notify_security(
-        db, merchant_id=merchant.id, event="api_key_revoked", detail=row.key_id
-    )
-    return CabinetApiKeyOut.model_validate(row)
 
 
 __all__ = ["router"]

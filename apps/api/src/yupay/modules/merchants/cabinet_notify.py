@@ -40,6 +40,7 @@ SecurityEvent = Literal[
     "webhook_url_changed",
     "webhook_secret_rotated",
     "webhook_disabled",
+    "api_ip_allowlist_changed",
 ]
 
 #: Cap on recipients per notice. An account with more operators than this is

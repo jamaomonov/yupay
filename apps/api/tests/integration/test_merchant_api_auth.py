@@ -31,7 +31,7 @@ from typing import Annotated, Any
 import pytest
 from fastapi import APIRouter, Body, Depends
 from httpx import ASGITransport, AsyncClient, Response
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from yupay.modules.merchants.auth import merchant_auth
 from yupay.modules.merchants.models import Merchant, MerchantApiKey
@@ -151,16 +151,25 @@ async def _new_key(
     label: str = "server",
     ip_allowlist: list[str] | None = None,
 ) -> tuple[str, str]:
-    """Issue a key through the admin write path; returns ``(key_id, secret)``."""
+    """Issue a key through the admin write path; returns ``(key_id, secret)``.
+
+    ``ip_allowlist`` sets the **merchant's** list (ADR-0103), which every key of
+    that merchant shares.
+    """
     body: dict[str, Any] = {"label": label}
     if ip_allowlist is not None:
-        body["ip_allowlist"] = ip_allowlist
+        put = await client.put(
+            f"/api/v1/admin/merchants/{merchant_id}/api-ip-allowlist",
+            headers=headers,
+            json={"entries": ip_allowlist},
+        )
+        assert put.status_code == 200, put.text
     r = await client.post(
         f"/api/v1/admin/merchants/{merchant_id}/api-keys", headers=headers, json=body
     )
     assert r.status_code == 201, r.text
     payload = r.json()
-    return payload["key_id"], payload["secret"]
+    return payload["key_id"], payload["api_key"][len(payload["key_id"]) :]
 
 
 def _signed(
@@ -604,12 +613,11 @@ async def test_a_frozen_merchant_is_403_merchant_frozen(
 async def test_ip_allowlist_round_trips_through_the_write_path_and_is_enforced(
     machine_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
 ) -> None:
-    """Store two CIDRs, read them back, then match and non-match (carry-over 2).
+    """Store two CIDRs on the merchant, read them back, then match and non-match.
 
-    ``merchant_api_keys.ip_allowlist`` is the codebase's first ``ARRAY(INET)``
-    and until now only its read path had ever run, so the assertions below go
-    through the admin write endpoint, the admin read endpoint AND a direct row
-    read before testing the filter itself.
+    ``merchants.api_ip_allowlist`` is an ``ARRAY(INET)``, so the assertions go
+    through the admin write endpoint AND a direct row read before testing the
+    filter itself.
     """
     merchant_id = await _new_merchant(machine_client, admin_headers)
     key_id, secret = await _new_key(
@@ -620,15 +628,13 @@ async def test_ip_allowlist_round_trips_through_the_write_path_and_is_enforced(
     )
 
     row = (
+        await db_session.execute(select(Merchant).where(Merchant.id == merchant_id))
+    ).scalar_one()
+    assert row.api_ip_allowlist == ["203.0.113.0/24", "198.51.100.7"]
+    key_row = (
         await db_session.execute(select(MerchantApiKey).where(MerchantApiKey.key_id == key_id))
     ).scalar_one()
-    assert row.ip_allowlist == ["203.0.113.0/24", "198.51.100.7"]
-
-    listed = await machine_client.get(
-        f"/api/v1/admin/merchants/{merchant_id}/api-keys", headers=admin_headers
-    )
-    assert listed.status_code == 200, listed.text
-    assert listed.json()["items"][0]["ip_allowlist"] == ["203.0.113.0/24", "198.51.100.7"]
+    assert key_row.ip_allowlist is None, "new keys carry no list of their own"
 
     inside_cidr = await _call(
         machine_client, key_id, secret, extra={"X-Forwarded-For": "203.0.113.42"}
@@ -644,16 +650,55 @@ async def test_ip_allowlist_round_trips_through_the_write_path_and_is_enforced(
     assert outside.json()["code"] == "ip_not_allowed"
 
 
-async def test_a_null_allowlist_accepts_any_address(
+async def test_one_allowlist_guards_every_key_and_clearing_it_opens_them(
+    machine_client: AsyncClient, admin_headers: dict[str, str]
+) -> None:
+    """The list is the merchant's: a key issued after it was set is bound by it too."""
+    merchant_id = await _new_merchant(machine_client, admin_headers)
+    first = await _new_key(
+        machine_client, admin_headers, merchant_id, ip_allowlist=["203.0.113.0/24"]
+    )
+    second = await _new_key(machine_client, admin_headers, merchant_id)
+
+    for key_id, secret in (first, second):
+        r = await _call(machine_client, key_id, secret, extra={"X-Forwarded-For": "192.0.2.1"})
+        assert r.status_code == 403, r.text
+
+    cleared = await machine_client.put(
+        f"/api/v1/admin/merchants/{merchant_id}/api-ip-allowlist",
+        headers=admin_headers,
+        json={"entries": []},
+    )
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()["api_ip_allowlist"] is None
+
+    for key_id, secret in (first, second):
+        r = await _call(machine_client, key_id, secret, extra={"X-Forwarded-For": "192.0.2.1"})
+        assert r.status_code == 200, r.text
+
+
+async def test_a_legacy_per_key_allowlist_is_no_longer_read(
     machine_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """Migration 0109 moved the lists to the merchant; the old column is inert."""
+    merchant_id = await _new_merchant(machine_client, admin_headers)
+    key_id, secret = await _new_key(machine_client, admin_headers, merchant_id)
+    await db_session.execute(
+        update(MerchantApiKey)
+        .where(MerchantApiKey.key_id == key_id)
+        .values(ip_allowlist=["203.0.113.0/24"])
+    )
+    await db_session.commit()
+
+    r = await _call(machine_client, key_id, secret, extra={"X-Forwarded-For": "192.0.2.55"})
+    assert r.status_code == 200, r.text
+
+
+async def test_a_null_allowlist_accepts_any_address(
+    machine_client: AsyncClient, admin_headers: dict[str, str]
 ) -> None:
     merchant_id = await _new_merchant(machine_client, admin_headers)
     key_id, secret = await _new_key(machine_client, admin_headers, merchant_id)
-
-    row = (
-        await db_session.execute(select(MerchantApiKey).where(MerchantApiKey.key_id == key_id))
-    ).scalar_one()
-    assert row.ip_allowlist is None
 
     r = await _call(machine_client, key_id, secret, extra={"X-Forwarded-For": "192.0.2.55"})
     assert r.status_code == 200, r.text
@@ -668,16 +713,15 @@ async def test_the_allowlist_falls_back_to_the_transport_peer_without_a_forwarde
     would pass unchanged if the edge stopped stripping the header — or if the
     helper stopped reading it. These two assertions pin both halves: with no
     header the transport peer decides, and the allowlist is enforced against
-    it. The header itself is trusted only because the shared edge overwrites
-    it; hardening ``client_ip`` with a trusted-proxy check is filed for M3,
-    and the allowlist is defence-in-depth on top of the HMAC regardless.
+    it. Two merchants, because the list belongs to the merchant now.
     """
-    merchant_id = await _new_merchant(machine_client, admin_headers)
+    here = await _new_merchant(machine_client, admin_headers, title="Peer")
+    elsewhere = await _new_merchant(machine_client, admin_headers, title="Elsewhere")
     peer_key, peer_secret = await _new_key(
-        machine_client, admin_headers, merchant_id, ip_allowlist=["127.0.0.1"]
+        machine_client, admin_headers, here, ip_allowlist=["127.0.0.1"]
     )
     elsewhere_key, elsewhere_secret = await _new_key(
-        machine_client, admin_headers, merchant_id, ip_allowlist=["203.0.113.0/24"]
+        machine_client, admin_headers, elsewhere, ip_allowlist=["203.0.113.0/24"]
     )
 
     allowed = await _call(machine_client, peer_key, peer_secret)
@@ -808,3 +852,136 @@ async def test_a_forged_key_id_cannot_spend_a_merchants_quota(
         get_settings.cache_clear()  # type: ignore[attr-defined]
 
     assert r.status_code == 200, r.text
+
+
+# ---------- the single-value key: Authorization: Bearer ypk_… (ADR-0103) ----------
+
+
+async def _new_api_key(client: AsyncClient, headers: dict[str, str], merchant_id: str) -> str:
+    r = await client.post(
+        f"/api/v1/admin/merchants/{merchant_id}/api-keys", headers=headers, json={}
+    )
+    assert r.status_code == 201, r.text
+    api_key: str = r.json()["api_key"]
+    return api_key
+
+
+def _bearer(api_key: str, **extra: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {api_key}", **extra}
+
+
+async def test_a_bearer_key_alone_authenticates_with_no_signature_or_clock(
+    machine_client: AsyncClient, admin_headers: dict[str, str]
+) -> None:
+    merchant_id = await _new_merchant(machine_client, admin_headers)
+    api_key = await _new_api_key(machine_client, admin_headers, merchant_id)
+
+    assert api_key.startswith("ypk_")
+    assert len(api_key) == 79
+    r = await machine_client.get(PROBE_PATH, headers=_bearer(api_key))
+
+    assert r.status_code == 200, r.text
+    assert r.json()["merchant_id"] == merchant_id
+
+    body = b'{"amount":"1.00"}'
+    posted = await machine_client.post(
+        PROBE_PATH,
+        headers=_bearer(api_key, **{"Content-Type": "application/json"}),
+        content=body,
+    )
+    assert posted.status_code == 200, posted.text
+
+
+@pytest.mark.parametrize(
+    "mangle",
+    [
+        lambda k: k[:-1] + ("A" if k[-1] != "A" else "B"),  # wrong secret half
+        lambda k: k[:36],  # the public half alone — what the cabinet list shows
+        lambda k: k + "x",  # too long
+        lambda k: "ypk_" + "A" * 75,  # well-formed, unknown
+        lambda k: k.replace("ypk_", "ypm_", 1),  # an old-style prefix
+        lambda k: "",
+    ],
+)
+async def test_a_wrong_bearer_key_is_one_indistinguishable_401(
+    machine_client: AsyncClient, admin_headers: dict[str, str], mangle: Any
+) -> None:
+    merchant_id = await _new_merchant(machine_client, admin_headers)
+    api_key = await _new_api_key(machine_client, admin_headers, merchant_id)
+
+    r = await machine_client.get(PROBE_PATH, headers=_bearer(mangle(api_key)))
+
+    assert r.status_code == 401, r.text
+    assert r.json()["code"] == "invalid_credentials"
+
+
+async def test_a_non_bearer_authorization_scheme_is_bad_credentials_not_missing(
+    machine_client: AsyncClient,
+) -> None:
+    r = await machine_client.get(PROBE_PATH, headers={"Authorization": "Basic Zm9vOmJhcg=="})
+
+    assert r.status_code == 401
+    assert r.json()["code"] == "invalid_credentials"
+
+
+async def test_a_revoked_bearer_key_stops_at_once(
+    machine_client: AsyncClient, admin_headers: dict[str, str]
+) -> None:
+    merchant_id = await _new_merchant(machine_client, admin_headers)
+    api_key = await _new_api_key(machine_client, admin_headers, merchant_id)
+    revoked = await machine_client.delete(
+        f"/api/v1/admin/merchants/{merchant_id}/api-keys/{api_key[:36]}", headers=admin_headers
+    )
+    assert revoked.status_code == 200, revoked.text
+
+    r = await machine_client.get(PROBE_PATH, headers=_bearer(api_key))
+
+    assert r.status_code == 401
+    assert r.json()["code"] == "invalid_credentials"
+
+
+async def test_a_bearer_key_obeys_the_merchant_allowlist_and_the_freeze(
+    machine_client: AsyncClient, admin_headers: dict[str, str]
+) -> None:
+    merchant_id = await _new_merchant(machine_client, admin_headers)
+    api_key = await _new_api_key(machine_client, admin_headers, merchant_id)
+    put = await machine_client.put(
+        f"/api/v1/admin/merchants/{merchant_id}/api-ip-allowlist",
+        headers=admin_headers,
+        json={"entries": ["2a01:4f8:241:10c9::/64"]},
+    )
+    assert put.status_code == 200, put.text
+
+    inside = await machine_client.get(
+        PROBE_PATH, headers=_bearer(api_key, **{"X-Forwarded-For": "2a01:4f8:241:10c9::2"})
+    )
+    outside = await machine_client.get(
+        PROBE_PATH, headers=_bearer(api_key, **{"X-Forwarded-For": "116.202.193.233"})
+    )
+    assert inside.status_code == 200, inside.text
+    assert outside.status_code == 403
+    assert outside.json()["code"] == "ip_not_allowed"
+
+    frozen = await machine_client.post(
+        f"/api/v1/admin/merchants/{merchant_id}/freeze", headers=admin_headers
+    )
+    assert frozen.status_code == 200, frozen.text
+    r = await machine_client.get(
+        PROBE_PATH, headers=_bearer(api_key, **{"X-Forwarded-For": "2a01:4f8:241:10c9::2"})
+    )
+    assert r.status_code == 403
+    assert r.json()["code"] == "merchant_frozen"
+
+
+async def test_an_unparseable_allowlist_entry_is_refused_at_write(
+    machine_client: AsyncClient, admin_headers: dict[str, str]
+) -> None:
+    merchant_id = await _new_merchant(machine_client, admin_headers)
+
+    r = await machine_client.put(
+        f"/api/v1/admin/merchants/{merchant_id}/api-ip-allowlist",
+        headers=admin_headers,
+        json={"entries": ["203.0.113.0/24", "not-an-address"]},
+    )
+
+    assert r.status_code == 422, r.text

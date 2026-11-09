@@ -36,11 +36,12 @@ export async function generateMetadata({
  * page is code that is proven to verify a real delivery, not code that looks
  * like it should.
  */
-/** The four headers on every delivery, paired with their catalogue key. */
+/** The headers on every delivery, paired with their catalogue key. */
 const HEADERS: [string, string][] = [
   ["X-Yupay-Timestamp", "hdrTimestamp"],
   ["X-Yupay-Delivery", "hdrDelivery"],
   ["X-Yupay-Event", "hdrEvent"],
+  ["X-Yupay-Key-Signature", "hdrKeySignature"],
   ["X-Yupay-Signature", "hdrSignature"],
 ];
 
@@ -53,7 +54,7 @@ const EVENTS: [string, string][] = [
 
 const PYTHON = `import hashlib, hmac, time
 
-SECRET = "ypmw_…"  # the webhook secret — a different credential from ypms_
+API_KEY = "ypk_…"  # the same key you call the API with
 TOLERANCE_SECONDS = 300
 
 
@@ -67,15 +68,17 @@ def verify(headers: dict[str, str], body: bytes) -> bool:
             hashlib.sha256(body).hexdigest(),
         )
     ).encode()
-    expected = hmac.new(SECRET.encode(), canonical, hashlib.sha256).hexdigest()
-    if not hmac.compare_digest(expected, headers.get("X-Yupay-Signature", "")):
+    expected = hmac.new(API_KEY.encode(), canonical, hashlib.sha256).hexdigest()
+    # One signature per live key, comma-separated (two during a rotation).
+    sent = headers.get("X-Yupay-Key-Signature", "").split(",")
+    if not any(hmac.compare_digest(expected, s.strip()) for s in sent):
         return False
     # Your own replay window; we do not impose one on you.
     return ts.isdigit() and abs(time.time() - int(ts)) <= TOLERANCE_SECONDS`;
 
 const NODE = `import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
-const SECRET = "ypmw_…";
+const API_KEY = "ypk_…"; // the same key you call the API with
 const TOLERANCE_SECONDS = 300;
 
 function verify(headers, body /* Buffer */) {
@@ -86,10 +89,10 @@ function verify(headers, body /* Buffer */) {
     headers["x-yupay-event"] ?? "",
     createHash("sha256").update(body).digest("hex"),
   ].join("\\n");
-  const expected = createHmac("sha256", SECRET).update(canonical).digest("hex");
-  const got = headers["x-yupay-signature"] ?? "";
-  if (expected.length !== got.length) return false;
-  if (!timingSafeEqual(Buffer.from(expected), Buffer.from(got))) return false;
+  const expected = Buffer.from(createHmac("sha256", API_KEY).update(canonical).digest("hex"));
+  // One signature per live key, comma-separated (two during a rotation).
+  const sent = (headers["x-yupay-key-signature"] ?? "").split(",").map((s) => Buffer.from(s.trim()));
+  if (!sent.some((s) => s.length === expected.length && timingSafeEqual(s, expected))) return false;
   return /^\\d+$/.test(ts) && Math.abs(Date.now() / 1000 - Number(ts)) <= TOLERANCE_SECONDS;
 }`;
 

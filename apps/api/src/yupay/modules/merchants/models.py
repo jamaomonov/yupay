@@ -100,6 +100,9 @@ class Merchant(Base):
     #: Per-merchant markup adjustment in percentage points; NULL in v1, see
     #: spec §8.3.
     markup_adjustment_pp: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
+    #: Addresses or CIDR blocks allowed to call ``/merchant/v1`` with ANY of this
+    #: merchant's keys (ADR-0103); NULL = no filter. Edited in the cabinet.
+    api_ip_allowlist: Mapped[list[str] | None] = mapped_column(ARRAY(InetAsText), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
     )
@@ -209,7 +212,9 @@ class MerchantApiKey(Base):
     secret_enc: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
     secret_nonce: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
     label: Mapped[str] = mapped_column(String(64), nullable=False, server_default=text("''"))
-    #: NULL = filter off (no IP restriction).
+    #: **Unread since ADR-0103** (migration 0109): the allowlist is the merchant's
+    #: ``api_ip_allowlist`` now. Kept so a rollback to the previous image still
+    #: enforces the per-key lists; new keys leave it NULL.
     ip_allowlist: Mapped[list[str] | None] = mapped_column(ARRAY(InetAsText), nullable=True)
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

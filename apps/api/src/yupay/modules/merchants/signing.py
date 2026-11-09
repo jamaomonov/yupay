@@ -93,6 +93,21 @@ SECRET_PREFIX = "ypms_"  # noqa: S105  # a prefix, not a credential
 #: explain.
 WEBHOOK_SECRET_PREFIX = "ypmw_"  # noqa: S105  # a prefix, not a credential
 
+#: The **single-value API key** (ADR-0103): ``ypk_`` + 32-char public id + 43-char
+#: secret, one string the merchant pastes once and sends as
+#: ``Authorization: Bearer ypk_…``. Its first :data:`API_KEY_ID_LENGTH` characters
+#: are the row's ``key_id`` (public — the cabinet shows the start of it), the rest
+#: is the secret, stored encrypted in ``secret_enc`` like a ``ypms_`` one. Keys
+#: minted before it keep the ``ypm_``/``ypms_`` pair and the HMAC scheme above.
+API_KEY_PREFIX = "ypk_"
+
+#: Outgoing-webhook signature keyed by the ``ypk_`` API key itself, so a merchant
+#: on the single key needs no ``ypmw_`` secret. Same canonical string as
+#: :data:`WEBHOOK_SIGNATURE_HEADER`; one hex digest per live ``ypk_`` key,
+#: comma-separated (a merchant may run two during a rotation). The old header is
+#: still sent, unchanged, whenever a hook secret exists.
+WEBHOOK_KEY_SIGNATURE_HEADER = "X-Yupay-Key-Signature"
+
 #: The four headers one outgoing delivery carries. Named here rather than at
 #: the sender because they are wire format a third party implements against —
 #: the same rule that keeps the canonical string in this module. The
@@ -118,6 +133,42 @@ _SECRET_BYTES = 32
 #: unauthenticated 500 with a traceback, and would distinguish malformed
 #: input from bad credentials, which this module promises never to do.
 _HEX64 = re.compile(r"\A[0-9a-f]{64}\Z")
+
+#: ``token_urlsafe(24)`` and ``token_urlsafe(32)`` are always 32 and 43 characters.
+API_KEY_ID_LENGTH = len(API_KEY_PREFIX) + 32
+_API_KEY = re.compile(r"\Aypk_[A-Za-z0-9_-]{75}\Z")
+
+
+def new_api_key() -> tuple[str, str]:
+    """Mint a single-value API key.
+
+    Returns:
+        ``(key_id, secret)``: the public ``ypk_`` id stored in ``key_id`` and the
+        secret stored encrypted. The merchant's key is ``key_id + secret``.
+    """
+    return API_KEY_PREFIX + secrets.token_urlsafe(_KEY_ID_BYTES), secrets.token_urlsafe(
+        _SECRET_BYTES
+    )
+
+
+def split_api_key(token: str) -> tuple[str, str] | None:
+    """``(key_id, secret)`` of a ``ypk_`` key, or ``None`` when it is not one.
+
+    Args:
+        token: The bearer value as sent, already stripped.
+
+    Returns:
+        The two halves, or ``None`` for anything not shaped like a ``ypk_`` key
+        (including an old ``ypm_`` id pasted where the key belongs).
+    """
+    if _API_KEY.match(token) is None:
+        return None
+    return token[:API_KEY_ID_LENGTH], token[API_KEY_ID_LENGTH:]
+
+
+def api_key_matches(stored_secret: str, provided_secret: str) -> bool:
+    """Constant-time compare of a bearer key's secret half against ours."""
+    return hmac.compare_digest(stored_secret.encode(), provided_secret.encode())
 
 
 def new_key_id() -> str:
@@ -253,19 +304,25 @@ def signature_matches(secret: str, message: bytes, provided: str) -> bool:
 
 
 __all__ = [
+    "API_KEY_ID_LENGTH",
+    "API_KEY_PREFIX",
     "KEY_ID_PREFIX",
     "SECRET_PREFIX",
     "WEBHOOK_DELIVERY_HEADER",
     "WEBHOOK_EVENT_HEADER",
+    "WEBHOOK_KEY_SIGNATURE_HEADER",
     "WEBHOOK_SECRET_PREFIX",
     "WEBHOOK_SIGNATURE_HEADER",
     "WEBHOOK_TIMESTAMP_HEADER",
+    "api_key_matches",
     "body_digest",
     "canonical_message",
     "expected_signature",
+    "new_api_key",
     "new_key_id",
     "new_secret",
     "new_webhook_secret",
     "signature_matches",
+    "split_api_key",
     "webhook_canonical_message",
 ]

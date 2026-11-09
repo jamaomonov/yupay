@@ -2310,21 +2310,6 @@
         "additionalProperties": false,
         "description": "Body of ``POST /admin/merchants/{id}/api-keys``; every field optional.",
         "properties": {
-          "ip_allowlist": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "maxItems": 32,
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Ip Allowlist"
-          },
           "label": {
             "default": "",
             "maxLength": 64,
@@ -2336,26 +2321,23 @@
         "type": "object"
       },
       "ApiKeyCreatedOut": {
-        "description": "Result of minting a key \u2014 the ONLY response that ever carries a secret.\n\n``secret`` is ``None`` on an idempotent replay. The replay snapshot is\nstored in ``idempotent_responses``, a table with no reaper, and a usable\ncredential sitting there in the clear forever is worse than making a\nretry after a lost response say so: revoke the key and issue another.",
+        "description": "Result of minting a key \u2014 the ONLY response that ever carries the key.\n\n``api_key`` is ``None`` on an idempotent replay. The replay snapshot is\nstored in ``idempotent_responses``, a table with no reaper, and a usable\ncredential sitting there in the clear forever is worse than making a\nretry after a lost response say so: revoke the key and issue another.",
         "properties": {
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "ip_allowlist": {
+          "api_key": {
             "anyOf": [
               {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
+                "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Ip Allowlist"
+            "title": "Api Key"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
           },
           "key_id": {
             "title": "Key Id",
@@ -2388,27 +2370,15 @@
               }
             ],
             "title": "Revoked At"
-          },
-          "secret": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Secret"
           }
         },
         "required": [
           "key_id",
           "label",
-          "ip_allowlist",
           "last_used_at",
           "revoked_at",
           "created_at",
-          "secret"
+          "api_key"
         ],
         "title": "ApiKeyCreatedOut",
         "type": "object"
@@ -2431,26 +2401,12 @@
         "type": "object"
       },
       "ApiKeyOut": {
-        "description": "One machine credential, as the admin surface sees it.\n\nThere is deliberately no ``secret`` field: the secret exists only in the\nresponse to the call that minted it (:class:`ApiKeyCreatedOut`), and this\nis the shape every read returns.",
+        "description": "One machine credential, as the admin surface sees it.\n\nThere is deliberately no ``api_key`` field: the key exists only in the\nresponse to the call that minted it (:class:`ApiKeyCreatedOut`), and this\nis the shape every read returns.",
         "properties": {
           "created_at": {
             "format": "date-time",
             "title": "Created At",
             "type": "string"
-          },
-          "ip_allowlist": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Ip Allowlist"
           },
           "key_id": {
             "title": "Key Id",
@@ -2488,7 +2444,6 @@
         "required": [
           "key_id",
           "label",
-          "ip_allowlist",
           "last_used_at",
           "revoked_at",
           "created_at"
@@ -4289,21 +4244,6 @@
       "CabinetApiKeyCreateIn": {
         "additionalProperties": false,
         "properties": {
-          "ip_allowlist": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "maxItems": 32,
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Ip Allowlist"
-          },
           "label": {
             "default": "",
             "maxLength": 64,
@@ -4315,7 +4255,7 @@
         "type": "object"
       },
       "CabinetApiKeyOut": {
-        "description": "One machine credential, as Settings lists it.\n\nNever carries the secret. That is returned once, by the create call, and\nis not stored in a readable form afterwards \u2014 so a list that could show it\nwould mean we had kept it.",
+        "description": "One machine credential, as Settings lists it.\n\nNever carries the secret. That is returned once, by the create call, and\nis not stored in a readable form afterwards \u2014 so a list that could show it\nwould mean we had kept it. ``key_id`` is public: for a ``ypk_`` key it is\nthe start of the key, for an older ``ypm_`` key it is the\n``X-Merchant-Key`` value.",
         "properties": {
           "created_at": {
             "format": "date-time",
@@ -4325,20 +4265,6 @@
           "id": {
             "title": "Id",
             "type": "string"
-          },
-          "ip_allowlist": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Ip Allowlist"
           },
           "key_id": {
             "title": "Key Id",
@@ -4377,7 +4303,6 @@
           "id",
           "key_id",
           "label",
-          "ip_allowlist",
           "created_at",
           "last_used_at",
           "revoked_at"
@@ -4654,27 +4579,50 @@
         "title": "CabinetEmailIn",
         "type": "object"
       },
-      "CabinetIssuedKeyOut": {
-        "description": "The one moment the secret exists outside our encryption.",
+      "CabinetIpAllowlistIn": {
+        "additionalProperties": false,
+        "description": "Body of ``PUT /merchant/cabinet/api-ip-allowlist``; ``[]`` turns the filter off.\n\nSame validator as the admin surface (``allowlist.normalize_allowlist``): an\nentry we accept but ``auth.address_allowed`` cannot match would lock the\nmerchant out with a 403 nobody can explain.",
         "properties": {
+          "entries": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 32,
+            "title": "Entries",
+            "type": "array"
+          }
+        },
+        "title": "CabinetIpAllowlistIn",
+        "type": "object"
+      },
+      "CabinetIpAllowlistOut": {
+        "description": "The merchant's API IP allowlist; an empty list means no filter.",
+        "properties": {
+          "entries": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Entries",
+            "type": "array"
+          }
+        },
+        "required": [
+          "entries"
+        ],
+        "title": "CabinetIpAllowlistOut",
+        "type": "object"
+      },
+      "CabinetIssuedKeyOut": {
+        "description": "The one moment the API key exists outside our encryption (ADR-0103).",
+        "properties": {
+          "api_key": {
+            "title": "Api Key",
+            "type": "string"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
             "type": "string"
-          },
-          "ip_allowlist": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Ip Allowlist"
           },
           "key_id": {
             "title": "Key Id",
@@ -4683,17 +4631,12 @@
           "label": {
             "title": "Label",
             "type": "string"
-          },
-          "secret": {
-            "title": "Secret",
-            "type": "string"
           }
         },
         "required": [
+          "api_key",
           "key_id",
-          "secret",
           "label",
-          "ip_allowlist",
           "created_at"
         ],
         "title": "CabinetIssuedKeyOut",
@@ -10511,6 +10454,22 @@
         "title": "MerchantFieldOut",
         "type": "object"
       },
+      "MerchantIpAllowlistIn": {
+        "additionalProperties": false,
+        "description": "Body of ``PUT /admin/merchants/{id}/api-ip-allowlist``; ``[]`` = no filter.\n\nShared validator with the cabinet's own DTO: two tables of what an address\nis would drift, and the drift is silent.",
+        "properties": {
+          "entries": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 32,
+            "title": "Entries",
+            "type": "array"
+          }
+        },
+        "title": "MerchantIpAllowlistIn",
+        "type": "object"
+      },
       "MerchantListOut": {
         "description": "Body of ``GET /admin/merchants``.",
         "properties": {
@@ -10826,6 +10785,20 @@
       "MerchantOut": {
         "description": "One merchant row plus its USD deposit balance.\n\nThe balance rides along on every merchant read \u2014 creation included, where\nit is trivially zero \u2014 so the admin SPA renders one shape everywhere.",
         "properties": {
+          "api_ip_allowlist": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Ip Allowlist"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -30979,6 +30952,75 @@
         ]
       }
     },
+    "/api/v1/admin/merchants/{merchant_id}/api-ip-allowlist": {
+      "put": {
+        "description": "One list for every key of the merchant (ADR-0103); ``[]`` turns it off.\n\nNo ``Idempotency-Key``: it replaces a field with a value, so a replay lands\non the same state \u2014 the same shape as ``patch_markup`` above.",
+        "operationId": "put_ip_allowlist_api_v1_admin_merchants__merchant_id__api_ip_allowlist_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "merchant_id",
+            "required": true,
+            "schema": {
+              "title": "Merchant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MerchantIpAllowlistIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MerchantOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Replace the addresses allowed to call this merchant's API",
+        "tags": [
+          "admin:merchants"
+        ]
+      }
+    },
     "/api/v1/admin/merchants/{merchant_id}/api-keys": {
       "get": {
         "description": "Never returns a secret \u2014 the response model has no such field.\n\nRevoked keys stay listed: \"which credential was live at the time\" is the\nquestion this screen answers.",
@@ -31038,7 +31080,7 @@
         ]
       },
       "post": {
-        "description": "Mint a key. The secret is in this response and nowhere else, ever.\n\nSeveral live keys per merchant are supported so rotation has no downtime\nwindow (spec \u00a79.2): issue, deploy, then revoke the old one.\n\nA retry carrying the same ``Idempotency-Key`` replays the original\n``key_id`` but with ``secret: null`` \u2014 the stored snapshot deliberately\nomits it, because ``idempotent_responses`` has no reaper and a usable\ncredential must not sit there in the clear. If the first response was\nlost, revoke the key and issue another.",
+        "description": "Mint a ``ypk_`` key. It is in this response and nowhere else, ever.\n\nSeveral live keys per merchant are supported so rotation has no downtime\nwindow (spec \u00a79.2): issue, deploy, then revoke the old one.\n\nA retry carrying the same ``Idempotency-Key`` replays the original\n``key_id`` but with ``api_key: null`` \u2014 the stored snapshot deliberately\nomits it, because ``idempotent_responses`` has no reaper and a usable\ncredential must not sit there in the clear. If the first response was\nlost, revoke the key and issue another.",
         "operationId": "create_api_key_api_v1_admin_merchants__merchant_id__api_keys_post",
         "parameters": [
           {
@@ -43429,6 +43471,130 @@
         ]
       }
     },
+    "/merchant/cabinet/api-ip-allowlist": {
+      "get": {
+        "description": "Empty means no filter: any address may call with a valid key.",
+        "operationId": "read_ip_allowlist_merchant_cabinet_api_ip_allowlist_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CabinetIpAllowlistOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Addresses allowed to call the API",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      },
+      "put": {
+        "description": "Replace the whole list; it applies to every key at once, immediately.\n\nA ``PUT`` of the full list is idempotent by construction; the header is\nhonoured anyway (AGENTS.md \u00a79). Every operator is mailed, because widening\nthe list is what an intruder in the cabinet would do first.",
+        "operationId": "set_ip_allowlist_merchant_cabinet_api_ip_allowlist_put",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CabinetIpAllowlistIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CabinetIpAllowlistOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Replace the addresses allowed to call the API",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
     "/merchant/cabinet/api-keys": {
       "get": {
         "operationId": "list_keys_merchant_cabinet_api_keys_get",
@@ -43482,7 +43648,7 @@
         ]
       },
       "post": {
-        "description": "The secret is in this response and nowhere else, ever again.\n\nSelf-serve rather than a support request, which is what makes rotation \u2014\nissue, deploy, revoke \u2014 something a reseller can do at 3am during an\nincident instead of waiting for our morning.",
+        "description": "The API key is in this response and nowhere else, ever again.\n\nSelf-serve rather than a support request, which is what makes rotation \u2014\nissue, deploy, revoke \u2014 something a reseller can do at 3am during an\nincident instead of waiting for our morning.",
         "operationId": "create_key_merchant_cabinet_api_keys_post",
         "parameters": [
           {

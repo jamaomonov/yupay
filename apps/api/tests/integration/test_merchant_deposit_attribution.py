@@ -136,7 +136,7 @@ async def _new_key(
     assert r.status_code == 201, r.text
     payload = r.json()
     key_id: str = payload["key_id"]
-    secret: str = payload["secret"]
+    secret: str = payload["api_key"][len(payload["key_id"]) :]
     return key_id, secret
 
 

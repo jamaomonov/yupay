@@ -58,6 +58,7 @@ from yupay.modules.merchants.credentials import (
     create_api_key,
     list_api_keys,
     revoke_api_key,
+    set_ip_allowlist,
 )
 from yupay.modules.merchants.debit import (
     DEBIT_KIND,
@@ -181,6 +182,7 @@ __all__ = [
     "revoke_api_key",
     "rotate_webhook_secret",
     "set_brand_b2b",
+    "set_ip_allowlist",
     "set_markup_adjustment",
     "set_sku_b2b",
     "set_status",

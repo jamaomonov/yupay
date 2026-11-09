@@ -67,7 +67,11 @@ from yupay.core.outbound import post_json
 from yupay.core.outbound_errors import OutboundError
 from yupay.modules.merchants import signing, webhook_retry
 from yupay.modules.merchants import webhook_outcome as outcome
-from yupay.modules.merchants.models import MerchantWebhook, MerchantWebhookDelivery
+from yupay.modules.merchants.models import (
+    MerchantApiKey,
+    MerchantWebhook,
+    MerchantWebhookDelivery,
+)
 from yupay.modules.merchants.webhooks import EVENT_TYPES
 
 if TYPE_CHECKING:  # pragma: no cover -- type hints only
@@ -224,7 +228,13 @@ async def _attempt(db: AsyncSession, *, delivery_id: str) -> outcome.DisableNoti
         )
 
     body = _canonical_body(delivery.payload)
-    headers = _signed_headers(secret=credentials, delivery=delivery, body=body, at=at)
+    headers = _signed_headers(
+        secret=credentials,
+        api_keys=await _api_keys_for(db, delivery.merchant_id),
+        delivery=delivery,
+        body=body,
+        at=at,
+    )
     await db.flush()
 
     try:
@@ -294,10 +304,45 @@ async def _credentials_for(db: AsyncSession, merchant_id: str) -> str | None:
     return crypto.decrypt(row.secret_enc, row.secret_nonce, purpose=crypto.PURPOSE_MERCHANT_WEBHOOK)
 
 
+async def _api_keys_for(db: AsyncSession, merchant_id: str) -> list[str]:
+    """The merchant's live single-value ``ypk_`` keys, newest first (ADR-0103).
+
+    Each one keys a digest in ``X-Yupay-Key-Signature``, so a merchant on the
+    single key verifies webhooks with the same string it calls us with. Old
+    ``ypm_`` keys are skipped: their holders verify with the ``ypmw_`` secret.
+    """
+    rows = (
+        await db.execute(
+            select(MerchantApiKey.key_id, MerchantApiKey.secret_enc, MerchantApiKey.secret_nonce)
+            .where(
+                MerchantApiKey.merchant_id == merchant_id,
+                MerchantApiKey.revoked_at.is_(None),
+                MerchantApiKey.key_id.startswith(signing.API_KEY_PREFIX),
+            )
+            .order_by(MerchantApiKey.created_at.desc(), MerchantApiKey.id.desc())
+        )
+    ).all()
+    return [
+        row.key_id
+        + crypto.decrypt(row.secret_enc, row.secret_nonce, purpose=crypto.PURPOSE_MERCHANT_API_KEY)
+        for row in rows
+    ]
+
+
 def _signed_headers(
-    *, secret: str, delivery: MerchantWebhookDelivery, body: bytes, at: datetime
+    *,
+    secret: str,
+    api_keys: list[str],
+    delivery: MerchantWebhookDelivery,
+    body: bytes,
+    at: datetime,
 ) -> dict[str, str]:
-    """The four headers one delivery carries. Never logged, never stored."""
+    """The headers one delivery carries. Never logged, never stored.
+
+    ``X-Yupay-Signature`` (the ``ypmw_`` hook secret) always; and, when the
+    merchant has live ``ypk_`` keys, ``X-Yupay-Key-Signature`` — the same
+    canonical string signed with each key, comma-separated.
+    """
     timestamp = str(int(at.timestamp()))
     message = signing.webhook_canonical_message(
         timestamp=timestamp,
@@ -305,12 +350,17 @@ def _signed_headers(
         event_type=delivery.event_type,
         body=body,
     )
-    return {
+    headers = {
         signing.WEBHOOK_DELIVERY_HEADER: delivery.id,
         signing.WEBHOOK_EVENT_HEADER: delivery.event_type,
         signing.WEBHOOK_TIMESTAMP_HEADER: timestamp,
         signing.WEBHOOK_SIGNATURE_HEADER: signing.expected_signature(secret, message),
     }
+    if api_keys:
+        headers[signing.WEBHOOK_KEY_SIGNATURE_HEADER] = ",".join(
+            signing.expected_signature(key, message) for key in api_keys
+        )
+    return headers
 
 
 __all__ = ["DEFAULT_LIMIT", "drain_pending_deliveries"]

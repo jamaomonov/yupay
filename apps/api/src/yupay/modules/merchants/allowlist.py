@@ -1,8 +1,8 @@
-"""Parsing an API key's IP allowlist — one copy, two schema files.
+"""Parsing a merchant's API IP allowlist — one copy, two schema files.
 
-`schemas.ApiKeyCreateIn` (the admin surface) and
-`cabinet_schemas.CabinetApiKeyCreateIn` (the merchant's own) accept the same
-field and must accept exactly the same strings. A second validator would be a
+`schemas.MerchantIpAllowlistIn` (the admin surface) and
+`cabinet_schemas.CabinetIpAllowlistIn` (the merchant's own) accept the same
+field and must accept exactly the same strings (ADR-0103: one list per merchant). A second validator would be a
 second table of what an address is, and the failure it produces is silent: an
 entry this side accepts and `auth.address_allowed` cannot match locks a
 merchant out of their own API with a 403 nobody can explain.
@@ -41,6 +41,8 @@ def normalize_allowlist(value: list[str] | None) -> list[str] | None:
     cleaned: list[str] = []
     for raw in value:
         entry = raw.strip()
+        if not entry:  # a blank line from a pasted list, not an address
+            continue
         try:
             # ``strict=False``: host bits are allowed (``203.0.113.5/24``) and
             # read as the network at match time, the same as the auth path.

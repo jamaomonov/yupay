@@ -155,18 +155,28 @@ integrating before any money moves.
 
 ### 3. Issue the API key
 
-There is **no SPA screen for this yet** — it is a curl call.
+Admin → Мерчанты → the merchant → «Интеграция» → «Выпустить ключ», or the
+merchant does it in the cabinet. Either way the answer is one `ypk_…` string
+(ADR-0103), shown once; the merchant sends it as `Authorization: Bearer`.
 
 ```bash
 curl -X POST "https://api.yupay.uz/api/v1/admin/merchants/<merchant-id>/api-keys" \
   -H "Authorization: Bearer <admin JWT>" \
   -H 'Content-Type: application/json' \
-  -d '{"label":"acme prod","ip_allowlist":["203.0.113.0/24"]}'
+  -d '{"label":"acme prod"}'
 ```
 
-Both fields are optional; omit `ip_allowlist` (or send `null`) for no filter.
-Entries are addresses or CIDR blocks, IPv4 or IPv6, at most 32, and a typo is
-rejected at the parse boundary rather than stored to fail silently later.
+The IP allowlist is the **merchant's**, one list for every key, edited on the
+same card or by the merchant in Настройки → «Разрешённые IP»
+(`PUT /admin/merchants/<id>/api-ip-allowlist`, `{"entries": [...]}`; `[]` turns
+it off). Entries are addresses or CIDR blocks, IPv4 or IPv6, at most 32, and a
+typo is rejected at the parse boundary rather than stored to fail silently later.
+
+**`403 ip_not_allowed` from a merchant who swears the IP is listed** — check
+which address actually arrives: the yupay-prod caddy access log has the real
+client address (`Cf-Connecting-Ip`) for every `/merchant/v1` 403. The usual
+cause is a server with both stacks calling over IPv6 while the list holds only
+its IPv4 address (2026-11-05). Add the IPv6 address or its `/64`.
 
 The response carries `key_id` **and** `secret`. **That is the only time the
 secret exists anywhere.** It is encrypted at rest under a key the database does
@@ -275,9 +285,8 @@ the **first** timestamp, not a new one), and the key is matched on
 `(merchant_id, key_id)`, so one merchant's id in the path can never revoke
 another's credential — that is a 404.
 
-**Changing an IP allowlist means rotating.** There is no endpoint that edits an
-existing key's allowlist; issue a new key with the right list and revoke the
-old one.
+**Changing the IP allowlist is an edit, not a rotation** (since ADR-0103). It
+applies to every key at once and mails the merchant's operators.
 
 **On a suspected leak, revoke first and talk after.** A leaked secret is worth
 the merchant's whole deposit balance, a signature is valid for the ±300 s
@@ -439,15 +448,14 @@ same `PUT`, and they can now do it themselves.
 ### Key rotation, self-serve
 
 The cabinet's Settings screen does what "Rotating and revoking a key" above
-describes, without us: create shows the secret **once**, takes an optional IP
-allowlist, and the list shows `last_used_at` plus each key's allowlist so they
-can confirm traffic moved. Revoke asks for a second click before it lands.
+describes, without us: create shows the `ypk_…` key **once**, and the list
+shows `last_used_at` so they can confirm traffic moved. Revoke asks for a second
+click before it lands. Older `ypm_` keys are listed with «старый ключ» and keep
+working.
 
-**"Changing an IP allowlist means rotating" applies to them too**, and the
-screen says so: there is no endpoint that edits a live key's allowlist on
-either surface. That is deliberate — a mistake in a narrowed allowlist locks
-the merchant out of their own API, and the recovery has to be "deploy the key
-you still hold", not "call support".
+The IP allowlist is a separate card on the same screen: one list for every
+key, editable. A merchant who narrows it by mistake and locks themselves out
+fixes it from the cabinet — the cabinet itself is not behind the allowlist.
 
 The admin endpoints remain — use them when a merchant cannot reach their own
 cabinet, and on a suspected leak, where the rule above still holds: revoke

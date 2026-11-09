@@ -7,9 +7,11 @@ import {
   createApiKey,
   fetchApiKeys,
   fill,
+  putIpAllowlist,
   revokeApiKey,
   type ApiKeyCreatedOut,
   type ApiKeyOut,
+  type MerchantOut,
 } from "./api";
 import { CopyValue } from "./CopyValue";
 
@@ -36,17 +38,27 @@ function moment(iso: string): string {
  * whether an IP allowlist was turning their requests away. Every one of
  * those questions is a column here.
  *
+ * Since ADR-0103 a new key is one string, `ypk_…`, and the IP allowlist is the
+ * merchant's — one list for every key, edited here and in the cabinet.
+ *
  * Revoked keys stay in the list, as the API intends: "which credential was
  * live when this broke" is a question that only an unfiltered list answers.
  */
-export function MerchantKeysCard({ merchantId }: { merchantId: string }) {
+interface MerchantKeysCardProps {
+  merchant: MerchantOut;
+  /** The list query caches the merchant row; the saved row replaces it there. */
+  onChange: (next: MerchantOut) => void;
+}
+
+export function MerchantKeysCard({ merchant, onChange }: MerchantKeysCardProps) {
+  const merchantId = merchant.id;
   const qc = useQueryClient();
   const toast = useToast();
   const labelFieldId = useId();
   const ipFieldId = useId();
 
   const [label, setLabel] = useState("");
-  const [allowlist, setAllowlist] = useState("");
+  const [allowlist, setAllowlist] = useState((merchant.api_ip_allowlist ?? []).join("\n"));
   const [issued, setIssued] = useState<ApiKeyCreatedOut | null>(null);
   const [confirming, setConfirming] = useState<ApiKeyOut | null>(null);
   const createKey = useRef("");
@@ -58,28 +70,34 @@ export function MerchantKeysCard({ merchantId }: { merchantId: string }) {
   });
 
   const create = useMutation<ApiKeyCreatedOut, ApiError>({
-    mutationFn: () => {
-      // Blank lines and stray spaces are the ordinary result of pasting a
-      // list; the server refuses an unparseable entry, so what is sent must
-      // already be free of the ones nobody meant to type.
-      const ips = allowlist
-        .split("\n")
-        .map((line) => line.trim())
-        .filter((line) => line !== "");
-      return createApiKey(
-        merchantId,
-        { label, ip_allowlist: ips.length > 0 ? ips : null },
-        createKey.current,
-      );
-    },
+    mutationFn: () => createApiKey(merchantId, { label }, createKey.current),
     onSuccess: (key) => {
       setIssued(key);
       setLabel("");
-      setAllowlist("");
       void qc.invalidateQueries({ queryKey: qk.merchantKeys(merchantId) });
     },
     onError: (err) => {
       toast.error(fill(T.keys.createError, { message: extractApiMessage(err) }));
+    },
+  });
+
+  const saveIps = useMutation<MerchantOut, ApiError>({
+    // Blank lines and stray spaces are the ordinary result of pasting a list.
+    mutationFn: () =>
+      putIpAllowlist(
+        merchantId,
+        allowlist
+          .split("\n")
+          .map((line) => line.trim())
+          .filter((line) => line !== ""),
+      ),
+    onSuccess: (next) => {
+      setAllowlist((next.api_ip_allowlist ?? []).join("\n"));
+      onChange(next);
+      toast.success(T.keys.ipSaved);
+    },
+    onError: (err) => {
+      toast.error(fill(T.keys.ipError, { message: extractApiMessage(err) }));
     },
   });
 
@@ -106,10 +124,7 @@ export function MerchantKeysCard({ merchantId }: { merchantId: string }) {
       <p className="mb-3 text-xs text-[var(--text-secondary)]">{T.keys.hint}</p>
 
       {issued !== null && (
-        // The only moment the secret exists outside our encryption. Both
-        // halves are labelled and each says its prefix, because three of our
-        // secrets begin `ypm` and a reader cannot tell them apart by shape —
-        // the confusion that cost one integration a day.
+        // The only moment the key exists outside our encryption.
         <div
           role="status"
           translate="no"
@@ -118,19 +133,15 @@ export function MerchantKeysCard({ merchantId }: { merchantId: string }) {
           <p className="text-sm font-semibold">{T.keys.secretTitle}</p>
           <p className="mt-1 text-xs text-[var(--text-secondary)]">{T.keys.secretBody}</p>
 
-          <p className="mt-3 text-xs uppercase text-[var(--text-secondary)]">{T.keys.keyIdLabel}</p>
-          <CopyValue value={issued.key_id} label={T.keys.copyKeyId} done={T.keys.copied} />
-          <p className="mt-1 text-xs text-[var(--text-secondary)]">{T.keys.keyIdHint}</p>
-
-          <p className="mt-4 text-xs uppercase text-[var(--text-secondary)]">
-            {T.keys.secretLabel}
+          <p className="mt-3 text-xs uppercase text-[var(--text-secondary)]">
+            {T.keys.apiKeyLabel}
           </p>
-          {issued.secret === null ? (
+          {issued.api_key === null ? (
             <p className="mt-1 text-xs text-[var(--danger-fg)]">{T.keys.secretReplayed}</p>
           ) : (
             <>
-              <CopyValue value={issued.secret} label={T.keys.copySecret} done={T.keys.copied} />
-              <p className="mt-1 text-xs text-[var(--text-secondary)]">{T.keys.secretHint}</p>
+              <CopyValue value={issued.api_key} label={T.keys.copyApiKey} done={T.keys.copied} />
+              <p className="mt-1 text-xs text-[var(--text-secondary)]">{T.keys.apiKeyHint}</p>
             </>
           )}
 
@@ -147,7 +158,7 @@ export function MerchantKeysCard({ merchantId }: { merchantId: string }) {
       )}
 
       <form
-        className="grid grid-cols-1 gap-3 md:grid-cols-3"
+        className="flex flex-wrap items-end gap-3"
         onSubmit={(event) => {
           event.preventDefault();
           if (create.isPending) return;
@@ -155,7 +166,7 @@ export function MerchantKeysCard({ merchantId }: { merchantId: string }) {
           create.mutate();
         }}
       >
-        <div>
+        <div className="min-w-0 flex-1">
           <label htmlFor={labelFieldId} className="text-xs uppercase text-[var(--text-secondary)]">
             {T.keys.labelLabel} <span className="normal-case">{T.keys.labelHint}</span>
           </label>
@@ -170,29 +181,42 @@ export function MerchantKeysCard({ merchantId }: { merchantId: string }) {
             className="rounded-btn mt-1 w-full border px-3 py-2 text-sm"
           />
         </div>
-        <div className="md:col-span-2">
-          <label htmlFor={ipFieldId} className="text-xs uppercase text-[var(--text-secondary)]">
-            {T.keys.ipLabel} <span className="normal-case">{T.keys.ipHint}</span>
-          </label>
-          <textarea
-            id={ipFieldId}
-            rows={2}
-            value={allowlist}
-            onChange={(event) => {
-              setAllowlist(event.target.value);
-            }}
-            className="rounded-btn mt-1 w-full border px-3 py-2 font-mono text-xs"
-          />
-        </div>
-        <div className="md:col-span-3">
-          <button
-            type="submit"
-            disabled={create.isPending}
-            className="rounded-btn border px-4 py-2 text-sm font-semibold disabled:opacity-60"
-          >
-            {create.isPending ? T.keys.createBusy : T.keys.create}
-          </button>
-        </div>
+        <button
+          type="submit"
+          disabled={create.isPending}
+          className="rounded-btn border px-4 py-2 text-sm font-semibold disabled:opacity-60"
+        >
+          {create.isPending ? T.keys.createBusy : T.keys.create}
+        </button>
+      </form>
+
+      <form
+        className="mt-4"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (saveIps.isPending) return;
+          saveIps.mutate();
+        }}
+      >
+        <label htmlFor={ipFieldId} className="text-xs uppercase text-[var(--text-secondary)]">
+          {T.keys.ipLabel} <span className="normal-case">{T.keys.ipHint}</span>
+        </label>
+        <textarea
+          id={ipFieldId}
+          rows={3}
+          value={allowlist}
+          onChange={(event) => {
+            setAllowlist(event.target.value);
+          }}
+          className="rounded-btn mt-1 w-full border px-3 py-2 font-mono text-xs"
+        />
+        <button
+          type="submit"
+          disabled={saveIps.isPending}
+          className="rounded-btn mt-2 border px-4 py-2 text-sm font-semibold disabled:opacity-60"
+        >
+          {T.keys.ipSave}
+        </button>
       </form>
 
       {keysQuery.isError && (
@@ -210,13 +234,20 @@ export function MerchantKeysCard({ merchantId }: { merchantId: string }) {
           {rows.map((key) => (
             <li key={key.key_id} className="flex flex-wrap items-start gap-x-4 gap-y-2 py-3">
               <div className="min-w-0 flex-1">
-                <CopyValue value={key.key_id} label={T.keys.copy} done={T.keys.copied} size="xs" />
+                {key.key_id.startsWith("ypk_") ? (
+                  <p className="font-mono text-xs">{`${key.key_id.slice(0, 12)}…`}</p>
+                ) : (
+                  <CopyValue
+                    value={key.key_id}
+                    label={T.keys.copy}
+                    done={T.keys.copied}
+                    size="xs"
+                  />
+                )}
                 <p className="mt-1 text-xs text-[var(--text-secondary)]">
                   {key.label || "—"} · {T.keys.lastUsed}:{" "}
                   {key.last_used_at === null ? T.keys.never : moment(key.last_used_at)}
-                </p>
-                <p className="mt-0.5 font-mono text-xs text-[var(--text-secondary)]">
-                  {key.ip_allowlist === null ? T.keys.noFilter : key.ip_allowlist.join(", ")}
+                  {!key.key_id.startsWith("ypk_") && <> · {T.keys.legacyKey}</>}
                 </p>
               </div>
               {key.revoked_at === null ? (
@@ -254,7 +285,7 @@ export function MerchantKeysCard({ merchantId }: { merchantId: string }) {
             revoke.mutate(confirming.key_id);
           }}
         >
-          <p>{fill(T.keys.revokeConfirmBody, { key: confirming.key_id })}</p>
+          <p>{fill(T.keys.revokeConfirmBody, { key: `${confirming.key_id.slice(0, 12)}…` })}</p>
         </ConfirmDialog>
       )}
     </section>

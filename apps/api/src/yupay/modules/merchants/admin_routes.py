@@ -51,6 +51,7 @@ from yupay.modules.merchants.schemas import (
     DepositDebitIn,
     DepositDebitOut,
     MerchantCreateIn,
+    MerchantIpAllowlistIn,
     MerchantListOut,
     MerchantMarkupPatchIn,
     MerchantOut,
@@ -93,6 +94,7 @@ def _merchant_out(merchant: merchants.Merchant, balance: Decimal) -> MerchantOut
         created_at=merchant.created_at,
         deposit_balance=balance,
         markup_adjustment_pp=merchant.markup_adjustment_pp,
+        api_ip_allowlist=merchant.api_ip_allowlist,
     )
 
 
@@ -387,13 +389,13 @@ async def create_api_key(
     db: Annotated[AsyncSession, Depends(db_session)],
     idempotency_key: IdempotencyKeyHeader = None,
 ) -> ApiKeyCreatedOut:
-    """Mint a key. The secret is in this response and nowhere else, ever.
+    """Mint a ``ypk_`` key. It is in this response and nowhere else, ever.
 
     Several live keys per merchant are supported so rotation has no downtime
     window (spec §9.2): issue, deploy, then revoke the old one.
 
     A retry carrying the same ``Idempotency-Key`` replays the original
-    ``key_id`` but with ``secret: null`` — the stored snapshot deliberately
+    ``key_id`` but with ``api_key: null`` — the stored snapshot deliberately
     omits it, because ``idempotent_responses`` has no reaper and a usable
     credential must not sit there in the clear. If the first response was
     lost, revoke the key and issue another.
@@ -403,17 +405,15 @@ async def create_api_key(
     cached = await replayed(db, scope=scope, key=key, model=ApiKeyCreatedOut)
     if cached is not None:
         return cached
-    issued = await merchants.create_api_key(
-        db, merchant_id=merchant_id, label=body.label, ip_allowlist=body.ip_allowlist
-    )
+    issued = await merchants.create_api_key(db, merchant_id=merchant_id, label=body.label)
     out = ApiKeyCreatedOut(
-        **ApiKeyOut.model_validate(issued.key).model_dump(), secret=issued.secret
+        **ApiKeyOut.model_validate(issued.key).model_dump(), api_key=issued.api_key
     )
     await remember(
         db,
         scope=scope,
         key=key,
-        body=out.model_copy(update={"secret": None}).model_dump(mode="json"),
+        body=out.model_copy(update={"api_key": None}).model_dump(mode="json"),
         status_code=status.HTTP_201_CREATED,
     )
     return out
@@ -557,6 +557,25 @@ async def patch_markup(
     merchant = await merchants.set_markup_adjustment(
         db, merchant_id=merchant_id, adjustment=body.markup_adjustment_pp
     )
+    return _merchant_out(merchant, await merchants.deposit_balance(db, merchant_id=merchant_id))
+
+
+@admin_router.put(
+    "/{merchant_id}/api-ip-allowlist",
+    response_model=MerchantOut,
+    summary="Replace the addresses allowed to call this merchant's API",
+)
+async def put_ip_allowlist(
+    merchant_id: str,
+    body: MerchantIpAllowlistIn,
+    db: Annotated[AsyncSession, Depends(db_session)],
+) -> MerchantOut:
+    """One list for every key of the merchant (ADR-0103); ``[]`` turns it off.
+
+    No ``Idempotency-Key``: it replaces a field with a value, so a replay lands
+    on the same state — the same shape as ``patch_markup`` above.
+    """
+    merchant = await merchants.set_ip_allowlist(db, merchant_id=merchant_id, entries=body.entries)
     return _merchant_out(merchant, await merchants.deposit_balance(db, merchant_id=merchant_id))
 
 

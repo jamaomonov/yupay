@@ -209,9 +209,12 @@ def build(full: dict[str, Any], *, base_url: str | None = None) -> dict[str, Any
             if method not in {"get", "post", "put", "patch", "delete"}:
                 continue
             operation["tags"] = [name]
-            # Every one of these sits behind the same signature check, so the
-            # errors it can raise belong on every one of them.
-            operation.setdefault("security", [{"MerchantKey": [], "MerchantSignature": []}])
+            # Every one of these sits behind the same auth check, so the errors
+            # it can raise belong on every one of them. Two alternatives (ADR-0103):
+            # the bearer API key, or the original signed request.
+            operation.setdefault(
+                "security", [{"ApiKey": []}, {"MerchantKey": [], "MerchantSignature": []}]
+            )
             for status, text in _SHARED_ERRORS.items():
                 operation["responses"].setdefault(status, {"description": text})
             for status, text in _ROUTE_ERRORS.get((method, path), {}).items():
@@ -234,26 +237,24 @@ def build(full: dict[str, Any], *, base_url: str | None = None) -> dict[str, Any
             "version": full["info"]["version"],
             "description": (
                 "Wholesale ordering for resellers.\n\n"
-                "**Every request is signed.** Send `X-Merchant-Key`, "
+                "**Authenticate with your API key.** Send "
+                "`Authorization: Bearer ypk_…` on every request — that is all. Issue "
+                "the key in the cabinet; it is shown once.\n\n"
+                "Keys issued before November 2026 (`ypm_…` id + `ypms_…` secret) keep "
+                "working with the signed scheme: `X-Merchant-Key`, "
                 "`X-Merchant-Timestamp` and `X-Merchant-Signature`, where the signature "
                 "is HMAC-SHA256 over\n\n"
                 "```\n{timestamp}\\n{METHOD}\\n{raw_path}\\n{raw_query}\\n"
                 "{sha256_hex(body)}\n```\n\n"
-                "keyed by your secret. The timestamp must be within ±300 s of ours. A "
-                "signature is deliberately **not** single-use, so an at-least-once retry "
-                "of the same request is safe.\n\n"
+                "keyed by your secret, timestamp within ±300 s of ours.\n\n"
                 '**Money is a decimal string**, never a float — `"16.54"`. Timestamps '
                 "are ISO 8601 UTC. Fields are only ever *added* to a response, so parse "
                 "leniently; a breaking change would be a `/merchant/v2`.\n\n"
                 "**Stuck?** Write to "
                 f"[@{SUPPORT_TELEGRAM}](https://t.me/{SUPPORT_TELEGRAM}) in Telegram.\n\n"
-                '**"Try it out" will not work here, and cannot.** Every call is signed '
-                "with your merchant secret, and that secret belongs on your server — "
-                "pasting it into a box on a web page would undo the one rule this whole "
-                "auth design rests on. Ready-made cURL, Python and Node.js samples with "
-                "the signature already computed are at "
-                "[reseller.yupay.uz/docs](https://reseller.yupay.uz/docs); copy one into "
-                "your own terminal, where your secret already lives."
+                "**Keep the key on your server.** Do not paste it into a web page. "
+                "Ready-made cURL, Python and Node.js samples are at "
+                "[reseller.yupay.uz/docs](https://reseller.yupay.uz/docs)."
             ),
             "contact": {
                 "name": "Техподдержка YuPay — @jama_omonov",
@@ -265,11 +266,22 @@ def build(full: dict[str, Any], *, base_url: str | None = None) -> dict[str, Any
         "components": {
             "schemas": {name: schemas[name] for name in sorted(seen) if name in schemas},
             "securitySchemes": {
+                "ApiKey": {
+                    "type": "http",
+                    "scheme": "bearer",
+                    "description": (
+                        "Your API key, `ypk_…`, as `Authorization: Bearer ypk_…`. "
+                        "Shown once in the cabinet."
+                    ),
+                },
                 "MerchantKey": {
                     "type": "apiKey",
                     "in": "header",
                     "name": merchant_auth.KEY_HEADER,
-                    "description": "Your key id, `ypm_…`. Public; it identifies the key, not you.",
+                    "description": (
+                        "Older keys only: your key id, `ypm_…`. Public; it identifies "
+                        "the key, not you."
+                    ),
                 },
                 "MerchantSignature": {
                     "type": "apiKey",

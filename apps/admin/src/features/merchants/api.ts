@@ -41,6 +41,9 @@ export interface MerchantOut {
    *  `null` for the catalogue price everyone else pays. Negative is the
    *  ordinary case — a negotiated rate. */
   markup_adjustment_pp: string | null;
+  /** Addresses allowed to call `/merchant/v1` with ANY of this merchant's
+   *  keys (ADR-0103); `null` = no filter. Optional: an older API omits it. */
+  api_ip_allowlist?: string[] | null;
 }
 
 export interface MerchantListOut {
@@ -148,22 +151,22 @@ export function debitDeposit(
  *  keys stay in the list on purpose: "which credential was live when this
  *  broke" is the question this screen exists to answer. */
 export interface ApiKeyOut {
+  /** Public. A `ypk_` key's start, or an older key's `X-Merchant-Key` value. */
   key_id: string;
   label: string;
-  ip_allowlist: string[] | null;
   created_at: string;
   last_used_at: string | null;
   revoked_at: string | null;
 }
 
-/** `ApiKeyCreatedOut` — the one response that carries the secret.
+/** `ApiKeyCreatedOut` — the one response that carries the key (`ypk_…`).
  *
- *  `secret` is `null` on an idempotent replay: the stored snapshot omits it
+ *  `api_key` is `null` on an idempotent replay: the stored snapshot omits it
  *  deliberately, because `idempotent_responses` has no reaper and a usable
  *  credential must not sit there in the clear. The card says so rather than
  *  showing a blank line. */
 export interface ApiKeyCreatedOut extends ApiKeyOut {
-  secret: string | null;
+  api_key: string | null;
 }
 
 export interface ApiKeyListOut {
@@ -176,11 +179,18 @@ export function fetchApiKeys(merchantId: string): Promise<ApiKeyListOut> {
 
 export function createApiKey(
   merchantId: string,
-  body: { label: string; ip_allowlist: string[] | null },
+  body: { label: string },
   idempotencyKey: string,
 ): Promise<ApiKeyCreatedOut> {
   return apiPost<ApiKeyCreatedOut>(`/api/v1/admin/merchants/${merchantId}/api-keys`, body, {
     "Idempotency-Key": idempotencyKey,
+  });
+}
+
+/** Replace the merchant's API IP allowlist; `[]` turns the filter off. */
+export function putIpAllowlist(merchantId: string, entries: string[]): Promise<MerchantOut> {
+  return apiPut<MerchantOut>(`/api/v1/admin/merchants/${merchantId}/api-ip-allowlist`, {
+    entries,
   });
 }
 

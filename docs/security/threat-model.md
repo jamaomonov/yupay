@@ -184,6 +184,21 @@ auth:emailverify:{jti}` (same pattern as `auth:pwreset:{jti}`), so a leaked or
 
 ## Merchant machine credentials (B2B, 2026-09-07)
 
+- **Bearer keys (ADR-0103, 2026-11-09).** New keys are one `ypk_…` string sent
+  as `Authorization: Bearer`; old `ypm_`/`ypms_` keys keep the signed scheme
+  below. A captured bearer request yields the credential itself, not a request
+  replayable for ±300 s — the trade every bearer API makes. What bounds it:
+  TLS only, Caddy redacts `Authorization` from the access log, the key never
+  reaches a browser (cabinet shows it once, docs say server-only), the secret
+  half is encrypted at rest like a `ypms_` secret, unknown/revoked/malformed
+  keys are compared against a dummy (one 401, equal cost), and the per-key
+  rate counter and the merchant's IP allowlist apply unchanged. Webhooks are
+  also signed with each live `ypk_` key (`X-Yupay-Key-Signature`).
+- **The IP allowlist is the merchant's, editable** (`merchants.api_ip_allowlist`,
+  migration 0109). It is defence in depth on top of the key, never the primary
+  control. Editing it in the cabinet mails every operator, because widening it
+  is what an intruder holding a cabinet session would do first. The per-key
+  column is no longer read; it stays for rollback.
 - **The secret is encrypted at rest, not hashed.** `merchant_api_keys` holds
   `secret_enc` / `secret_nonce` (XSalsa20-Poly1305 via `core/crypto.py`, key
   HKDF-derived from `INVENTORY_ENC_KEY` under the purpose label

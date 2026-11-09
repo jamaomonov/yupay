@@ -34,22 +34,22 @@ from yupay.core.clock import now
 from yupay.core.errors import NotFoundError
 from yupay.core.ids import new_id
 from yupay.modules.merchants import signing
-from yupay.modules.merchants.models import MerchantApiKey
+from yupay.modules.merchants.models import Merchant, MerchantApiKey
 from yupay.modules.merchants.service import get_merchant
 
 
 @dataclass(frozen=True)
 class IssuedApiKey:
-    """A freshly minted credential: the stored row plus the one-time secret.
+    """A freshly minted credential: the stored row plus the one-time API key.
 
-    ``secret`` exists in the clear only in this object and in the HTTP
-    response that carries it. It is never logged and never returned again —
-    the row holds it encrypted (``core.crypto``), which is what lets the
-    signature be verified at all without keeping key material in the clear.
+    ``api_key`` (``ypk_…``, ADR-0103) exists in the clear only in this object
+    and in the HTTP response that carries it. It is never logged and never
+    returned again — the row keeps its secret half encrypted (``core.crypto``),
+    which is what lets us check a bearer key and sign webhooks with it.
     """
 
     key: MerchantApiKey
-    secret: str
+    api_key: str
 
 
 async def create_api_key(
@@ -57,49 +57,66 @@ async def create_api_key(
     *,
     merchant_id: str,
     label: str = "",
-    ip_allowlist: list[str] | None = None,
 ) -> IssuedApiKey:
-    """Issue a machine credential for ``/merchant/v1``.
+    """Issue a single-value ``ypk_`` key for ``/merchant/v1``.
 
     Several live keys per merchant are supported on purpose (spec §9.2):
     rotation is "issue the new one, deploy it, revoke the old one", which has
-    no downtime window. Nothing here revokes anything.
+    no downtime window. Nothing here revokes anything. The IP allowlist is the
+    merchant's (``Merchant.api_ip_allowlist``), not the key's.
 
     Args:
         db: Session. The caller owns the transaction.
         merchant_id: Who the key belongs to. Must exist.
         label: Operator-facing note, e.g. ``"prod server"``. Trimmed.
-        ip_allowlist: Addresses or CIDR blocks allowed to use this key.
-            An empty list is normalised to ``None`` (filter off) so the
-            "no addresses at all" shape can never reach the auth path — see
-            ``auth.address_allowed``.
 
     Returns:
-        The new row plus the plaintext secret, which the caller must return
-        to the operator immediately and then forget. The row stores it
-        encrypted under ``core.crypto``'s merchant-API purpose key.
+        The new row plus the plaintext key, which the caller must return to
+        the operator immediately and then forget.
 
     Raises:
         NotFoundError: If no merchant with that id exists.
     """
     await get_merchant(db, merchant_id)
-    secret = signing.new_secret()
+    key_id, secret = signing.new_api_key()
     secret_enc, secret_nonce = crypto.encrypt(secret, purpose=crypto.PURPOSE_MERCHANT_API_KEY)
     key = MerchantApiKey(
         id=new_id(),
         merchant_id=merchant_id,
-        key_id=signing.new_key_id(),
+        key_id=key_id,
         secret_enc=secret_enc,
         secret_nonce=secret_nonce,
         label=label.strip(),
-        ip_allowlist=ip_allowlist or None,
+        ip_allowlist=None,
     )
     db.add(key)
     await db.flush()
     # Pick up ``created_at``'s server default so the caller can render the row
     # without a round-trip of its own.
     await db.refresh(key)
-    return IssuedApiKey(key=key, secret=secret)
+    return IssuedApiKey(key=key, api_key=key_id + secret)
+
+
+async def set_ip_allowlist(
+    db: AsyncSession, *, merchant_id: str, entries: list[str] | None
+) -> Merchant:
+    """Replace the merchant's API IP allowlist; ``None`` or ``[]`` turns it off.
+
+    Args:
+        db: Session. The caller owns the transaction.
+        merchant_id: The merchant. Must exist.
+        entries: Already validated by ``allowlist.normalize_allowlist``.
+
+    Returns:
+        The merchant row; ``api_ip_allowlist`` is ``None`` when the filter is off.
+
+    Raises:
+        NotFoundError: If no merchant with that id exists.
+    """
+    merchant = await get_merchant(db, merchant_id)
+    merchant.api_ip_allowlist = entries or None
+    await db.flush()
+    return merchant
 
 
 async def list_api_keys(db: AsyncSession, *, merchant_id: str) -> list[MerchantApiKey]:
@@ -171,4 +188,5 @@ __all__ = [
     "create_api_key",
     "list_api_keys",
     "revoke_api_key",
+    "set_ip_allowlist",
 ]
