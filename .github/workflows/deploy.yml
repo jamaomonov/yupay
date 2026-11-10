@@ -110,7 +110,11 @@ jobs:
               docker compose -f infra/edge/docker-compose.yml up -d --force-recreate
             fi
 
-            docker compose -f docker-compose.prod.yml pull
+            # Our images only. Infrastructure images are pinned by digest in
+            # docker-compose.prod.yml and change in their own commit; a bare
+            # ``pull`` once moved postgres:16-alpine to a new build and
+            # restarted the database in the middle of a deploy (2026-11-09).
+            docker compose -f docker-compose.prod.yml pull api worker scheduler bot web partners merchant miniapp admin
             docker compose -f docker-compose.prod.yml run --rm api alembic upgrade head
             docker compose -f docker-compose.prod.yml up -d --remove-orphans
 

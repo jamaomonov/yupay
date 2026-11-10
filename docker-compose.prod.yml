@@ -47,7 +47,10 @@ x-logging: &default-logging
 
 services:
   postgres:
-    image: postgres:16-alpine
+    # Pinned by digest (tag kept for humans): `pull` on every deploy moved
+    # 16-alpine to a new build and recreated the database mid-deploy
+    # (2026-11-09, ~30 s of DNS failures in the api). Bump on purpose, alone.
+    image: postgres:16.15-alpine@sha256:aa6cb33cf4c19c765cefcf48d96176258800870a9a1e930ad126200f9d825139
     logging: *default-logging
     mem_limit: 4g
     # Postgres puts parallel-query results in shared memory, and Docker's
@@ -154,7 +157,8 @@ services:
       - postgres
 
   redis:
-    image: redis:7-alpine
+    # Pinned by digest for the same reason as postgres.
+    image: redis:7.4.12-alpine@sha256:c5d34a98396a4775e223c74e929162c35c5a2182901ba26b50ade939941ce14b
     logging: *default-logging
     mem_limit: 768m
     restart: unless-stopped
@@ -330,7 +334,8 @@ services:
     # because every config is baked into the build at CI time.
 
   caddy:
-    image: caddy:2-alpine
+    # Pinned by digest for the same reason as postgres.
+    image: caddy:2.11.9-alpine@sha256:78bd35025c7ba85961dd149ae670315129954e77abe2383ac47c89106b35ade9
     logging: *default-logging
     mem_limit: 256m
     restart: unless-stopped

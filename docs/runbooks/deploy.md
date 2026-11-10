@@ -35,8 +35,10 @@ git checkout vX.Y.Z
 # Refresh decrypted env files (if rotated)
 sops -d infra/secrets/api.enc.env > secrets/api.env
 
-# Pull new images
-docker compose -f docker-compose.prod.yml pull
+# Pull new images — ours only. Postgres, Redis and Caddy are pinned by digest
+# in docker-compose.prod.yml; a bare `pull` once restarted the database
+# mid-deploy (2026-11-09). Bump those in their own commit, at a quiet hour.
+docker compose -f docker-compose.prod.yml pull api worker scheduler bot web partners merchant miniapp admin
 
 # Apply migrations (one-shot container)
 docker compose -f docker-compose.prod.yml run --rm api alembic upgrade head
@@ -89,7 +91,7 @@ risk.
 
 ```bash
 git checkout vX.Y.<previous>
-docker compose -f docker-compose.prod.yml pull
+docker compose -f docker-compose.prod.yml pull api worker scheduler bot web partners merchant miniapp admin
 # Schema rollbacks are forbidden in normal flow; if a DB rollback is required,
 # follow docs/runbooks/restore-from-backup.md instead.
 docker compose -f docker-compose.prod.yml up -d
