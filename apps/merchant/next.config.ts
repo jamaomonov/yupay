@@ -10,16 +10,13 @@ const nextConfig: NextConfig = {
   // Lint runs separately via `make lint` / CI — the same reason apps/web gives.
   eslint: { ignoreDuringBuilds: true },
   images: {
-    // Brand art only, and it comes from the same places the storefront's does:
-    // our own CDN, the R2 bucket behind it, and the third-party hosts admins
-    // paste catalog URLs from. The SSRF gate is the backend validator at write
-    // time (`catalog.image_url_safety`), not this list — see apps/web's config
-    // for the full reasoning, which applies here unchanged.
+    // Our own hosts only. Third-party catalog art is drawn with a plain <img>
+    // (see the catalog's Logo), so nothing needs the optimizer to fetch it —
+    // and a `hostname: "**"` entry made /_next/image an open fetch-anything
+    // proxy (audit 2026-11-10), the catch-all apps/web dropped for the same reason.
     remotePatterns: [
       { protocol: "https", hostname: "**.yupay.uz" },
-      { protocol: "https", hostname: "cdn.yupay.uz" },
       { protocol: "https", hostname: "*.r2.dev" },
-      { protocol: "https", hostname: "**" },
     ],
   },
   transpilePackages: ["@yupay/ui", "@yupay/i18n", "@yupay/utils"],
