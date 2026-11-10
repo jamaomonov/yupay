@@ -57,6 +57,9 @@ class Claims:
     scope: tuple[str, ...] = ()
     channel: str | None = None
     order_id: str | None = None
+    #: Minted by an admin-panel session (``auth_sessions.kind='admin'``). The
+    #: admin role alone is not enough for ``/admin/*`` — see ``require_admin``.
+    adm: bool = False
 
 
 def _settings_or(settings: Settings | None) -> Settings:
@@ -106,6 +109,7 @@ def mint_access(
     sid: str,
     tg_id: int | None = None,
     email_hash: str | None = None,
+    admin: bool = False,
     settings: Settings | None = None,
 ) -> str:
     """Issue a short-lived access JWT for an authenticated user.
@@ -125,6 +129,8 @@ def mint_access(
         payload["tg_id"] = tg_id
     if email_hash is not None:
         payload["email_hash"] = email_hash
+    if admin:
+        payload["adm"] = True
     return _encode(payload, settings=s)
 
 
@@ -371,4 +377,5 @@ def verify(
         scope=tuple(raw.get("scope", ())),
         channel=raw.get("channel"),
         order_id=raw.get("order_id"),
+        adm=raw.get("adm") is True,
     )

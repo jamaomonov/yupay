@@ -166,6 +166,17 @@ class Settings(BaseSettings):
     admin_dev_login: str = Field(default="admin")
     admin_dev_password: str = Field(default="admin")
 
+    # --- admin panel sessions (audit 2026-11-10) ---
+    #: Where the admin SPA lives. ``/auth/admin/refresh`` answers only a browser
+    #: on this origin in production, so script on another ``*.yupay.uz`` host
+    #: cannot rotate the admin cookie even though it is same-site.
+    admin_panel_origin: str = Field(default="https://admin.yupay.uz")
+    #: ``/admin/*`` accepts only access tokens from an admin-panel session.
+    #: Honoured as ``False`` **only** under ``ENVIRONMENT=test`` — the suite's
+    #: many fixtures grant the role to an ordinary session — and pinned by
+    #: tests of its own; everywhere else it is always on (``require_admin``).
+    admin_session_required: bool = Field(default=True)
+
     @field_validator("jwt_private_key", "jwt_public_key", mode="after")
     @classmethod
     def _decode_pem(cls, v: str) -> str:

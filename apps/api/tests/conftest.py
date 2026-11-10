@@ -55,6 +55,9 @@ def _test_env() -> Iterator[None]:
         "TG_ALERT_BOT_TOKEN": "",
         "TG_ALERT_CHAT_ID": "",
         "TG_URGENT_CHAT_ID": "",
+        # Most fixtures make an admin by granting the role to an ordinary
+        # session; the admin-session rule has its own tests, which turn it on.
+        "ADMIN_SESSION_REQUIRED": "false",
     }
     previous = {k: os.environ.get(k) for k in env}
     os.environ.update(env)

@@ -21,8 +21,11 @@ from yupay.core.logging import get_logger
 from yupay.modules.auth import steam as steam_openid
 from yupay.modules.auth.account_deletion import delete_account
 from yupay.modules.auth.cookies import (
+    ADMIN_REFRESH_COOKIE_NAME,
     REFRESH_COOKIE_NAME,
+    clear_admin_refresh_cookie,
     clear_refresh_cookie,
+    set_admin_refresh_cookie,
     set_refresh_cookie,
 )
 from yupay.modules.auth.deps import current_user
@@ -83,6 +86,30 @@ TOKEN_TRANSPORT_HEADER = "X-Yupay-Token-Transport"  # noqa: S105 -- a header nam
 TokenTransport = Annotated[str | None, Header(alias=TOKEN_TRANSPORT_HEADER)]
 #: The client's own surface (``web`` / ``mobile``), recorded on an account it opens.
 Surface = Annotated[str | None, Header(alias="X-Yupay-Surface")]
+
+
+def _admin_session_response(response: Response, tokens: SessionTokens) -> TokensOut:
+    """An admin-panel session: access token in the body, refresh in the admin cookie."""
+    set_admin_refresh_cookie(
+        response,
+        token=tokens.refresh_token,
+        max_age=tokens.refresh_expires_in,
+        settings=get_settings(),
+    )
+    return TokensOut(access_token=tokens.access_token, expires_in=tokens.access_expires_in)
+
+
+def _require_admin_origin(request: Request) -> None:
+    """In production, only the admin SPA's own origin may use the admin cookie.
+
+    The cookie is host-only on the API and ``SameSite=Strict``, but every
+    ``*.yupay.uz`` host is same-site, so script on yupay.uz could still make the
+    browser send it. A browser always sends ``Origin`` on a cross-origin POST
+    and page script cannot forge it; a non-browser caller has no cookie.
+    """
+    settings = get_settings()
+    if settings.is_prod and request.headers.get("origin") != settings.admin_panel_origin:
+        raise UnauthorizedError("admin session must be used from the admin panel")
 
 
 def _session_response(
@@ -357,7 +384,7 @@ async def login_telegram_widget_admin(
     except TelegramAuthError as exc:
         log.info("auth.telegram.widget.admin.rejected", reason=str(exc))
         raise UnauthorizedError("telegram verification failed") from exc
-    return _session_response(response, tokens)
+    return _admin_session_response(response, tokens)
 
 
 @router.post(
@@ -400,6 +427,54 @@ async def refresh(
         raise UnauthorizedError("missing refresh token")
     tokens = await refresh_session(db, refresh_token)
     return _session_response(response, tokens)
+
+
+@router.post(
+    "/admin/refresh",
+    response_model=TokensOut,
+    response_model_exclude_none=True,
+    summary="Rotate the admin panel's refresh token",
+)
+async def admin_refresh(
+    request: Request,
+    response: Response,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    refresh_token: Annotated[str | None, Cookie(alias=ADMIN_REFRESH_COOKIE_NAME)] = None,
+) -> TokensOut:
+    """The admin SPA's refresh: the admin cookie, admin sessions only, admin origin only."""
+    _require_admin_origin(request)
+    if not refresh_token:
+        raise UnauthorizedError("missing refresh token")
+    tokens = await refresh_session(db, refresh_token, kind="admin")
+    if "admin" not in (tokens.user.roles or []):
+        # The role was taken away since sign-in: end this session here rather
+        # than hand out a token every admin route would refuse.
+        # Committed before the raise: the request session rolls back on it.
+        await logout(db, tokens.refresh_token, access_token=tokens.access_token)
+        await db.commit()
+        raise UnauthorizedError("admin role required")
+    return _admin_session_response(response, tokens)
+
+
+@router.post(
+    "/admin/logout",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="End the admin panel's session",
+)
+async def admin_logout(
+    response: Response,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    authorization: Annotated[str | None, Header()] = None,
+    refresh_token: Annotated[str | None, Cookie(alias=ADMIN_REFRESH_COOKIE_NAME)] = None,
+) -> None:
+    """Idempotent, like ``/logout``: revoke the admin refresh and clear its cookie."""
+    access_token: str | None = None
+    if authorization:
+        scheme, _, tok = authorization.partition(" ")
+        if scheme == "Bearer" and tok.strip():
+            access_token = tok.strip()
+    await logout(db, refresh_token or "", access_token=access_token)
+    clear_admin_refresh_cookie(response, settings=get_settings())
 
 
 @router.post(
@@ -558,7 +633,7 @@ async def login_admin_dev(
     await guard_ip(request, bucket="admin-dev")
     settings = get_settings()
     tokens = await dev_admin_login(db, login=body.login, password=body.password, settings=settings)
-    return _session_response(response, tokens)
+    return _admin_session_response(response, tokens)
 
 
 @router.get(

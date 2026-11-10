@@ -100,8 +100,13 @@ async def _open_session(
     settings: Settings,
     ip_hash: str | None = None,
     ua_hash: str | None = None,
+    kind: str = "user",
 ) -> SessionTokens:
     """Create a fresh ``auth_sessions`` row and mint matching access + refresh.
+
+    ``kind="admin"`` is for the admin panel's own logins only: its access
+    tokens carry ``adm``, the one thing ``require_admin`` accepts besides the
+    role, and its refresh rotates only through ``/auth/admin/refresh``.
 
     Every way into an account converges here — password, both Telegram flows,
     dev login, and refresh rotation — which makes it the one place worth
@@ -116,7 +121,7 @@ async def _open_session(
     session = AuthSession(
         id=session_id,
         user_id=user.id,
-        kind="user",
+        kind=kind,
         refresh_token_hash=hash_token(refresh),
         expires_at=now() + timedelta(seconds=settings.jwt_refresh_ttl_seconds),
         ip_hash=ip_hash,
@@ -133,6 +138,7 @@ async def _open_session(
         sid=session_id,
         tg_id=tg_id,
         email_hash=e_hash,
+        admin=kind == "admin",
         settings=settings,
     )
     return SessionTokens(
@@ -533,7 +539,7 @@ async def admin_telegram_widget_login(
     user = await upsert_user_by_telegram(db, verified.user)
     if "admin" not in (user.roles or []):
         raise ForbiddenError("admin role required")
-    return await _open_session(db, user=user, settings=s)
+    return await _open_session(db, user=user, settings=s, kind="admin")
 
 
 async def guest_checkout(
@@ -572,12 +578,18 @@ async def refresh_session(
     db: AsyncSession,
     refresh_token: str,
     *,
+    kind: str = "user",
     settings: Settings | None = None,
 ) -> SessionTokens:
     """Rotate a refresh token: revoke the old row, mint new access + refresh.
 
     Implements the reuse-detection trip-wire from ADR-0007: presenting a refresh whose
     row is already ``revoked_at`` revokes **every** active session for the user.
+
+    ``kind`` is the session kind the calling route serves: the storefront's
+    ``/auth/refresh`` rotates ``user`` sessions only and the admin panel's
+    ``/auth/admin/refresh`` ``admin`` ones only, so neither cookie can be
+    turned into the other kind of session.
     """
     s = settings or get_settings()
     token_hash = hash_token(refresh_token)
@@ -603,6 +615,8 @@ async def refresh_session(
             await db.commit()
         raise UnauthorizedError("refresh token reuse detected")
 
+    if session_row.kind != kind:
+        raise UnauthorizedError("invalid refresh token")
     if session_row.expires_at <= now():
         raise UnauthorizedError("refresh token expired")
     if session_row.user_id is None:
@@ -621,6 +635,7 @@ async def refresh_session(
         settings=s,
         ip_hash=session_row.ip_hash,
         ua_hash=session_row.ua_hash,
+        kind=kind,
     )
 
 

@@ -38540,6 +38540,115 @@
         ]
       }
     },
+    "/api/v1/auth/admin/logout": {
+      "post": {
+        "description": "Idempotent, like ``/logout``: revoke the admin refresh and clear its cookie.",
+        "operationId": "admin_logout_api_v1_auth_admin_logout_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "admin_refresh_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Admin Refresh Token"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "End the admin panel's session",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/admin/refresh": {
+      "post": {
+        "description": "The admin SPA's refresh: the admin cookie, admin sessions only, admin origin only.",
+        "operationId": "admin_refresh_api_v1_auth_admin_refresh_post",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "admin_refresh_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Admin Refresh Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/yupay__modules__auth__schemas__TokensOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rotate the admin panel's refresh token",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/api/v1/auth/google": {
       "post": {
         "description": "Verify the Google-signed credential, upsert the user, return a session.\n\nGuarded like the other credential endpoints on the IP axis alone: the\nemail inside the credential is unknown until after the (rate-limited)\nverification, so there is no subject to key the second axis on.",

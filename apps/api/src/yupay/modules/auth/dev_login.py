@@ -99,14 +99,14 @@ async def dev_admin_login(
         AuthSession(
             id=session_id,
             user_id=user.id,
-            kind="user",
+            kind="admin",
             refresh_token_hash=hash_token(refresh),
             expires_at=now() + timedelta(seconds=s.jwt_refresh_ttl_seconds),
         )
     )
     await db.flush()
 
-    access = authjwt.mint_access(sub=user.id, sid=session_id, settings=s)
+    access = authjwt.mint_access(sub=user.id, sid=session_id, admin=True, settings=s)
     return SessionTokens(
         access_token=access,
         refresh_token=refresh,

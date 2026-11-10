@@ -90,12 +90,51 @@ def clear_refresh_cookie(
     )
 
 
+#: The admin panel's session (audit 2026-11-10). Unlike the two above it is
+#: host-only on the API and scoped to the admin auth routes: the storefront
+#: cookie goes to every ``*.yupay.uz`` host and to every API path, so script on
+#: yupay.uz (a GTM tag, an XSS) could rotate it — and while any session of an
+#: admin account was an admin session, that was an admin token.
+ADMIN_REFRESH_COOKIE_NAME = "admin_refresh_token"
+ADMIN_COOKIE_PATH = "/api/v1/auth/admin"
+
+
+def set_admin_refresh_cookie(
+    response: Response, *, token: str, max_age: int, settings: Settings
+) -> None:
+    """Attach the admin panel's refresh cookie: host-only, admin routes only."""
+    response.set_cookie(
+        key=ADMIN_REFRESH_COOKIE_NAME,
+        value=token,
+        max_age=max_age,
+        path=ADMIN_COOKIE_PATH,
+        httponly=True,
+        secure=settings.is_prod,
+        samesite="strict",
+    )
+
+
+def clear_admin_refresh_cookie(response: Response, *, settings: Settings) -> None:
+    """Expire the admin panel's refresh cookie. Attributes match the set call."""
+    response.delete_cookie(
+        key=ADMIN_REFRESH_COOKIE_NAME,
+        path=ADMIN_COOKIE_PATH,
+        httponly=True,
+        secure=settings.is_prod,
+        samesite="strict",
+    )
+
+
 cookie_domain = _cookie_domain
 
 __all__ = [
+    "ADMIN_COOKIE_PATH",
+    "ADMIN_REFRESH_COOKIE_NAME",
     "PARTNER_REFRESH_COOKIE_NAME",
     "REFRESH_COOKIE_NAME",
+    "clear_admin_refresh_cookie",
     "clear_refresh_cookie",
     "cookie_domain",
+    "set_admin_refresh_cookie",
     "set_refresh_cookie",
 ]

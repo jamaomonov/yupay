@@ -460,6 +460,31 @@ the deposit.
   click a link from a registration they did not make; the window is the
   confirmation TTL.
 
+## Admin panel sessions (audit 2026-11-10)
+
+Admin rights used to ride on the account: any session of a user holding the
+`admin` role — the mini app's token in `localStorage`, the storefront's
+refresh cookie shared across `.yupay.uz` — could call `/admin/*`. The
+storefront allows inline script and runs GTM, so script on yupay.uz could
+rotate that cookie into an admin token.
+
+- **Its own session kind.** The admin login (`/auth/telegram/widget/admin`,
+  dev `/auth/admin-dev`) opens `auth_sessions.kind='admin'` (migration 0110)
+  and its access tokens carry `adm`. `require_admin` refuses a token without
+  it with 401, whatever the role. `ADMIN_SESSION_REQUIRED=false` is honoured
+  only under `ENVIRONMENT=test`.
+- **Its own cookie.** `admin_refresh_token`: host-only on the API, `Path=/api/v1/auth/admin`,
+  `SameSite=Strict`; rotated only by `/auth/admin/refresh`, which rotates only
+  `admin` sessions. The storefront's `/auth/refresh` rotates only `user` ones.
+- **Its own origin.** In production `/auth/admin/refresh` answers only
+  `Origin: https://admin.yupay.uz` (`ADMIN_PANEL_ORIGIN`): every `*.yupay.uz`
+  host is same-site, so the cookie attributes alone would not stop script on
+  yupay.uz from sending it.
+- **Role removal ends it.** A refresh after the role is gone revokes the
+  session instead of minting a token every admin route would refuse.
+
+After the deploy that ships this, every admin signs in to the panel once more.
+
 ## Paynet currency (audit 2026-11-10)
 
 `paynet/service.py` read `total_charged` as soʻm for any order, so a USD or RUB

@@ -58,6 +58,15 @@ full spec. Summary:
 | `POST` | `/api/v1/auth/refresh`         | cookie, or `{refresh_token}` (app) | `TokensOut`      |
 | `POST` | `/api/v1/auth/logout`          | cookie, or `{refresh_token}` (app) | `204 No Content` |
 | `GET`  | `/api/v1/auth/me`              | — (Bearer)                         | `MeOut`          |
+| `POST` | `/api/v1/auth/admin/refresh`   | `admin_refresh_token` cookie       | `TokensOut`      |
+| `POST` | `/api/v1/auth/admin/logout`    | `admin_refresh_token` cookie       | `204 No Content` |
+
+**Admin panel sessions (audit 2026-11-10).** The admin login opens `kind='admin'`
+sessions whose access tokens carry `adm`; `require_admin` accepts nothing else, so an
+admin's storefront or mini-app session has no admin rights. Their refresh rides
+`admin_refresh_token` — host-only, `Path=/api/v1/auth/admin`, `SameSite=Strict` — and
+`/auth/admin/refresh` answers only the admin origin in production. See
+`docs/security/threat-model.md`.
 
 **Mobile app (ADR-0101).** A browser gets the refresh token only as an `HttpOnly` cookie. The app
 sends `X-Yupay-Token-Transport: body` to `/login`, `/google` or `/steam` and gets

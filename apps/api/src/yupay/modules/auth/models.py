@@ -16,8 +16,9 @@ from yupay.core.db import Base
 
 
 class AuthSession(Base):
-    """One row per issued refresh token (kind='user') or per guest checkout
-    (kind='guest').
+    """One row per issued refresh token (kind='user', or 'admin' for a session
+    opened through the admin login — the only kind ``require_admin`` accepts)
+    or per guest checkout (kind='guest').
 
     Stateless access tokens (JWTs) are not tracked here — only their refresh counterparts
     and audit metadata. See :doc:`/docs/decisions/0007-jwt-format-and-rotation` for the
@@ -52,9 +53,10 @@ class AuthSession(Base):
     ua_hash: Mapped[str | None] = mapped_column(CHAR(64), nullable=True)
 
     __table_args__ = (
-        CheckConstraint("kind IN ('user', 'guest')", name="ck_auth_sessions_kind"),
+        CheckConstraint("kind IN ('user', 'guest', 'admin')", name="ck_auth_sessions_kind"),
         CheckConstraint(
-            "(kind = 'user' AND user_id IS NOT NULL AND refresh_token_hash IS NOT NULL) "
+            "(kind IN ('user', 'admin') AND user_id IS NOT NULL "
+            "AND refresh_token_hash IS NOT NULL) "
             "OR (kind = 'guest' AND user_id IS NULL AND guest_email IS NOT NULL)",
             name="ck_auth_sessions_shape",
         ),

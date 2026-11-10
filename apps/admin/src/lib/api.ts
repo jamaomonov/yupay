@@ -72,7 +72,7 @@ export function clearTokens(): void {
   localStorage.removeItem(LEGACY_REFRESH_KEY);
   // Ask the server to revoke the session and expire the HttpOnly refresh cookie —
   // JS can't delete it. Fire-and-forget: logout must never block or throw.
-  void fetch(`${apiBase}/api/v1/auth/logout`, {
+  void fetch(`${apiBase}/api/v1/auth/admin/logout`, {
     method: "POST",
     credentials: "include",
   }).catch(() => {
@@ -105,9 +105,11 @@ let refreshInFlight: Promise<boolean> | null = null;
 
 async function _doRefresh(): Promise<boolean> {
   try {
-    // The refresh token rides an HttpOnly cookie; `credentials: "include"` sends
-    // it and stores the rotated one. No token in the request body.
-    const resp = await fetch(`${apiBase}/api/v1/auth/refresh`, {
+    // The refresh token rides the admin panel's own HttpOnly cookie — host-only
+    // on the API, scoped to /api/v1/auth/admin, never the storefront's
+    // `.yupay.uz` one (audit 2026-11-10). `credentials: "include"` sends it and
+    // stores the rotated one. No token in the request body.
+    const resp = await fetch(`${apiBase}/api/v1/auth/admin/refresh`, {
       method: "POST",
       credentials: "include",
       headers: { Accept: "application/json" },
