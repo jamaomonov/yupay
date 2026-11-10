@@ -6,7 +6,11 @@ requires-python = ">=3.12"
 authors = [{ name = "YuPay team" }]
 readme = "README.md"
 dependencies = [
-    "fastapi>=0.115",
+    # Capped: a later FastAPI stopped flattening included routers into
+    # `app.routes` (lazy `_IncludedRouter`), which silently broke the limiter
+    # exemptions in bootstrap._exempt_self_authenticating_routes. Lift the cap
+    # only together with a walker that understands the new shape.
+    "fastapi>=0.115,<0.137",
     "uvicorn[standard]>=0.32",
     "pydantic>=2.9",
     "pydantic-settings>=2.5",
@@ -23,7 +27,7 @@ dependencies = [
     # from it. It arrives with the instrumentator below either way, but code
     # that imports a package declares it.
     "prometheus-client>=0.21",
-    "prometheus-fastapi-instrumentator>=7.0",
+    "prometheus-fastapi-instrumentator>=8.1",
     "sentry-sdk[fastapi]>=2.17",
     "slowapi>=0.1.9",
     "pynacl>=1.5",
