@@ -112,6 +112,12 @@ async def register(body: CabinetRegisterIn, db: Db, request: Request) -> Respons
         # confirmed gets its confirmation link instead: a reset needs a
         # confirmed address, so before this it was mailed nothing at all.
         await _mail_reset_if_any(db, email=body.email, base=base)
+        # Never confirmed: this request's password replaces the one on file,
+        # so the link mailed next arms what the mailbox owner typed, not what
+        # somebody who registered their address first planted.
+        await cabinet_auth.reclaim_unconfirmed(
+            db, email=body.email, password=body.password, title=body.title
+        )
         await _mail_confirm_if_pending(db, email=body.email, base=base)
         return Response(status_code=status.HTTP_201_CREATED)
     # A failed send leaves an account that exists with an unconfirmed address,

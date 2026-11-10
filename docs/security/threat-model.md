@@ -437,6 +437,37 @@ controls now:
 Cloudflare Turnstile on the form is the next step if it comes back from many
 addresses.
 
+## Pre-registration account takeover (audit 2026-11-10)
+
+Registering somebody else's address first used to plant a password: the
+storefront answered the owner's later registration with 409 (and the merchant
+cabinet with a silent 201), kept the first password, and the owner's verify
+click armed it. The planter then signed in — on the storefront claiming every
+guest order on that address, in the cabinet issuing an API key and spending
+the deposit.
+
+- **An unverified email/password account is re-registered in place.** The new
+  request's password replaces the one on file (`auth/mailbox.py`
+  `pending_password_account`, `merchants/cabinet_auth.py`
+  `reclaim_unconfirmed`, which also takes the new company title). Only a bare
+  unverified password account qualifies: one with a Telegram or Steam sign-in
+  behind it still answers 409.
+- **The flood control holds.** A repeat registration inside
+  `AUTH_VERIFY_EMAIL_COOLDOWN_SECONDS` replaces the password but mails no
+  second link (`auth:register-mail:<mailbox hash>`).
+- **Residual:** a planter who registers again _after_ the owner, and before the
+  owner clicks, is back to being the last password. The owner then has to
+  click a link from a registration they did not make; the window is the
+  confirmation TTL.
+
+## Paynet currency (audit 2026-11-10)
+
+`paynet/service.py` read `total_charged` as soʻm for any order, so a USD or RUB
+order was payable for the same number of soʻm. `_load_payable_order` now
+refuses a non-UZS order (`501`) like Click, Payme and Uzum do, and locks the
+order on `PerformTransaction` so two transactions for one order cannot both
+succeed.
+
 ## Out of scope (we do not handle)
 
 - Card data (PAN, CVV) — all card collection redirected to hosted provider fields.

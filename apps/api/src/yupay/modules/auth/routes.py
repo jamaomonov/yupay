@@ -173,13 +173,25 @@ async def register_route(
     # account-enumeration and verification-email-bomb relay.
     await guard_ip(request, bucket="register", subject=body.email)
     await _guard_register_daily(request)
+    # One verification mail per inbox per cooldown from registration too: an
+    # unverified address can now be registered again in place (see
+    # ``register_user``), and each pass mailed a link — the 2026-11-01 flood
+    # on one gmail inbox, by another door. A repeat inside the window still
+    # replaces the password; the link already in the inbox confirms the same
+    # account, and ``/auth/verify-email/resend`` has its own counter.
+    digest = hashlib.sha256(mailbox_key(body.email).encode()).hexdigest()[:32]
+    mail_ok = not await hit_counter(
+        f"auth:register-mail:{digest}",
+        limit=1,
+        window=get_settings().auth_verify_email_cooldown_seconds,
+    )
     user = await register_user(
         db,
         email=body.email,
         password=body.password,
         locale=body.locale,
         signup_source=normalise_signup_source(surface),
-        verify_link_base=_web_base(request, body.locale),
+        verify_link_base=_web_base(request, body.locale) if mail_ok else None,
     )
     assert user.email is not None  # register_user always sets one from RegisterIn.email
     return RegisterOut(email=user.email)

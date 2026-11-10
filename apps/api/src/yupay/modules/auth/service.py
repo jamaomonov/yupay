@@ -38,7 +38,7 @@ from yupay.core.redis import get_redis
 from yupay.modules.auth import google, steam
 from yupay.modules.auth import jwt as authjwt
 from yupay.modules.auth import telegram as tg
-from yupay.modules.auth.mailbox import mailbox_taken
+from yupay.modules.auth.mailbox import mailbox_taken, pending_password_account
 from yupay.modules.auth.models import AuthSession
 from yupay.modules.auth.security import (
     email_hash,
@@ -177,23 +177,35 @@ async def register_user(
     """
     s = settings or get_settings()
     normalised = email.strip().lower()
-    # ``a+x@gmail.com`` is ``a@gmail.com``'s inbox: one mailbox, one account.
-    if await mailbox_taken(db, normalised):
-        raise ConflictError("email already registered")
-    user = User(
-        id=new_id(),
-        email=normalised,
-        locale=locale,
-        password_hash=await hash_password(password),
-        signup_source=signup_source,
-    )
-    db.add(user)
-    try:
+    # Never verified: this request's password replaces the one on file, and a
+    # fresh link goes to the inbox. Refusing with 409 left the first password
+    # in place for the owner's verify click to arm — so whoever registered an
+    # address first could sign in once its owner proved the mailbox, and claim
+    # every guest order on it.
+    pending = await pending_password_account(db, normalised)
+    if pending is not None:
+        pending.password_hash = await hash_password(password)
         await db.flush()
-    except IntegrityError as exc:
-        # The request-scoped session (``get_session``) rolls back on any raised
-        # exception, so no explicit rollback is needed here.
-        raise ConflictError("email already registered") from exc
+        user = pending
+        log.info("auth.register.unverified_reclaimed", user_id=user.id)
+    else:
+        # ``a+x@gmail.com`` is ``a@gmail.com``'s inbox: one mailbox, one account.
+        if await mailbox_taken(db, normalised):
+            raise ConflictError("email already registered")
+        user = User(
+            id=new_id(),
+            email=normalised,
+            locale=locale,
+            password_hash=await hash_password(password),
+            signup_source=signup_source,
+        )
+        db.add(user)
+        try:
+            await db.flush()
+        except IntegrityError as exc:
+            # The request-scoped session (``get_session``) rolls back on any
+            # raised exception, so no explicit rollback is needed here.
+            raise ConflictError("email already registered") from exc
 
     if verify_link_base:
         token = authjwt.mint_email_verify(sub=user.id, settings=s)

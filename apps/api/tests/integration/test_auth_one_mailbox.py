@@ -7,6 +7,9 @@ from __future__ import annotations
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import func, update
+from sqlalchemy.ext.asyncio import AsyncSession
+from yupay.modules.users.models import User
 
 pytestmark = pytest.mark.asyncio
 
@@ -23,9 +26,15 @@ async def _register(client: AsyncClient, email: str, ip: str = "198.51.100.7") -
 
 
 async def test_plus_and_dot_variants_of_a_gmail_inbox_are_refused(
-    integration_client: AsyncClient,
+    integration_client: AsyncClient, db_session: AsyncSession
 ) -> None:
     assert await _register(integration_client, "one.box@gmail.com") == 201
+    # Verified, so the inbox is taken. (An unverified one is re-registered in
+    # place instead — see test_auth_password's planted-password test.)
+    await db_session.execute(
+        update(User).where(User.email == "one.box@gmail.com").values(email_verified_at=func.now())
+    )
+    await db_session.commit()
     for variant in ("one.box+b1234@gmail.com", "onebox@gmail.com", "o.n.e.box@googlemail.com"):
         assert await _register(integration_client, variant) == 409, variant
     # Another inbox is still free.

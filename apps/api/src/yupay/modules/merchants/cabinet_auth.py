@@ -417,6 +417,38 @@ async def set_password(
     return user
 
 
+async def reclaim_unconfirmed(db: AsyncSession, *, email: str, password: str, title: str) -> bool:
+    """Give a never-confirmed account the password of whoever registered last.
+
+    Without this, registering somebody else's address first planted a password
+    that the real owner's confirmation click then armed: the owner's own
+    «регистрация» answered 201, kept the first password, and the planter
+    signed in once the mailbox was proven — then issued an API key and spent
+    the deposit. Only the mailbox can confirm, so the password that matters is
+    the one its owner typed, which is the most recent one.
+
+    Returns:
+        ``True`` when an unconfirmed account took the new password; ``False``
+        for an unknown or already-confirmed address (left untouched).
+    """
+    user = (
+        await db.execute(
+            select(MerchantUser)
+            .where(MerchantUser.email == email.strip().lower())
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if user is None or user.email_confirmed_at is not None:
+        return False
+    user.password_hash = await hash_password(password)
+    merchant = await db.get(Merchant, user.merchant_id)
+    if merchant is not None:
+        merchant.title = title.strip()
+    await db.flush()
+    log.info("merchant.cabinet.unconfirmed_reclaimed", user_id=user.id)
+    return True
+
+
 async def resend_confirmation(
     db: AsyncSession, *, email: str, settings: Settings | None = None
 ) -> tuple[MerchantUser, str] | None:
@@ -451,6 +483,7 @@ __all__ = [
     "login",
     "logout",
     "open_session",
+    "reclaim_unconfirmed",
     "refresh",
     "register",
     "request_password_reset",

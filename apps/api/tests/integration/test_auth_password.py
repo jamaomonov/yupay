@@ -82,12 +82,49 @@ async def test_register_then_verify_auto_logs_in(
     assert me.json()["email"] == "newbie2@example.com"
 
 
-async def test_register_duplicate_email_conflicts(integration_client: AsyncClient) -> None:
+async def test_register_duplicate_email_conflicts(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """A verified account's address is taken; 409."""
     payload = {"email": "dupe@example.com", "password": "hunter2hunter2"}
     first = await integration_client.post("/api/v1/auth/register", json=payload)
     assert first.status_code == 201
+    await _verify_registered_user(integration_client, db_session, first)
     second = await integration_client.post("/api/v1/auth/register", json=payload)
     assert second.status_code == 409
+
+
+async def test_a_planted_password_does_not_survive_the_owners_registration(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Audit 2026-11-10: whoever registered an address first used to keep
+    their password through the owner's verify click, then sign in and claim
+    the owner's guest orders. The owner's later registration now replaces it."""
+    planted = "attacker-chose-this"
+    first = await integration_client.post(
+        "/api/v1/auth/register", json={"email": "victim@example.com", "password": planted}
+    )
+    assert first.status_code == 201
+    owner = await integration_client.post(
+        "/api/v1/auth/register",
+        json={"email": "victim@example.com", "password": "owners-own-password"},
+    )
+    assert owner.status_code == 201, owner.text
+    await _verify_registered_user(integration_client, db_session, owner)
+
+    as_attacker = await integration_client.post(
+        "/api/v1/auth/login", json={"email": "victim@example.com", "password": planted}
+    )
+    assert as_attacker.status_code == 401
+    as_owner = await integration_client.post(
+        "/api/v1/auth/login",
+        json={"email": "victim@example.com", "password": "owners-own-password"},
+    )
+    assert as_owner.status_code == 200, as_owner.text
+    users = (
+        await db_session.execute(select(User).where(User.email == "victim@example.com"))
+    ).scalars()
+    assert len(list(users)) == 1
 
 
 @pytest.mark.asyncio

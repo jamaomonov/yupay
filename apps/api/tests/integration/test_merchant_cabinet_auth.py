@@ -211,6 +211,44 @@ async def test_registering_an_unconfirmed_address_again_mails_the_link(
     assert confirmed.status_code == 200, confirmed.text
 
 
+async def test_a_planted_password_does_not_survive_the_owners_registration(
+    integration_client: AsyncClient, db_session: AsyncSession, sent: list[dict[str, str]]
+) -> None:
+    """Audit 2026-11-10: somebody registers a reseller's address first with a
+    password of theirs. The real owner registers later, confirms from the
+    mail, and works in the cabinet. The planted password must not open it."""
+    planted = "attacker-chose-this"
+    assert (
+        await _register(integration_client, "victim@acme.example.com", password=planted)
+    ).status_code == 201
+    sent.clear()
+
+    owner = await _register(integration_client, "victim@acme.example.com", title="Real Co")
+    assert owner.status_code == 201
+    confirmed = await integration_client.post(
+        f"{BASE}/confirm", json={"token": _token_from(sent[-1])}
+    )
+    assert confirmed.status_code == 200, confirmed.text
+
+    as_attacker = await integration_client.post(
+        f"{BASE}/login", json={"email": "victim@acme.example.com", "password": planted}
+    )
+    assert as_attacker.status_code == 401
+    as_owner = await integration_client.post(
+        f"{BASE}/login", json={"email": "victim@acme.example.com", "password": PASSWORD}
+    )
+    assert as_owner.status_code == 200, as_owner.text
+    user = (
+        await db_session.execute(
+            select(MerchantUser).where(MerchantUser.email == "victim@acme.example.com")
+        )
+    ).scalar_one()
+    merchant = await db_session.get(Merchant, user.merchant_id)
+    assert merchant is not None
+    await db_session.refresh(merchant)
+    assert merchant.title == "Real Co"
+
+
 async def test_a_rotated_refresh_token_is_dead(
     integration_client: AsyncClient, sent: list[dict[str, str]]
 ) -> None:
