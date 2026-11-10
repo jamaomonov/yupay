@@ -31,10 +31,27 @@ export API_PW MON_PW
 
 # Passwords travel on stdin, never in a command line.
 {
-  printf "\\\\set api_pw '%s'\n\\\\set mon_pw '%s'\n\\\\set dbname '%s'\n" "$API_PW" "$MON_PW" "$DB"
+  printf "\\\\set step roles\n\\\\set api_pw '%s'\n\\\\set mon_pw '%s'\n\\\\set dbname '%s'\n" "$API_PW" "$MON_PW" "$DB"
   cat infra/postgres/least-privilege.sql
 } | $COMPOSE exec -T postgres psql -q -U yupay_app -d "$DB" >/dev/null
-echo "roles and ownership: done"
+echo "roles: done"
+
+# Ownership, in passes: one object per transaction, 2 s lock timeout, busy
+# objects retried on the next pass. Nothing below runs until all are moved.
+LEFT=unknown
+for pass in $(seq 1 30); do
+  LEFT=$({
+    printf "\\\\set step owners\n\\\\set dbname '%s'\n" "$DB"
+    cat infra/postgres/least-privilege.sql
+  } | $COMPOSE exec -T postgres psql -q -At -U yupay_app -d "$DB" 2>/dev/null | tail -n 1)
+  echo "ownership pass $pass: $LEFT left"
+  [ "$LEFT" = "0" ] && break
+  sleep 10
+done
+if [ "$LEFT" != "0" ]; then
+  echo "ownership not finished ($LEFT left) — env files untouched, safe to re-run later" >&2
+  exit 1
+fi
 
 # Credentials from the environment, so they are not in any argv either.
 perl -pi -e 's#^(DATABASE_URL=[^:]+://)[^:@/]+:[^@]*@#${1}yupay_api:$ENV{API_PW}\@#' secrets/api.env

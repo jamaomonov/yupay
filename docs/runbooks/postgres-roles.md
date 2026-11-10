@@ -35,6 +35,16 @@ as `secrets/*.env.bak-<stamp>`), recreates api, worker, scheduler, bot, backup
 and postgres-exporter on the running `IMAGE_TAG`, waits for `/readyz` and
 prints connections per role. It is idempotent and reuses passwords on file.
 
+Ownership moves **one object per transaction under a 2 s `lock_timeout`**, in
+passes (up to 30, 10 s apart): a table someone holds is skipped and retried,
+and the env files are not touched until nothing is left on the old owner. The
+first version did it in one transaction; on 2026-11-10 a scheduler job idle in
+a transaction held one table, the script's `ALTER ... OWNER` waited behind it
+while holding every table it had already changed, and all API queries queued
+behind the script for ~3 minutes until its backend was terminated. If a run
+ends with `ownership not finished`, nothing was switched: look for a long
+`idle in transaction` session in `pg_stat_activity` and re-run.
+
 **Rollback:** copy the `.bak-<stamp>` files back over the three env files and
 recreate the same six services with `IMAGE_TAG` set. Nothing else to undo —
 `yupay_app` can still read and write everything `yupay_api` owns.
