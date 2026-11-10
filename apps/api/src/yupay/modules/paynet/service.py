@@ -170,7 +170,11 @@ async def perform_transaction(
     if existing is not None:
         raise transaction_already_exists()
 
-    order = await _load_payable_order(db, _account(fields))
+    # Locked: two PerformTransactions for one order with different
+    # ``transactionId``s (a double tap, two terminals) used to both pass the
+    # status check and both answer success — a second debit nothing recorded.
+    # The loser now waits here, then sees ``paid`` and gets ``302``.
+    order = await _load_payable_order(db, _account(fields), for_update=True)
     expected = _expected_tiyin(order)
     if amount != expected:
         log.warning(
@@ -413,20 +417,31 @@ async def _find(db: AsyncSession, transaction_id: int) -> PaynetTransaction | No
     ).scalar_one_or_none()
 
 
-async def _load_payable_order(db: AsyncSession, order_id: str) -> Order:
+async def _load_payable_order(
+    db: AsyncSession, order_id: str, *, for_update: bool = False
+) -> Order:
     """Load an order that may still be paid, or say precisely why it may not.
 
     Args:
         db: Active session.
         order_id: The account field, already extracted and stripped.
+        for_update: Lock the row — the perform path, so concurrent
+            transactions for one order settle it once.
+
+    Paynet settles in soʻm only. A USD or RUB order is refused: its
+    ``total_charged`` read as soʻm would let it be paid for a fraction of
+    its value (50 USD → 50 soʻm). Click, Payme and Uzum carry the same guard.
 
     An order already paid answers ``302``, the same as "no such order", in
     every method (2026-10-20: Paynet's tester expects it for a one-time
     payment). See the comment above
     :data:`~yupay.modules.paynet.errors.ORDER_NOT_FOUND` in ``errors.py``.
     """
+    stmt = select(Order).where(Order.id == order_id)
+    if for_update:
+        stmt = stmt.with_for_update().execution_options(populate_existing=True)
     try:
-        order = (await db.execute(select(Order).where(Order.id == order_id))).scalar_one_or_none()
+        order = (await db.execute(stmt)).scalar_one_or_none()
     except Exception as exc:  # a malformed UUID never reaches the database as one
         raise order_not_found() from exc
     if order is None:
@@ -434,6 +449,8 @@ async def _load_payable_order(db: AsyncSession, order_id: str) -> Order:
     if order.status in _PAID_STATUSES:
         raise order_not_found()
     if order.status != _PAYABLE:
+        raise order_not_payable()
+    if order.currency != "UZS":
         raise order_not_payable()
     if order.expires_at <= datetime.now(UTC):
         raise order_not_payable()

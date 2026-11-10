@@ -74,6 +74,7 @@ async def _seed_order(
     status: str = "pending_payment",
     total_charged: Decimal = Decimal("130000.00"),
     expires_in: timedelta = timedelta(minutes=30),
+    currency: str = "UZS",
 ) -> str:
     user_id, order_id = str(uuid.uuid4()), str(uuid.uuid4())
     db.add(User(id=user_id, roles=[]))
@@ -83,7 +84,7 @@ async def _seed_order(
             id=order_id,
             user_id=user_id,
             status=status,
-            currency="UZS",
+            currency=currency,
             total_usd=Decimal("10.00"),
             total_charged=total_charged,
             expires_at=datetime.now(UTC) + expires_in,
@@ -375,6 +376,31 @@ async def test_an_amount_that_does_not_match_the_order_is_413(
         await db_session.execute(select(func.count()).select_from(PaynetTransaction))
     ).scalar_one()
     assert rows == 0
+
+
+async def test_a_non_uzs_order_cannot_be_paid_in_som(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Paynet settles in soʻm. A USD order's total read as soʻm made a $50
+    order payable for 50 soʻm — Click, Payme and Uzum always refused it."""
+    order_id = await _seed_order(db_session, currency="USD", total_charged=Decimal("50.00"))
+    info = await integration_client.post(
+        UWS_URL,
+        json=_rpc("GetInformation", {"serviceId": SERVICE_ID, "fields": {"order_id": order_id}}),
+        headers=_auth(),
+    )
+    assert info.json()["error"]["code"] == 501
+
+    body = await _perform(integration_client, order_id, transaction_id=90_010, amount=5_000)
+    assert body["error"]["code"] == 501
+    rows = (
+        await db_session.execute(select(func.count()).select_from(PaynetTransaction))
+    ).scalar_one()
+    assert rows == 0
+    status = (
+        await db_session.execute(select(Order.status).where(Order.id == order_id))
+    ).scalar_one()
+    assert status == "pending_payment"
 
 
 async def test_a_second_transaction_on_a_paid_order_is_302(
