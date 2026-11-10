@@ -485,6 +485,15 @@ rotate that cookie into an admin token.
 
 After the deploy that ships this, every admin signs in to the panel once more.
 
+## Database roles (audit 2026-11-10)
+
+The app, the backups and the third-party postgres-exporter all connected as
+`yupay_app`, the image's bootstrap superuser — so any SQL injection, or a
+compromised exporter image, was `COPY … TO PROGRAM` and a shell. The app and
+backups now use `yupay_api` (owner of the schema, no SUPERUSER/CREATEDB/
+CREATEROLE) and the exporter `yupay_monitor` (`pg_monitor` only).
+`yupay_app` remains for the local socket. See `docs/runbooks/postgres-roles.md`.
+
 ## Paynet currency (audit 2026-11-10)
 
 `paynet/service.py` read `total_charged` as soʻm for any order, so a USD or RUB

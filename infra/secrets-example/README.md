@@ -147,6 +147,8 @@ When a credential is compromised:
 1. Generate the replacement (see sections above).
 2. Update the relevant `.env`.
 3. Apply it with `up -d` as above — **not** `restart`.
-4. For Postgres password changes, `ALTER ROLE yupay_app WITH PASSWORD '…'` **first**, then
-   update `postgres.env`, `postgres-exporter.env`, `backup.env` and the `DATABASE_URL` in
-   `api.env` — they all carry the same password, and a half-rotated set takes the API down.
+4. For Postgres password changes, `ALTER ROLE … WITH PASSWORD '…'` **first**, then the files
+   that carry that role: `yupay_api` → `DATABASE_URL` in `api.env` and `backup.env`;
+   `yupay_monitor` → `postgres-exporter.env`; `yupay_app` (superuser, local socket only) →
+   `postgres.env`. A half-rotated set takes the API down. Re-running
+   `infra/postgres/least-privilege.sh` rotates nothing — it reuses the passwords on file.
