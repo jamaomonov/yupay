@@ -5,7 +5,8 @@ is the secret token in the URL. We additionally re-verify the order's
 status via the supplier API before mutating any task state (see ADR-0019).
 
 Mounted under ``/api/v1/webhooks/g2b/{secret}``. A wrong secret returns
-404 — we don't reveal that the route exists.
+404 — we don't reveal that the route exists. The handler only marks the task
+due; the ``g2b_reconcile`` sweep does the supplier call (see the handler).
 """
 
 from __future__ import annotations
@@ -85,10 +86,14 @@ async def receive_g2b_webhook(
         # 200 to make G2B stop retrying — we genuinely have nothing for them.
         return {"status": "unknown_order"}
 
-    updated = await fulfillment_svc.process_webhook_update(db, task_id=task.id)
-    log.info(
-        "g2b.webhook.processed",
-        task_id=updated.id,
-        new_status=updated.status,
-    )
-    return {"status": "processed", "task_status": updated.status}
+    # Queue, never reconcile here (audit 2026-11-10). ``process_webhook_update``
+    # calls G2B with a 20 s timeout while this request holds a pool
+    # connection, so a burst of deliveries — or anyone holding the path secret,
+    # which access logs used to record — could drain the API pool, the
+    # 2026-09-23 outage fzr's receiver was fixed for. ``g2b_reconcile`` checks
+    # every in-flight G2B task each minute and re-reads the status from G2B,
+    # so a delivery lands within a minute and the body is still never trusted.
+    hurried = await fulfillment_svc.mark_due_now(db, task_id=task.id)
+    await db.commit()
+    log.info("g2b.webhook.queued", task_id=task.id, hurried=hurried)
+    return {"status": "queued" if hurried else "already_final"}

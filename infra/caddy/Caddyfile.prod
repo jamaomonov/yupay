@@ -104,6 +104,8 @@ http://yupay.uz, http://www.yupay.uz {
 			fields {
 				request>headers>X-Merchant-Signature delete
 				request>headers>X-Merchant-Key delete
+				# G2B authenticates by a secret path segment; keep it out of Loki.
+				request>uri regexp "/webhooks/g2b/[^/?]+" "/webhooks/g2b/REDACTED"
 			}
 		}
 	}
@@ -151,6 +153,8 @@ http://app.yupay.uz {
 			fields {
 				request>headers>X-Merchant-Signature delete
 				request>headers>X-Merchant-Key delete
+				# G2B authenticates by a secret path segment; keep it out of Loki.
+				request>uri regexp "/webhooks/g2b/[^/?]+" "/webhooks/g2b/REDACTED"
 			}
 		}
 	}
@@ -351,6 +355,8 @@ http://api.yupay.uz {
 			fields {
 				request>headers>X-Merchant-Signature delete
 				request>headers>X-Merchant-Key delete
+				# G2B authenticates by a secret path segment; keep it out of Loki.
+				request>uri regexp "/webhooks/g2b/[^/?]+" "/webhooks/g2b/REDACTED"
 			}
 		}
 	}

@@ -357,7 +357,9 @@ async def test_voucher_pending_then_webhook_completes(
         json={"order_id": 8888, "status": "COMPLETED"},
     )
     assert wh.status_code == 200
-    assert wh.json()["task_status"] == "succeeded"
+    # The receiver only queues; the sweep reconciles (what g2b_reconcile does).
+    assert wh.json()["status"] == "queued"
+    await _sweep(db_session, "8888")
 
     deliveries = await integration_client.get(
         f"/api/v1/orders/{order_id}/deliveries",
@@ -366,6 +368,22 @@ async def test_voucher_pending_then_webhook_completes(
     items = deliveries.json()["items"]
     assert len(items) == 1
     assert items[0]["artifact"]["code"] == "G2B-LATE"
+
+
+async def _sweep(db: AsyncSession, g2b_order_id: str) -> None:
+    """Run the reconcile the scheduler's ``g2b_reconcile`` would, for one task."""
+    from yupay.modules.fulfillment import service as fulfillment_svc
+
+    task_id = (
+        await db.execute(
+            select(FulfillmentTask.id).where(
+                FulfillmentTask.supplier == "g2b",
+                FulfillmentTask.external_order_id == g2b_order_id,
+            )
+        )
+    ).scalar_one()
+    await fulfillment_svc.process_webhook_update(db, task_id=task_id)
+    await db.commit()
 
 
 # ---------- game order ----------
@@ -433,7 +451,9 @@ async def test_game_pending_then_webhook_completes(
         json={"order_id": 9090, "status": "COMPLETED"},
     )
     assert wh.status_code == 200
-    assert wh.json()["task_status"] == "succeeded"
+    # The receiver only queues; the sweep reconciles (what g2b_reconcile does).
+    assert wh.json()["status"] == "queued"
+    await _sweep(db_session, "9090")
 
     deliveries = await integration_client.get(
         f"/api/v1/orders/{order_id}/deliveries",
