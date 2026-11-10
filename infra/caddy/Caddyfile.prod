@@ -137,7 +137,10 @@ http://app.yupay.uz {
 		# Telegram WebApp must be embeddable in the official client — do
 		# NOT add X-Frame-Options: DENY here. CSP frame-ancestors handles
 		# the policy for the storefront.
-		Content-Security-Policy "frame-ancestors https://web.telegram.org https://*.telegram.org;"
+		# Scripts: our bundle plus the two inline boot scripts in
+		# apps/miniapp/index.html, by hash. Editing either script means a new
+		# hash here — apps/miniapp/src/index-html.test.ts fails until it is.
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'sha256-jgi/NmnDgn5wfooW/HeNfxUx6b4pU1zqWxd2ucs3vcg=' 'sha256-Nh934Hdkt4h69a9sP1tu0MV7YUCOfeQYe0G0SGydHjM='; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' https: data: blob:; connect-src 'self' https://api.yupay.uz wss://api.yupay.uz; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors https://web.telegram.org https://*.telegram.org"
 	}
 	# This block had no access log until 2026-09-14, and the gap was found the
 	# hard way: a user reported «Не удалось загрузить YuPay» and there was
@@ -174,7 +177,11 @@ http://partners.yupay.uz {
 		# Nothing here is meant to be embedded. The panel holds a partner's
 		# balance and a payout form, which is exactly what a clickjacking
 		# frame would want.
-		X-Frame-Options "DENY"
+		X-Frame-Options "DENY"		# Next.js App Router hydrates through inline scripts, so script-src
+		# keeps 'unsafe-inline' (no nonce middleware); what this still buys is
+		# no script from any other host, no plugins, no <base> hijack, and
+		# fetches only to our API.
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' https: data: blob:; connect-src 'self' https://api.yupay.uz; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
 	}
 	reverse_proxy partners:3003 {
 		lb_try_duration 15s
@@ -195,7 +202,11 @@ http://reseller.yupay.uz {
 		Referrer-Policy "strict-origin-when-cross-origin"
 		X-Content-Type-Options "nosniff"
 		# The one moment an API secret is readable is a panel on this origin.
-		X-Frame-Options "DENY"
+		X-Frame-Options "DENY"		# Next.js App Router hydrates through inline scripts, so script-src
+		# keeps 'unsafe-inline' (no nonce middleware); what this still buys is
+		# no script from any other host, no plugins, no <base> hijack, and
+		# fetches only to our API.
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' https: data: blob:; connect-src 'self' https://api.yupay.uz; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
 	}
 	reverse_proxy merchant:3004 {
 		lb_try_duration 15s
@@ -211,6 +222,11 @@ http://admin.yupay.uz {
 		Referrer-Policy "strict-origin-when-cross-origin"
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "DENY"
+		# Strict: the Vite bundle, the theme script in apps/admin/index.html by
+		# hash (apps/admin/src/index-html.test.ts pins it), and Telegram's login
+		# widget — whose data-onauth callback is built with new Function, hence
+		# 'unsafe-eval'. Uploads PUT straight to R2 (presigned).
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'sha256-wMBkVjQJXwlatx7TxDRZJIZNyBUjIMdD97DtGokel/0=' https://telegram.org 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' https: data: blob:; connect-src 'self' https://api.yupay.uz https://*.r2.cloudflarestorage.com; frame-src https://oauth.telegram.org; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
 	}
 	# admin is a static Vite build served by an nginx container.
 	reverse_proxy admin:80 {

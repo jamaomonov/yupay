@@ -97,7 +97,6 @@
         <button
           id="boot-retry"
           type="button"
-          onclick="location.reload()"
           style="
             display: none;
             margin-top: 4px;
@@ -129,6 +128,14 @@
       // patience, so the offer to retry arrives while the user is still
       // looking. If React has mounted by then the nodes are gone and these
       // lookups simply find nothing.
+      // The click handler is wired here, not as an `onclick` attribute: the
+      // CSP allows this script by its hash, and hashes never cover handlers.
+      var bootRetry = document.getElementById("boot-retry");
+      if (bootRetry) {
+        bootRetry.addEventListener("click", function () {
+          location.reload();
+        });
+      }
       setTimeout(function () {
         var retry = document.getElementById("boot-retry");
         var hint = document.getElementById("boot-hint");
