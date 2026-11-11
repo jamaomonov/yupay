@@ -1,31 +1,23 @@
 /**
- * How many brands the public catalog carries.
+ * How big the wholesale catalogue is, as the public site states it.
  *
- * Read from the storefront's own catalog endpoint, not from a constant: a
- * number on a landing page that nobody updates becomes a lie at the speed the
- * catalog grows. Cached by the page's `revalidate`, so this is one request an
- * hour and not one per visitor.
+ * Static on purpose. The site used to count `GET /api/v1/catalog/brands`,
+ * which is the **retail** storefront list (28 brands) — the reseller-only
+ * imports never appear there, so the hero undersold the catalogue roughly
+ * thirtyfold. There is no public endpoint for the B2B count, and a landing
+ * should not call a private one.
  *
- * Returns `null` on any failure, and the landing then renders no count at all.
- * That is deliberate — a fallback number would be indistinguishable from a
- * real one, and this page is a claim about our inventory.
+ * Measured on production on 2026-11-11: 878 brands and 10 667 SKUs available
+ * to resellers. The figures are rounded **down** so they stay true while the
+ * catalogue shrinks a little; re-measure and edit them when it moves by a
+ * round step.
  */
+export const CATALOG_BRANDS = 870;
 
-const API = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000").replace(/\/$/, "");
+/** SKUs available to resellers — see {@link CATALOG_BRANDS} for the date and source. */
+export const CATALOG_SKUS = 10_000;
 
-interface BrandListResponse {
-  items?: unknown[];
-}
-
-export async function countBrands(): Promise<number | null> {
-  try {
-    const response = await fetch(`${API}/api/v1/catalog/brands`, {
-      next: { revalidate: 3600 },
-    });
-    if (!response.ok) return null;
-    const body = (await response.json()) as BrandListResponse;
-    return Array.isArray(body.items) ? body.items.length : null;
-  } catch {
-    return null;
-  }
+/** `870` → «870», `10000` → «10 000» / «10,000», in the reader's locale. */
+export function formatCount(locale: string, value: number): string {
+  return new Intl.NumberFormat(locale).format(value);
 }

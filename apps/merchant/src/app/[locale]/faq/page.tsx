@@ -10,7 +10,7 @@ import { PageFrame } from "@/components/landing/PageFrame";
 import { LEAD, PAGE_MAIN } from "@/components/landing/styles";
 import { breadcrumbs, faqPage } from "@/lib/jsonld";
 import { pathFor } from "@/lib/locale-href";
-import { alternates, localeUrl, ogLocale, ROBOTS } from "@/lib/seo";
+import { alternates, localeUrl, ogAlt, ROBOTS, social } from "@/lib/seo";
 
 const PATH = "/faq";
 
@@ -28,21 +28,21 @@ export async function generateMetadata({
     description: t("description"),
     alternates: alternates(locale, PATH),
     robots: ROBOTS,
-    openGraph: {
-      type: "website",
-      siteName: "YuPay",
+    ...social(locale, {
+      alt: await ogAlt(locale),
+      url: localeUrl(locale, PATH),
       title: t("title"),
       description: t("description"),
-      url: localeUrl(locale, PATH),
-      ...ogLocale(locale),
-    },
+    }),
   };
 }
 
-/** All twelve. This is the page that owns the full list — the landing shows
+/** All of them. This is the page that owns the full list — the landing shows
  *  five and links here, `/telegram` and `/api` show their own audience's
- *  subset. */
-const FAQ_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"];
+ *  subset. «Как платить» (13) sits after «Когда я увижу цены» (8), where the
+ *  reader's next question is; it is the one place the public site says how
+ *  prepayment works, and it stays here only (owner decision 2026-11-11). */
+const FAQ_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "13", "9", "10", "11", "12"];
 
 /**
  * `/faq` — every question, in one place.

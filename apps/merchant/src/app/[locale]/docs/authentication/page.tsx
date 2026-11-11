@@ -25,6 +25,7 @@ export async function generateMetadata({
   const t = await getTranslations({ locale, namespace: "merchant.docs" });
   return {
     title: `${t("authTitle")} — YuPay Merchant API`,
+    description: t("metaAuth"),
     alternates: alternates(locale, "/docs/authentication"),
     robots: ROBOTS,
   };

@@ -18,6 +18,7 @@ export function Field({
   autoComplete,
   required = true,
   minLength,
+  maxLength,
 }: {
   label: string;
   type?: "text" | "email" | "password";
@@ -27,6 +28,7 @@ export function Field({
   autoComplete?: string;
   required?: boolean;
   minLength?: number;
+  maxLength?: number;
 }) {
   const id = useId();
   const hintId = `${id}-hint`;
@@ -41,6 +43,7 @@ export function Field({
         value={value}
         required={required}
         minLength={minLength}
+        maxLength={maxLength}
         autoComplete={autoComplete}
         onChange={(event) => {
           onChange(event.target.value);

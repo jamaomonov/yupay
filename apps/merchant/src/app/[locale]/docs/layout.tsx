@@ -4,6 +4,7 @@ import type { NavGroup } from "@/components/docs/DocsShell";
 
 import { DocsShell } from "@/components/docs/DocsShell";
 import { contract, endpoints } from "@/lib/contract";
+import { docsLabels } from "@/lib/docs-labels";
 import { pathFor } from "@/lib/locale-href";
 
 /**
@@ -24,6 +25,7 @@ export default async function DocsLayout({
   const { locale } = await params;
   setRequestLocale(locale);
   const t = await getTranslations("merchant.docs");
+  const labels = await docsLabels(locale);
 
   const guides: NavGroup = {
     title: t("groupStart"),
@@ -40,18 +42,18 @@ export default async function DocsLayout({
   // reads in the order somebody integrates rather than alphabetically.
   const byTag = new Map<string, NavGroup>();
   for (const tag of contract().tags ?? []) {
-    byTag.set(tag.name, { title: tag.name, items: [] });
+    byTag.set(tag.name, { title: labels.tag(tag.name), items: [] });
   }
   for (const endpoint of endpoints()) {
-    const group = byTag.get(endpoint.tag) ?? { title: endpoint.tag, items: [] };
+    const group = byTag.get(endpoint.tag) ?? { title: labels.tag(endpoint.tag), items: [] };
     group.items.push({
       href: pathFor(locale, `/docs/api/${endpoint.id}`),
-      // The path, not the summary. A full English sentence truncates to
-      // nothing useful in a 252px rail, and the path is what somebody
-      // integrating is scanning for. The summary rides along as the title
-      // attribute and as the second half of the search predicate.
+      // The path, not the title. A full sentence truncates to nothing useful
+      // in a 252px rail, and the path is what somebody integrating is
+      // scanning for. The localised title rides along as the title attribute
+      // and as the second half of the search predicate.
       label: endpoint.path.replace("/merchant/v1", "") || "/",
-      title: endpoint.operation.summary ?? endpoint.path,
+      title: labels.operation(endpoint),
       method: endpoint.method,
     });
     byTag.set(endpoint.tag, group);

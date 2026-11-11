@@ -28,6 +28,7 @@ export async function generateMetadata({
   const t = await getTranslations({ locale, namespace: "merchant.docs" });
   return {
     title: `${t("quickTitle")} — YuPay Merchant API`,
+    description: t("metaQuickstart"),
     alternates: alternates(locale, "/docs/quickstart"),
     robots: ROBOTS,
   };

@@ -9,6 +9,7 @@ import { Prose } from "@/components/docs/Prose";
 import { JsonLd } from "@/components/JsonLd";
 import { routing } from "@/i18n/routing";
 import { contract, endpoints } from "@/lib/contract";
+import { docsLabels } from "@/lib/docs-labels";
 import { techArticle } from "@/lib/jsonld";
 import { pathFor } from "@/lib/locale-href";
 import { alternates, dayStamp, localeUrl, ROBOTS } from "@/lib/seo";
@@ -34,6 +35,7 @@ export async function generateMetadata({
     // literal string, and every other docs page's suffix formula would
     // double it up into "YuPay Merchant API — YuPay Merchant API".
     title: t("introTitle"),
+    description: t("metaIntro"),
     alternates: alternates(locale, "/docs"),
     robots: ROBOTS,
   };
@@ -47,6 +49,7 @@ export default async function IntroductionPage({
   const { locale } = await params;
   setRequestLocale(locale);
   const t = await getTranslations("merchant.docs");
+  const labels = await docsLabels(locale);
   const doc = contract();
 
   return (
@@ -91,9 +94,7 @@ export default async function IntroductionPage({
                   <span className="text-tx-dim w-12 shrink-0 font-mono text-[11px] font-bold">
                     {endpoint.method}
                   </span>
-                  <span className="text-sm font-medium">
-                    {endpoint.operation.summary ?? endpoint.path}
-                  </span>
+                  <span className="text-sm font-medium">{labels.operation(endpoint)}</span>
                   <code className="text-tx-dim font-mono text-xs">{endpoint.path}</code>
                 </Link>
               </li>

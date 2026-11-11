@@ -11,7 +11,7 @@ import { PageFrame } from "@/components/landing/PageFrame";
 import { LEAD, PAGE_MAIN, SECTION_HEADING } from "@/components/landing/styles";
 import { breadcrumbs, faqPage, techArticle } from "@/lib/jsonld";
 import { pathFor } from "@/lib/locale-href";
-import { alternates, dayStamp, localeUrl, ogLocale, OPENAPI_URL, ROBOTS } from "@/lib/seo";
+import { alternates, dayStamp, localeUrl, ogAlt, OPENAPI_URL, ROBOTS, social } from "@/lib/seo";
 
 const PATH = "/api";
 
@@ -36,14 +36,12 @@ export async function generateMetadata({
       types: { "application/json": OPENAPI_URL },
     },
     robots: ROBOTS,
-    openGraph: {
-      type: "website",
-      siteName: "YuPay",
+    ...social(locale, {
+      alt: await ogAlt(locale),
+      url: localeUrl(locale, PATH),
       title: t("title"),
       description: t("description"),
-      url: localeUrl(locale, PATH),
-      ...ogLocale(locale),
-    },
+    }),
   };
 }
 
@@ -61,7 +59,7 @@ const ENDPOINTS = [
 ];
 
 /** The four a developer asks. The channel-admin questions live on
- *  `/telegram`; `/faq` carries all twelve. */
+ *  `/telegram`; `/faq` carries all of them. */
 const FAQ_KEYS = ["3", "4", "10", "12"];
 
 /**

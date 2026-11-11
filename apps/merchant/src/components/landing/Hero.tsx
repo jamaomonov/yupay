@@ -3,7 +3,7 @@ import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
 import { CabinetMock } from "@/components/landing/CabinetMock";
-import { countBrands } from "@/lib/brands";
+import { CATALOG_BRANDS, CATALOG_SKUS, formatCount } from "@/lib/brands";
 import { pathFor } from "@/lib/locale-href";
 
 /**
@@ -13,9 +13,11 @@ import { pathFor } from "@/lib/locale-href";
  * Extracted from `page.tsx` when the FAQ moved out too — the landing had
  * grown past the 300-line soft limit AGENTS.md §6 sets for TS files, and the
  * hero is the one block with no relationship to anything below it. It fetches
- * its own strings and its own brand count rather than taking them as props:
- * the count is only ever shown here, and a prop-drilled `brands` would make
- * the page await a number it does not use.
+ * its own strings rather than taking them as props.
+ *
+ * The catalogue size is a dated constant (`lib/brands.ts`), not a fetch: the
+ * only public count is the retail list, which undersold the wholesale
+ * catalogue roughly thirtyfold.
  */
 export async function Hero({ locale }: { locale: string }) {
   const t = await getTranslations("merchant.landing");
@@ -23,7 +25,6 @@ export async function Hero({ locale }: { locale: string }) {
   // cabinet's own — renaming a section there renames it in the picture.
   const tCabinet = await getTranslations("merchant.cabinet");
   const tOrders = await getTranslations("merchant.orders");
-  const brands = await countBrands();
 
   return (
     <section className="grid items-center gap-10 lg:grid-cols-[1fr_24rem]">
@@ -51,14 +52,16 @@ export async function Hero({ locale }: { locale: string }) {
           </a>
         </div>
         <div className="text-tx-dim mt-7 flex flex-wrap gap-x-6 gap-y-2 text-[12.5px]">
-          {/* Brands, never SKUs — the landing-copy rule. Omitted entirely
-              when the catalog cannot be reached: a made-up number on a
-              page about wholesale is worse than no number. */}
-          {brands !== null && (
-            <span>
-              <span className="text-primary-ink font-mono">{brands}+</span> {t("metricBrands")}
-            </span>
-          )}
+          <span>
+            <span className="text-primary-ink font-mono">
+              {formatCount(locale, CATALOG_BRANDS)}+
+            </span>{" "}
+            {t("metricBrands")}
+          </span>
+          <span>
+            <span className="text-primary-ink font-mono">{formatCount(locale, CATALOG_SKUS)}+</span>{" "}
+            {t("metricSkus")}
+          </span>
           <span>
             <span aria-hidden="true" className="text-primary-ink">
               ●

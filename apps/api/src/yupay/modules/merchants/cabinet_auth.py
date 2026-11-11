@@ -52,7 +52,7 @@ log = get_logger("yupay.merchants.cabinet_auth")
 #: The offer version a registration records. Bumped when the document changes;
 #: an existing merchant is not migrated, because what they accepted is what
 #: they accepted.
-OFFER_VERSION = "2026-09-draft"
+OFFER_VERSION = "2026-11-11"
 
 #: Argon2 runs on a password nobody registered, so the answer to "does this
 #: address exist" costs the same either way. A constant rather than a literal

@@ -23,6 +23,7 @@ export async function generateMetadata({
   const t = await getTranslations({ locale, namespace: "merchant.docs" });
   return {
     title: `${t("webhooksTitle")} — YuPay Merchant API`,
+    description: t("metaWebhooks"),
     alternates: alternates(locale, "/docs/webhooks"),
     robots: ROBOTS,
   };

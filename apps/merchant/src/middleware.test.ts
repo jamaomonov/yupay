@@ -68,6 +68,15 @@ describe("the matcher leaves the new SEO routes alone", () => {
     expect(MATCHER.test("/api")).toBe(true);
     expect(MATCHER.test("/uz/api")).toBe(true);
   });
+
+  test("the link-preview cards bypass it, and only they do", () => {
+    // `/og/<locale>` is a Route Handler outside `[locale]`: rewritten under a
+    // locale it would 404, and a chat crawler would get no picture.
+    for (const path of ["/og/ru", "/og/en", "/og/uz"]) {
+      expect(MATCHER.test(path)).toBe(false);
+    }
+    expect(MATCHER.test("/ogre")).toBe(true);
+  });
 });
 
 /**

@@ -9,6 +9,7 @@ import { SchemaTable } from "@/components/docs/SchemaTable";
 import { JsonLd } from "@/components/JsonLd";
 import { routing } from "@/i18n/routing";
 import { contract, endpoints } from "@/lib/contract";
+import { docsLabels } from "@/lib/docs-labels";
 import { exampleJson } from "@/lib/example";
 import { techArticle } from "@/lib/jsonld";
 import { pathFor } from "@/lib/locale-href";
@@ -30,8 +31,10 @@ export async function generateMetadata({
   const { locale, name } = await params;
   const node = contract().components.schemas[name];
   if (node === undefined) return {};
+  const t = await getTranslations({ locale, namespace: "merchant.docs" });
   return {
     title: `${name} — YuPay Merchant API`,
+    description: t("metaSchema", { name }),
     alternates: alternates(locale, `/docs/schemas/${name}`),
     robots: ROBOTS,
   };
@@ -45,6 +48,7 @@ export default async function SchemaPage({
   const { locale, name } = await params;
   setRequestLocale(locale);
   const t = await getTranslations("merchant.docs");
+  const labels = await docsLabels(locale);
 
   const node = contract().components.schemas[name];
   if (node === undefined) notFound();
@@ -102,7 +106,7 @@ export default async function SchemaPage({
                   href={pathFor(locale, `/docs/api/${endpoint.id}`)}
                   className="underline-offset-4 hover:underline"
                 >
-                  {endpoint.operation.summary ?? endpoint.path}
+                  {labels.operation(endpoint)}
                 </a>
                 <code className="text-tx-dim font-mono text-xs">{endpoint.path}</code>
               </li>

@@ -1,3 +1,4 @@
+import { CATALOG_BRANDS, CATALOG_SKUS, formatCount } from "@/lib/brands";
 import { OPENAPI_URL, SITE } from "@/lib/seo";
 
 /**
@@ -14,12 +15,10 @@ import { OPENAPI_URL, SITE } from "@/lib/seo";
 export const revalidate = 3600;
 
 /**
- * The brands the wholesale catalog carries. `lib/brands.ts` exposes only a
- * count (`countBrands()`), fetched from the catalog API — not names, and
- * adding a second live fetch just for this rarely-hit route is not worth
- * it, so the list is hand-kept here, same treatment the docs give the
- * error-code vocabulary. Keep it in step with the landing's own catalog
- * copy (`merchant.landing.sectionTopupsBody` / `sectionVouchersBody`).
+ * The best-known brands of the wholesale catalogue, hand-kept — the catalogue
+ * itself is behind sign-up. `lib/brands.ts` holds the dated size of the whole
+ * catalogue, printed below. Keep the list in step with the landing's own
+ * catalogue copy (`merchant.landing.sectionTopupsBody` / `sectionVouchersBody`).
  */
 const BRANDS = [
   "PUBG Mobile UC",
@@ -45,17 +44,19 @@ export function GET(): Response {
   const lines = [
     "# YuPay Reseller",
     "",
-    "> Обновлено: 2026-09.",
+    "> Обновлено: 2026-11-11.",
     "",
-    `> YuPay Reseller (${SITE.replace("https://", "")}) — оптовая закупка пополнений игр, ваучеров и подарочных карт для перепродажи. Аудитория: владельцы Telegram-каналов и магазинов в Узбекистане, России и СНГ, а также разработчики, которым нужен API автоматического пополнения. Регистрация по e-mail, оплата с депозита, ID игрока проверяется до оплаты и возвращает никнейм, выдача автоматическая — обычно 1–2 минуты, при неудачной выдаче списание возвращается автоматически. Заказ делается из кабинета или через подписанный HTTP API. Это НЕ партнёрская программа partners.yupay.uz (там вознаграждение с заказов приведённых покупателей).`,
+    `> YuPay Reseller (${SITE.replace("https://", "")}) — оптовая закупка пополнений игр, ваучеров и подарочных карт для перепродажи. Аудитория: владельцы Telegram-каналов и магазинов в Узбекистане, России и СНГ, а также разработчики, которым нужен API автоматического пополнения. Регистрация по e-mail, ID игрока проверяется до оплаты и возвращает никнейм, выдача автоматическая — обычно 1–2 минуты, если не выдалось — деньги возвращаются автоматически. Заказ делается из кабинета или через HTTP API с одним ключом (Authorization: Bearer). Это НЕ партнёрская программа partners.yupay.uz (там вознаграждение с заказов приведённых покупателей).`,
     "",
     "## Что можно закупать",
-    `- ${BRANDS}`,
+    `- Каталог: ${formatCount("ru", CATALOG_BRANDS)}+ брендов, ${formatCount("ru", CATALOG_SKUS)}+ позиций — пополнения игр, подарочные карты и ваучеры, Telegram Stars и Premium, Steam.`,
+    `- В том числе: ${BRANDS}`,
+    "- Как платить: предоплатой в кабинете — в сумах или USDT.",
     "",
     "## Для разработчиков",
     `- [Обзор API](${SITE}/api)`,
     `- [Быстрый старт](${SITE}/docs/quickstart)`,
-    `- [Авторизация: HMAC-SHA256](${SITE}/docs/authentication)`,
+    `- [Авторизация: Authorization: Bearer ypk_…](${SITE}/docs/authentication)`,
     `- [Вебхуки](${SITE}/docs/webhooks)`,
     `- [Ошибки: RFC 7807](${SITE}/docs/errors)`,
     `- OpenAPI 3.1: ${OPENAPI_URL}`,
@@ -64,6 +65,7 @@ export function GET(): Response {
     "## Ключевые страницы",
     `- [Для Telegram-каналов](${SITE}/telegram)`,
     `- [Вопросы](${SITE}/faq)`,
+    `- [Публичная оферта](${SITE}/offer)`,
     "",
     "## Заметки",
     "- Языки: ru (основной), uz (латиница), en — у каждой страницы hreflang.",

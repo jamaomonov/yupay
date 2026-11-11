@@ -6,7 +6,7 @@ import { getMessages, getTranslations, setRequestLocale } from "next-intl/server
 import type { Metadata } from "next";
 
 import { routing } from "@/i18n/routing";
-import { alternates, localeUrl, ogLocale, SITE } from "@/lib/seo";
+import { alternates, ogAlt, SITE, social } from "@/lib/seo";
 import { THEME_BOOTSTRAP } from "@/lib/theme";
 
 import "../globals.css";
@@ -57,12 +57,11 @@ export async function generateMetadata({
     description: t("description"),
     // Absolute canonical + hreflang (incl. x-default), ru without a prefix.
     alternates: alternates(locale),
-    openGraph: {
-      type: "website",
-      siteName: "YuPay",
-      url: localeUrl(locale),
-      ...ogLocale(locale),
-    },
+    // Image, site name and locale for every page that does not set its own
+    // `openGraph`. No `url` here: a docs page inheriting it would announce
+    // the home page as its own address. Pages that set one go through
+    // `social()` too, so none of them loses the image.
+    ...social(locale, { alt: await ogAlt(locale) }),
     // No blanket `robots` here any more: the cabinet layout sets `NOINDEX`,
     // the auth-screen layouts do too (see `login/layout.tsx` and its
     // siblings), and every indexable page sets `ROBOTS` itself — see

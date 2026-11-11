@@ -12,6 +12,7 @@ import { SchemaTable } from "@/components/docs/SchemaTable";
 import { JsonLd } from "@/components/JsonLd";
 import { routing } from "@/i18n/routing";
 import { apiBaseUrl, bodySchema, endpoints, typeLabel } from "@/lib/contract";
+import { docsLabels } from "@/lib/docs-labels";
 import { exampleJson } from "@/lib/example";
 import { techArticle } from "@/lib/jsonld";
 import { LANGUAGES, sampleFor } from "@/lib/samples";
@@ -35,9 +36,11 @@ export async function generateMetadata({
   const { locale, operation: slug } = await params;
   const endpoint = endpoints().find((entry) => entry.id === slug);
   if (endpoint === undefined) return {};
-  const title = endpoint.operation.summary ?? endpoint.path;
+  const title = (await docsLabels(locale)).operation(endpoint);
+  const t = await getTranslations({ locale, namespace: "merchant.docs" });
   return {
     title: `${title} — YuPay Merchant API`,
+    description: t("metaOperation", { method: endpoint.method, path: endpoint.path, title }),
     alternates: alternates(locale, `/docs/api/${slug}`),
     robots: ROBOTS,
   };
@@ -81,6 +84,7 @@ export default async function OperationPage({
   const endpoint = endpoints().find((entry) => entry.id === slug);
   if (endpoint === undefined) notFound();
   const { method, path, operation } = endpoint;
+  const title = (await docsLabels(locale)).operation(endpoint);
 
   const parameters = operation.parameters ?? [];
   const query = parameters.filter((p) => p.in === "query");
@@ -124,16 +128,14 @@ export default async function OperationPage({
     <div className="mx-auto grid w-full max-w-[1400px] gap-10 px-4 py-8 sm:px-8 lg:grid-cols-[minmax(0,1fr)_28rem]">
       <JsonLd
         data={techArticle({
-          headline: operation.summary ?? path,
+          headline: title,
           ...(operation.description !== undefined ? { description: operation.description } : {}),
           url: localeUrl(locale, `/docs/api/${slug}`),
           dateModified: dayStamp().toISOString(),
         })}
       />
       <article className="min-w-0">
-        <h1 className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">
-          <span lang="en">{operation.summary ?? path}</span>
-        </h1>
+        <h1 className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">{title}</h1>
 
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <span

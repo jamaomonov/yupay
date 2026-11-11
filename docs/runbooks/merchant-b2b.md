@@ -305,6 +305,21 @@ card, and the deposit is credited automatically — see
 [p2p-deposit.md](./p2p-deposit.md) and ADR-0094. With P2P `off` for a merchant,
 or for an unmatched transfer, an admin still credits by hand.
 
+### Two hand-kept facts on the public site
+
+- **The public offer** is `docs/legal/merchant-offer.ru.md`, rendered at
+  `/offer` (final since the revision of 11.11.2026; RU text, EN/UZ pages say
+  so). The page shows the «Редакция от …» line from that file. Changing the
+  text means a **new revision**: a new date in the file _and_ a new
+  `OFFER_VERSION` in `apps/api/src/yupay/modules/merchants/cabinet_auth.py`,
+  which is what a registration records and what Settings shows the reseller.
+  Never edit an accepted revision in place.
+- **The catalogue size** — «870+ брендов · 10 000+ позиций» in the hero, the
+  link-preview card (`/og/<locale>`) and `llms.txt` — is two constants in
+  `apps/merchant/src/lib/brands.ts`, measured on production 2026-11-11 (878
+  brands, 10 667 SKUs) and rounded down. Re-measure and edit them when the
+  catalogue moves by a round step; nothing updates them on its own.
+
 ### It needs three settings before it works at all
 
 ```bash

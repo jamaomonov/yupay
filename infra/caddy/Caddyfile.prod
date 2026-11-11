@@ -206,7 +206,8 @@ http://reseller.yupay.uz {
 		# keeps 'unsafe-inline' (no nonce middleware); what this still buys is
 		# no script from any other host, no plugins, no <base> hijack, and
 		# fetches only to our API.
-		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' https: data: blob:; connect-src 'self' https://api.yupay.uz; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+		# Cloudflare Web Analytics (injected by the proxy) needs its beacon and endpoint.
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' https: data: blob:; connect-src 'self' https://api.yupay.uz https://cloudflareinsights.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
 	}
 	reverse_proxy merchant:3004 {
 		lb_try_duration 15s

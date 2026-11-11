@@ -1,4 +1,5 @@
 import { LOCALES } from "@yupay/i18n";
+import { getTranslations } from "next-intl/server";
 
 import { pathFor } from "./locale-href";
 
@@ -47,14 +48,17 @@ const OG_LOCALE: Record<string, string> = {
   uz: "uz_UZ",
 };
 
-/** Absolute URL for a locale + path. ru is the default locale → no prefix. */
+/**
+ * Absolute URL for a locale + path. ru is the default locale → no prefix.
+ *
+ * The bare apex (ru home) is `https://reseller.yupay.uz` with **no** trailing
+ * slash. It used to carry one, but Next's metadata resolver strips it from
+ * `canonical` and hreflang, so the sitemap said `…uz/` while every page said
+ * `…uz`. Both mean the same URL; one spelling everywhere is the point.
+ */
 export function localeUrl(locale: string, path = ""): string {
   const base = locale === "ru" ? "" : `/${locale}`;
-  const url = `${SITE}${base}${path}`;
-  // The bare apex (ru home) carries the canonical trailing slash, matching
-  // how search engines normalise the root — same rule the storefront's own
-  // `localeUrl` follows.
-  return url === SITE ? `${SITE}/` : url;
+  return `${SITE}${base}${path}`;
 }
 
 /**
@@ -71,6 +75,63 @@ export function alternates(locale: string, path = "") {
   for (const l of LOCALES) languages[l] = localeUrl(l, path);
   languages["x-default"] = localeUrl("ru", path);
   return { canonical: localeUrl(locale, path), languages };
+}
+
+/** Size of the generated link preview — the size every chat client expects. */
+export const OG_IMAGE_SIZE = { width: 1200, height: 630 } as const;
+
+/**
+ * The link preview for a locale: `/og/<locale>` (`app/og/[locale]/route.tsx`).
+ *
+ * Outside `[locale]` and outside the i18n middleware, so the URL never
+ * redirects — `ru` has no path prefix on the site, and a chat crawler should
+ * not have to follow a 308 to reach a picture.
+ */
+export function ogImage(locale: string, alt: string) {
+  return { url: `${SITE}/og/${locale}`, ...OG_IMAGE_SIZE, alt, type: "image/png" };
+}
+
+/** The preview's alt text: the hero line it draws, in the page's language. */
+export async function ogAlt(locale: string): Promise<string> {
+  const t = await getTranslations({ locale, namespace: "merchant.landing" });
+  return `YuPay Reseller — ${t("heading")}`;
+}
+
+/**
+ * Open Graph + Twitter fields for a page.
+ *
+ * Every page that sets `openGraph` must go through this: Next merges metadata
+ * per top-level key, so a page's own `openGraph` replaces the layout's whole
+ * object — images included — and a page that forgot them shared as a bare
+ * link.
+ */
+export function social(
+  locale: string,
+  {
+    alt,
+    url,
+    title,
+    description,
+  }: { alt: string; url?: string; title?: string; description?: string },
+): Pick<Metadata, "openGraph" | "twitter"> {
+  const image = ogImage(locale, alt);
+  return {
+    openGraph: {
+      type: "website",
+      siteName: "YuPay",
+      ...(url !== undefined ? { url } : {}),
+      ...(title !== undefined ? { title } : {}),
+      ...(description !== undefined ? { description } : {}),
+      images: [image],
+      ...ogLocale(locale),
+    },
+    twitter: {
+      card: "summary_large_image",
+      ...(title !== undefined ? { title } : {}),
+      ...(description !== undefined ? { description } : {}),
+      images: [image],
+    },
+  };
 }
 
 export function ogLocale(locale: string): { locale: string; alternateLocale: string[] } {
@@ -105,8 +166,8 @@ export function dayStamp(): Date {
  * path list — so the two are checked separately by `seo.test.ts`: one test
  * asserts every entry here has a real page file, another asserts every link
  * `llms.txt` prints resolves to one too. `/telegram`, `/api` and `/faq` are
- * the intent pages — one per way somebody arrives. `/offer` is deliberately
- * absent: it is a draft (see its `NOINDEX`), not a document to advertise.
+ * the intent pages — one per way somebody arrives. `/offer` is the public
+ * offer a reseller accepts at sign-up (final since 2026-11-11, indexed).
  * The cabinet and every auth screen are deliberately absent too; the same
  * test pins that.
  */
@@ -120,4 +181,5 @@ export const SEO_PATHS: string[] = [
   "/docs/authentication",
   "/docs/webhooks",
   "/docs/errors",
+  "/offer",
 ];

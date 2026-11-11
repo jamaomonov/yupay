@@ -25,7 +25,7 @@ import { PageFrame } from "@/components/landing/PageFrame";
 import { CARD, PAGE_MAIN, SECTION_HEADING } from "@/components/landing/styles";
 import { faqPage, organization, service, website } from "@/lib/jsonld";
 import { pathFor } from "@/lib/locale-href";
-import { alternates, ROBOTS, SITE } from "@/lib/seo";
+import { alternates, localeUrl, ogAlt, ROBOTS, SITE, social } from "@/lib/seo";
 
 export const revalidate = 3600;
 
@@ -41,6 +41,12 @@ export async function generateMetadata({
     description: t("description"),
     alternates: alternates(locale, ""),
     robots: ROBOTS,
+    ...social(locale, {
+      alt: await ogAlt(locale),
+      url: localeUrl(locale),
+      title: t("title"),
+      description: t("description"),
+    }),
   };
 }
 
@@ -146,30 +152,19 @@ export default async function Landing({ params }: { params: Promise<{ locale: st
           </ol>
         </section>
 
-        <section className="mt-20">
+        {/* `id="catalog"`: the 404 page links here — the public site has no
+            catalogue page of its own, the full list opens after sign-up. */}
+        <section id="catalog" className="mt-20 scroll-mt-8">
           <h2 className={SECTION_HEADING}>{t("sectionsHeading")}</h2>
-          <div className="mt-6 grid gap-4 sm:grid-cols-3">
+          <div className="mt-6 grid gap-4 sm:grid-cols-2">
             {[
-              { name: t("sectionTopups"), body: t("sectionTopupsBody"), soon: false },
-              { name: t("sectionVouchers"), body: t("sectionVouchersBody"), soon: false },
-              { name: t("sectionGifts"), body: t("sectionGiftsBody"), soon: true },
-            ].map(({ name, body, soon }) => (
-              // No `opacity` on the "soon" card: it multiplies against
-              // `tx-dim`/`tx-mute`, which pass AA on their own, and dropped
-              // the badge to 2.74:1 and the copy to 3.96:1. The badge and the
-              // dimmer ground already say "not yet".
-              <div
-                key={name}
-                className={`rounded-xl border p-5 ${soon ? "border-border bg-card-2" : "border-border bg-card"}`}
-              >
-                <p className="flex flex-wrap items-center gap-2.5 font-semibold">
-                  {name}
-                  {soon && (
-                    <span className="border-border text-tx-dim rounded-full border px-2 py-0.5 text-[10.5px] font-bold tracking-[0.06em]">
-                      {t("soon")}
-                    </span>
-                  )}
-                </p>
+              { name: t("sectionTopups"), body: t("sectionTopupsBody") },
+              { name: t("sectionVouchers"), body: t("sectionVouchersBody") },
+              { name: t("sectionTelegram"), body: t("sectionTelegramBody") },
+              { name: t("sectionSteam"), body: t("sectionSteamBody") },
+            ].map(({ name, body }) => (
+              <div key={name} className="border-border bg-card rounded-xl border p-5">
+                <p className="font-semibold">{name}</p>
                 <p className="text-tx-mute mt-2 text-[13px] leading-relaxed">{body}</p>
               </div>
             ))}
@@ -223,14 +218,24 @@ export default async function Landing({ params }: { params: Promise<{ locale: st
 
         <section className="mt-20">
           <h2 className={SECTION_HEADING}>{t("trustHeading")}</h2>
-          {/* Two links, no paragraph: the retail store is the claim, and a
-              sentence explaining that it is the same catalog said nothing the
-              link does not. */}
-          <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-[13px]">
+          {/* Facts a reseller can check, and nothing else: no legal details
+              (the owner's call), no figures we do not publish, no reviews we
+              do not have. Each line is something the product already does. */}
+          <ul className="mt-6 grid gap-3 sm:grid-cols-2">
+            {(
+              ["trustWhat", "trustPay", "trustDelivery", "trustCheck", "trustSupport"] as const
+            ).map((key) => (
+              <li key={key} className="text-tx-mute flex gap-2.5 text-sm leading-relaxed">
+                <Check size={16} aria-hidden="true" className="text-primary-ink mt-0.5 shrink-0" />
+                {t(key)}
+              </li>
+            ))}
+          </ul>
+          <div className="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-[13px]">
             <a href="https://yupay.uz" className="text-primary-ink font-semibold">
               {t("trustRetail")}
             </a>
-            <Link href={pathFor(locale, "/offer")} className="text-tx-mute">
+            <Link href={pathFor(locale, "/offer")} className="text-primary-ink font-semibold">
               {t("trustOffer")}
             </Link>
           </div>

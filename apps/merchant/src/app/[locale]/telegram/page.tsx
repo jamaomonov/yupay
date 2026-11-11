@@ -10,7 +10,7 @@ import { PageFrame } from "@/components/landing/PageFrame";
 import { LEAD, PAGE_MAIN, SECTION_HEADING } from "@/components/landing/styles";
 import { breadcrumbs, faqPage } from "@/lib/jsonld";
 import { pathFor } from "@/lib/locale-href";
-import { alternates, localeUrl, ogLocale, ROBOTS } from "@/lib/seo";
+import { alternates, localeUrl, ogAlt, ROBOTS, social } from "@/lib/seo";
 
 const PATH = "/telegram";
 
@@ -30,19 +30,17 @@ export async function generateMetadata({
     description: t("description"),
     alternates: alternates(locale, PATH),
     robots: ROBOTS,
-    openGraph: {
-      type: "website",
-      siteName: "YuPay",
+    ...social(locale, {
+      alt: await ogAlt(locale),
+      url: localeUrl(locale, PATH),
       title: t("title"),
       description: t("description"),
-      url: localeUrl(locale, PATH),
-      ...ogLocale(locale),
-    },
+    }),
   };
 }
 
 /**
- * The eight questions this page shows. Not all twelve: `/faq` carries the
+ * The eight questions this page shows. Not all of them: `/faq` carries the
  * full set, and two pages repeating the same list verbatim compete for the
  * same snippet. These are the ones a channel admin asks — pricing access,
  * wrong IDs, stuck orders, working without code — and the developer-only

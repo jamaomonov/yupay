@@ -45,8 +45,8 @@ const NAV: { key: keyof CabinetMockLabels; icon: LucideIcon }[] = [
  * write code, and it is a drawing and nothing else: no fetch, no prices, no
  * counts. A mock-up that shows numbers is read as a claim about the catalog,
  * and a claim nobody updates is a lie by the time the catalog moves — which is
- * why `countBrands()` exists for the one number on this page and why there is
- * not a second source of them here.
+ * why the catalogue size lives once, dated, in `lib/brands.ts`, and there is
+ * not a second source of numbers here.
  *
  * The sidebar icons are the ones those screens really carry (`Shell.tsx` and
  * the catalog's own empty state), so the picture stays a picture of the

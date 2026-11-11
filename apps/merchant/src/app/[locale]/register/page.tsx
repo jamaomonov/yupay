@@ -79,7 +79,18 @@ export default function RegisterPage() {
     >
       <form onSubmit={submit} noValidate={false}>
         <FormError message={error} />
-        <Field label={t("company")} value={title} onChange={setTitle} autoComplete="organization" />
+        {/* «Магазин или канал», not «компания»: the FAQ promises no company is
+            needed, and a Telegram admin stalled on the old label. The API
+            still wants 2–128 characters, so the browser enforces the same. */}
+        <Field
+          label={t("company")}
+          value={title}
+          onChange={setTitle}
+          hint={t("companyHint")}
+          autoComplete="organization"
+          minLength={2}
+          maxLength={128}
+        />
         <Field
           label={t("email")}
           type="email"

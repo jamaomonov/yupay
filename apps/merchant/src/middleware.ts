@@ -74,9 +74,11 @@ export default function middleware(req: NextRequest): NextResponse {
  * canonical 404'd while `/uz/api` and `/en/api` answered 200: the same
  * failure the site root had before this file existed.
  *
- * If a Route Handler is ever added to this app, put its own prefix back in
- * the lookahead — not the word `api`, which is now a page.
+ * A Route Handler puts its own prefix in the lookahead — not the word `api`,
+ * which is now a page. `og/` is the first: the link-preview cards
+ * (`app/og/[locale]/route.tsx`), which must answer at the same URL for every
+ * locale instead of being rewritten under `[locale]`.
  */
 export const config = {
-  matcher: ["/((?!_next|_vercel|.*\\..*).*)"],
+  matcher: ["/((?!_next|_vercel|og/|.*\\..*).*)"],
 };
