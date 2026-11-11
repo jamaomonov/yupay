@@ -19,6 +19,7 @@ from sqlalchemy import (
     Integer,
     Numeric,
     String,
+    UniqueConstraint,
     text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, UUID
@@ -48,6 +49,12 @@ class UsdtSettings(Base):
     #: Highest block timestamp (ms) the poller has journaled. The next poll
     #: starts ten minutes before it; a new address resets it to "now".
     cursor_block_ms: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    #: Resume at the cursor itself rather than ten minutes before it: set after
+    #: a poll hit TronGrid's page cap, and after an address change (so the new
+    #: address's earlier history is never read). See ``usdt.poll``.
+    cursor_exact: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
     updated_by: Mapped[str | None] = mapped_column(UUID(as_uuid=False), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
@@ -117,7 +124,10 @@ class UsdtIncoming(Base):
     __tablename__ = "usdt_incoming"
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True)
-    tx_id: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    #: Not unique alone: one transaction can carry several USDT events to us
+    #: (a batch payout). TronGrid gives no event index, so an event is
+    #: ``(tx_id, from_address, amount_usdt)`` — see ``uq_usdt_incoming_event``.
+    tx_id: Mapped[str] = mapped_column(String(64), nullable=False)
     from_address: Mapped[str] = mapped_column(String(34), nullable=False)
     to_address: Mapped[str] = mapped_column(String(34), nullable=False)
     amount_usdt: Mapped[Decimal] = mapped_column(Numeric(24, 6), nullable=False)
@@ -135,6 +145,7 @@ class UsdtIncoming(Base):
         CheckConstraint(
             "result IN ('matched','unmatched','ignored','manual','dismissed')", name="result"
         ),
+        UniqueConstraint("tx_id", "from_address", "amount_usdt", name="uq_usdt_incoming_event"),
         Index("ix_usdt_incoming_block_at", "block_at"),
         Index("ix_usdt_incoming_result", "result"),
     )

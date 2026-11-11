@@ -4,8 +4,8 @@ The amount a reseller sends is the only thing that ties a chain transfer back to
 them, so two open reservations must never share an amount. That rule lives in
 the partial unique index ``uq_usdt_reservations_open_amount`` (``holds_amount``
 is true while pending and through quarantine), not in a read-then-write here:
-two requests racing for 1000.00 both try the insert, one wins, the other bumps
-to 1000.01. Same shape as ``p2p.reservations``, with one address instead of
+two requests racing for the same 1000.37 both try the insert, one wins, the
+other takes another offset. Same shape as ``p2p.reservations``, with one address instead of
 cards and no exchange rate (1 USDT = 1 USD).
 """
 
@@ -17,7 +17,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Final
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,6 +25,7 @@ from yupay.core.clock import now
 from yupay.core.errors import (
     ConflictError,
     NotFoundError,
+    RateLimitedError,
     UpstreamUnavailableError,
     ValidationError,
 )
@@ -41,8 +42,16 @@ log = get_logger("yupay.usdt.reservations")
 RESERVATION_TTL: Final = timedelta(minutes=60)
 QUARANTINE: Final = timedelta(minutes=60)
 CENT: Final = Decimal("0.01")
-#: Bump up to +0.99: a reseller asked for 1000 is never told to send 1001.
+#: Random cents added to every amount, +0.01…+0.99: a reseller asked for 1000
+#: is never told to send 1001, and never told to send a round 1000.00 either.
+#: A round amount is what someone sends without reserving, or after an
+#: exchange rounded it — and whoever held it would be credited for it
+#: (security review 2026-11-11). Never ``.00``, so that cannot match.
 MAX_BUMP_CENTS: Final = 99
+#: Reservations one merchant may open per hour. Each closed one holds its
+#: amount for an hour, so without a cap one reseller could reserve-and-cancel
+#: every cent of a popular amount and lock everyone else out.
+HOURLY_LIMIT: Final = 10
 _OPEN_AMOUNT_INDEX: Final = "uq_usdt_reservations_open_amount"
 _RACE_INDEXES: Final = ("uq_usdt_reservations_one_pending", "uq_usdt_reservations_idem")
 
@@ -68,7 +77,7 @@ def _same_intent(prior: UsdtReservation, amount: Decimal) -> UsdtReservation:
             another amount.
     """
     gap = prior.amount_usdt - amount
-    if not Decimal(0) <= gap <= CENT * MAX_BUMP_CENTS:
+    if not CENT <= gap <= CENT * MAX_BUMP_CENTS:
         raise ConflictError(
             "this Idempotency-Key was used for another amount", code="usdt_idempotency_mismatch"
         )
@@ -144,6 +153,26 @@ async def _after_race(
     return None
 
 
+def _offsets(amount: Decimal) -> list[int]:
+    """Cent offsets 1…99 in random order, minus any that land on a whole number."""
+    pool = [k for k in range(1, MAX_BUMP_CENTS + 1) if (amount + CENT * k) % 1 != 0]
+    secrets.SystemRandom().shuffle(pool)
+    return pool
+
+
+async def _guard_rate(db: AsyncSession, merchant_id: str, now_: datetime) -> None:
+    recent = await db.scalar(
+        select(func.count())
+        .select_from(UsdtReservation)
+        .where(
+            UsdtReservation.merchant_id == merchant_id,
+            UsdtReservation.created_at > now_ - timedelta(hours=1),
+        )
+    )
+    if (recent or 0) >= HOURLY_LIMIT:
+        raise RateLimitedError("too many top-ups this hour", code="usdt_too_many")
+
+
 def _validate_amount(amount: Decimal, lo: Decimal, hi: Decimal) -> Decimal:
     if amount != amount.quantize(CENT):
         raise ValidationError("amount has more than two decimals", code="usdt_amount_precision")
@@ -160,15 +189,15 @@ def _validate_amount(amount: Decimal, lo: Decimal, hi: Decimal) -> Decimal:
 async def reserve(
     db: AsyncSession, *, merchant_id: str, amount: Decimal, idempotency_key: str | None
 ) -> UsdtReservation:
-    """Hold an exact USDT amount for 60 minutes, bumping by a cent when it is taken.
+    """Hold an exact USDT amount for 60 minutes: the request plus random cents.
 
     Raises:
         NotFoundError: ``usdt_disabled`` when the merchant is not admitted.
         ValidationError: ``usdt_amount_precision`` / ``usdt_amount_out_of_bounds``.
         ConflictError: ``usdt_reservation_open`` when one is already pending, or
             ``usdt_idempotency_mismatch`` when the key was used for another amount.
-        UpstreamUnavailableError: ``usdt_amount_busy`` when every amount up to
-            +0.99 is held.
+        RateLimitedError: ``usdt_too_many`` past ``HOURLY_LIMIT`` an hour.
+        UpstreamUnavailableError: ``usdt_amount_busy`` when every offset is held.
     """
     if idempotency_key is not None and (prior := await _prior(db, merchant_id, idempotency_key)):
         _same_intent(prior, amount)
@@ -182,7 +211,8 @@ async def reserve(
     now_ = now()
     if (twin := await _guard_open(db, merchant_id, idempotency_key, amount, now_)) is not None:
         return twin
-    for bump in range(MAX_BUMP_CENTS + 1):
+    await _guard_rate(db, merchant_id, now_)
+    for bump in _offsets(amount):
         row = UsdtReservation(
             id=new_id(),
             number=new_number(),

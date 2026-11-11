@@ -38014,7 +38014,7 @@
         ]
       },
       "patch": {
-        "description": "Apply the fields present in the body.\n\nA new address resets the poll cursor to now: transfers the address received\nbefore it was ours to watch are not top-ups and must not land in the journal.",
+        "description": "Apply the fields present in the body.\n\nA new address restarts the poll at now and closes pending reservations\n(``resolve.change_address``).",
         "operationId": "patch_usdt_settings_api_v1_admin_usdt_settings_patch",
         "parameters": [
           {

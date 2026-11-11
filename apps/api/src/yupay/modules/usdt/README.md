@@ -10,14 +10,14 @@ Docs: ADR-0104, `docs/runbooks/usdt-deposit.md`,
 ## Responsibilities
 
 - **Reserve** (`reservations.py`): hold an exact amount for 60 minutes, bumping
-  +0.01…+0.99 when the amount is taken. A closed amount (expired, cancelled **or paid**) stays
+  random cents +0.01…+0.99 (never a whole amount); at most 10 reservations per merchant an hour. A closed amount (expired, cancelled **or paid**) stays
   held for another 60 minutes. Also cancel, read, list and sweep.
 - **Read the chain** (`tron.py`): TronGrid `GET /v1/accounts/{address}/transactions/trc20`
   with `only_to`, `only_confirmed` and the USDT contract. Every row is checked again: the
   contract, the recipient, the type `Transfer` and 6 decimals.
-- **Intake** (`intake.py`): journal one transfer by `tx_id` and credit the reservation it
+- **Intake** (`intake.py`): journal one transfer event — `(tx_id, sender, amount)` — and credit the reservation it
   pays. Alerts are returned and sent by the caller after commit.
-- **Poll** (`poll.py`): fetch from the cursor minus 10 minutes, ingest each transfer in its
+- **Poll** (`poll.py`): fetch from the cursor minus 10 minutes (exactly the cursor after a page-capped read or an address change), skip dust and known events, ingest each transfer in its
   own transaction, then advance the cursor. The scheduler job
   `apps/scheduler/.../jobs/usdt_poll.py` runs sweep + poll every 20 s.
 - **Routes**:
@@ -40,7 +40,7 @@ A transfer pays a reservation when:
 
 - the amount has no more than two decimals and equals `amount_usdt`;
 - the reservation is not `paid`;
-- the block time lies in `[created_at − 1 min, closed_at or expires_at]`.
+- the block time lies in `[created_at − 5 s, closed_at or expires_at]`, and the transfer's recipient is the reservation's address.
 
 The window is checked whatever the status:
 
@@ -66,9 +66,9 @@ A manual credit books the amount rounded down to cents.
 ## Settings
 
 - `admits` requires an address. With no address nobody is admitted, whatever the mode.
-- Setting a new address resets the cursor to now, so that address's earlier history is
+- Setting a new address closes every pending reservation (they show the old one) and restarts the cursor at now, with no overlap, so that address's earlier history is
   never journaled.
-- The poller does nothing while `mode = off`.
+- With `mode = off` the poller keeps reading while any reservation still holds an amount, then stops.
 
 ## Errors
 
@@ -85,7 +85,9 @@ A manual credit books the amount rounded down to cents.
 
 ## Alerts
 
-| Kind             | When                                                         |
-| ---------------- | ------------------------------------------------------------ |
-| `usdt_unmatched` | A transfer of 1 USDT or more matched nothing.                |
-| `usdt_poll_down` | TronGrid failing for 15 min while a reservation waits (1/h). |
+| Kind                 | When                                                           |
+| -------------------- | -------------------------------------------------------------- |
+| `usdt_unmatched`     | A transfer of 1 USDT or more matched nothing.                  |
+| `usdt_poll_down`     | No successful poll for 15 min while a reservation waits (1/h). |
+| `usdt_ingest_failed` | A transfer failed to ingest; the cursor waits on it (1/h).     |
+| `usdt_poll_flood`    | A read hit the page cap — spam flood (1/h).                    |

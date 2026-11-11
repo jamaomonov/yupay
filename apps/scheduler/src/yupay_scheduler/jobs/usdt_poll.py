@@ -1,9 +1,11 @@
 """USDT top-up every 20 s: read confirmed transfers, credit them, expire reservations.
 
-ADR-0104. The chain is the source of truth and the journal is keyed by
-transaction id, so a missed or failed tick loses nothing: the next one reads
-from the stored cursor minus ten minutes. What only this job can notice is
-TronGrid being down while resellers wait — alerted at most once an hour.
+ADR-0104. The chain is the source of truth and the journal is keyed by event,
+so a missed or failed tick loses nothing: the next one reads from the stored
+cursor. What only this job can notice is crediting having **stopped** — any
+failure, not just TronGrid being down — while resellers wait. It alerts after
+15 minutes without a good poll, and on the conditions that need a person now
+(a transfer that failed to ingest, a spam flood), each at most once an hour.
 """
 
 from __future__ import annotations
@@ -26,20 +28,31 @@ log = get_logger("yupay.scheduler.usdt_poll")
 _JOB_ID: Final = "usdt_poll"
 _INTERVAL_SECONDS: Final = 20
 _LAST_OK_KEY: Final = "usdt:poll:last-ok"
-_DOWN_ALERT_KEY: Final = "usdt:poll:down-alert"
 _DOWN_AFTER_SECONDS: Final = 15 * 60
 _ALERT_TTL_SECONDS: Final = 3600
+#: Alerts that would repeat every tick while their cause lasts: once an hour.
+_HOURLY: Final = frozenset({"usdt_poll_down", "usdt_ingest_failed", "usdt_poll_flood"})
 
 
 async def run_usdt_poll() -> None:
-    """One tick. Failures are logged by class only and swallowed; the next tick retries."""
+    """One tick. Never raises: a failure is logged by class and checked for the down alert."""
+    t = now()
     try:
-        await _tick()
+        ok = await _tick()
     except Exception as exc:  # noqa: BLE001 - logged by class; the next tick retries
         log.error("usdt_poll.failed", error=type(exc).__name__)  # noqa: TRY400
+        ok = False
+    try:
+        if ok:
+            await get_redis().set(_LAST_OK_KEY, str(int(t.timestamp())))
+        else:
+            await _maybe_alert_down(int(t.timestamp()))
+    except Exception as exc:  # noqa: BLE001 - alerting must not crash the job
+        log.error("usdt_poll.alert_failed", error=type(exc).__name__)  # noqa: TRY400
 
 
-async def _tick() -> None:
+async def _tick() -> bool:
+    """Sweep, poll, send alerts. True when the poll itself succeeded."""
     sessions = get_session_factory()
     t = now()
     async with sessions() as db:
@@ -47,39 +60,54 @@ async def _tick() -> None:
         await db.commit()
     if swept.expired or swept.released:
         log.info("usdt_poll.swept", expired=swept.expired, released=swept.released)
-    redis = get_redis()
     try:
         result = await poll_once(sessions, now_=t)
     except TronUnavailableError as exc:
         log.warning("usdt_poll.tron_unavailable", reason=str(exc))
-        await _maybe_alert_down(int(t.timestamp()))
+        return False
+    alerts = list(result.alerts)
+    if result.truncated:
+        alerts.append(
+            (
+                "usdt_poll_flood",
+                "USDT: на адрес идёт поток мелких переводов (спам) — опрос читает его "
+                "постранично, зачисление может отставать",
+            )
+        )
+    for kind, text in alerts:
+        await _send(kind, text)
+    return not result.failed
+
+
+async def _send(kind: str, text: str) -> None:
+    if kind in _HOURLY:
+        redis = get_redis()
+        key = f"usdt:alert:{kind}"
+        if not await redis.set(key, "1", nx=True, ex=_ALERT_TTL_SECONDS):
+            return
+        if not await send_admin_alert(text, kind=kind):
+            await redis.delete(key)
         return
-    await redis.set(_LAST_OK_KEY, str(int(t.timestamp())))
-    for kind, text in result.alerts:
-        await send_admin_alert(text, kind=kind)
+    await send_admin_alert(text, kind=kind)
 
 
 async def _maybe_alert_down(now_s: int) -> None:
-    """Alert when TronGrid has failed for 15 min while a reseller is waiting."""
-    redis = get_redis()
-    last = await redis.get(_LAST_OK_KEY)
+    """Alert when no poll has succeeded for 15 min while a reseller is waiting."""
+    last = await get_redis().get(_LAST_OK_KEY)
     if last is not None and now_s - int(last) < _DOWN_AFTER_SECONDS:
         return
     async with get_session_factory()() as db:
         waiting = await db.scalar(
             select(func.count())
             .select_from(UsdtReservation)
-            .where(UsdtReservation.status == "pending")
+            .where(UsdtReservation.holds_amount.is_(True))
         )
-    if not waiting:
-        return
-    if not await redis.set(_DOWN_ALERT_KEY, "1", nx=True, ex=_ALERT_TTL_SECONDS):
-        return
-    if not await send_admin_alert(
-        "USDT: TronGrid не отвечает больше 15 минут, а пополнения ждут — зачисление задерживается",
-        kind="usdt_poll_down",
-    ):
-        await redis.delete(_DOWN_ALERT_KEY)
+    if waiting:
+        await _send(
+            "usdt_poll_down",
+            "USDT: зачисление не работает больше 15 минут, а пополнения ждут — "
+            "смотрите usdt_poll в логах планировщика",
+        )
 
 
 def register(scheduler: AsyncIOScheduler) -> None:

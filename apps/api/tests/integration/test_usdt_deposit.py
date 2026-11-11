@@ -1,87 +1,33 @@
-"""USDT (TRC20) top-up: reservations, chain intake, polling, admin and cabinet (ADR-0104)."""
+"""USDT (TRC20) top-up: reservations, chain intake, admin and cabinet (ADR-0104).
+
+Polling and the TronGrid client are in ``test_usdt_poll.py``. Several tests
+here pin the 2026-11-11 security review: each names the attack it closes.
+"""
 
 from __future__ import annotations
 
-import hashlib
+from dataclasses import replace
 from datetime import timedelta
 from decimal import Decimal
-from typing import Any
 
-import httpx
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import select, update
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
+from sqlalchemy import event, select, update
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from yupay.core.clock import now
 from yupay.core.errors import AppError
 from yupay.core.ids import new_id
 from yupay.modules.merchants.deposit import deposit_balance
-from yupay.modules.usdt import intake, poll, reservations
+from yupay.modules.usdt import intake, reservations
 from yupay.modules.usdt.address import is_tron_address
 from yupay.modules.usdt.models import UsdtIncoming, UsdtReservation
-from yupay.modules.usdt.settings import load_settings
-from yupay.modules.usdt.tron import USDT_CONTRACT, Transfer, parse_transfer
+from yupay.modules.usdt.tron import USDT_CONTRACT
 
 from tests.integration.cabinet_signup import BASE
 from tests.integration.cabinet_signup import auth as _auth
 from tests.integration.cabinet_signup import signed_up as _signed_up
 from tests.integration.p2p_fixtures import _code, _merchant
-
-_B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
-
-
-def _tron(seed: int) -> str:
-    """A valid mainnet TRON address made from ``seed`` (base58check, prefix 0x41)."""
-    payload = b"\x41" + hashlib.sha256(str(seed).encode()).digest()[:20]
-    raw = payload + hashlib.sha256(hashlib.sha256(payload).digest()).digest()[:4]
-    num = int.from_bytes(raw, "big")
-    out = ""
-    while num:
-        num, rem = divmod(num, 58)
-        out = _B58[rem] + out
-    return out
-
-
-OURS = _tron(1)
-PAYER = _tron(2)
-
-
-async def _open(db: AsyncSession, merchant_ids: list[str]) -> None:
-    s = await load_settings(db)
-    s.mode, s.allowlist_merchant_ids, s.address = "allowlist", merchant_ids, OURS
-    s.cursor_block_ms = int((now() - timedelta(hours=1)).timestamp() * 1000)
-    await db.flush()
-
-
-def _transfer(
-    amount: str, *, at_offset: timedelta = timedelta(0), tx: str | None = None
-) -> Transfer:
-    at = now() + at_offset
-    return Transfer(
-        tx_id=tx or hashlib.sha256(new_id().encode()).hexdigest(),
-        from_address=PAYER,
-        to_address=OURS,
-        amount=Decimal(amount),
-        block_at=at,
-        block_ms=int(at.timestamp() * 1000),
-    )
-
-
-def _row(amount_units: str, **over: Any) -> dict[str, Any]:
-    item: dict[str, Any] = {
-        "transaction_id": "ab" * 32,
-        "token_info": {"address": USDT_CONTRACT, "decimals": 6, "symbol": "USDT"},
-        "block_timestamp": int(now().timestamp() * 1000),
-        "from": PAYER,
-        "to": OURS,
-        "type": "Transfer",
-        "value": amount_units,
-    }
-    item.update(over)
-    return item
-
-
-# --- address & parsing -------------------------------------------------------
+from tests.integration.usdt_fixtures import OURS, open_usdt, reserve, transfer, tron
 
 
 def test_address_check_accepts_real_and_refuses_typos() -> None:
@@ -92,40 +38,30 @@ def test_address_check_accepts_real_and_refuses_typos() -> None:
     assert not is_tron_address("")
 
 
-def test_parse_keeps_only_real_usdt_to_us() -> None:
-    good = parse_transfer(_row("100000000"), OURS)
-    assert good is not None
-    assert good.amount == Decimal("100")
-    fake = _row("100000000", token_info={"address": _tron(9), "decimals": 6, "symbol": "USDT"})
-    assert parse_transfer(fake, OURS) is None
-    assert parse_transfer(_row("100000000", to=_tron(3)), OURS) is None
-    assert parse_transfer(_row("100000000", type="Approval"), OURS) is None
-    assert parse_transfer(_row("1e9"), OURS) is None
-    assert parse_transfer(_row("100", block_timestamp=True), OURS) is None
-
-
 # --- reservations ----------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_a_taken_amount_bumps_by_a_cent(db_session: AsyncSession) -> None:
-    a, b = await _merchant(db_session), await _merchant(db_session)
-    await _open(db_session, [a, b])
-    ra = await reservations.reserve(
-        db_session, merchant_id=a, amount=Decimal("100"), idempotency_key=None
-    )
-    rb = await reservations.reserve(
-        db_session, merchant_id=b, amount=Decimal("100"), idempotency_key=None
-    )
-    assert ra.amount_usdt == Decimal("100.00")
-    assert rb.amount_usdt == Decimal("100.01")
-    assert ra.address == OURS
+async def test_amounts_always_carry_random_cents_and_never_collide(
+    db_session: AsyncSession,
+) -> None:
+    """A round amount is never issued: a round transfer cannot pay anyone's hold."""
+    ids = [await _merchant(db_session) for _ in range(6)]
+    await open_usdt(db_session, ids)
+    got = [(await reserve(db_session, m, "100")).amount_usdt for m in ids]
+    assert len(set(got)) == len(got)
+    for amount in got:
+        assert Decimal("100.01") <= amount <= Decimal("100.99")
+        assert amount % 1 != 0
+    edge = await _merchant(db_session)
+    await open_usdt(db_session, [edge])
+    assert (await reserve(db_session, edge, "99.50")).amount_usdt % 1 != 0
 
 
 @pytest.mark.asyncio
 async def test_one_pending_per_merchant_and_idempotent_replay(db_session: AsyncSession) -> None:
     m = await _merchant(db_session)
-    await _open(db_session, [m])
+    await open_usdt(db_session, [m])
     first = await reservations.reserve(
         db_session, merchant_id=m, amount=Decimal("50"), idempotency_key="k1"
     )
@@ -146,23 +82,32 @@ async def test_one_pending_per_merchant_and_idempotent_replay(db_session: AsyncS
 
 
 @pytest.mark.asyncio
+async def test_reserve_and_cancel_is_capped_per_hour(db_session: AsyncSession) -> None:
+    """One reseller cannot hold every cent of a popular amount to lock others out."""
+    m = await _merchant(db_session)
+    await open_usdt(db_session, [m])
+    for _ in range(reservations.HOURLY_LIMIT):
+        r = await reserve(db_session, m, "100")
+        await reservations.cancel(db_session, merchant_id=m, number=r.number)
+    with pytest.raises(AppError) as capped:
+        await reserve(db_session, m, "100")
+    assert _code(capped.value) == "usdt_too_many"
+
+
+@pytest.mark.asyncio
 async def test_off_without_address_and_out_of_bounds(db_session: AsyncSession) -> None:
     m = await _merchant(db_session)
     with pytest.raises(AppError) as off:
-        await reservations.reserve(
-            db_session, merchant_id=m, amount=Decimal("50"), idempotency_key=None
-        )
+        await reserve(db_session, m, "50")
     assert _code(off.value) == "usdt_disabled"
-    await _open(db_session, [m])
+    await open_usdt(db_session, [m])
     for amount, code in (
         ("5", "usdt_amount_out_of_bounds"),
         ("50001", "usdt_amount_out_of_bounds"),
         ("10.001", "usdt_amount_precision"),
     ):
         with pytest.raises(AppError) as bad:
-            await reservations.reserve(
-                db_session, merchant_id=m, amount=Decimal(amount), idempotency_key=None
-            )
+            await reserve(db_session, m, amount)
         assert _code(bad.value) == code
 
 
@@ -172,88 +117,140 @@ async def test_off_without_address_and_out_of_bounds(db_session: AsyncSession) -
 @pytest.mark.asyncio
 async def test_exact_transfer_credits_the_deposit_once(db_session: AsyncSession) -> None:
     m = await _merchant(db_session)
-    await _open(db_session, [m])
-    r = await reservations.reserve(
-        db_session, merchant_id=m, amount=Decimal("250"), idempotency_key=None
-    )
+    await open_usdt(db_session, [m])
+    r = await reserve(db_session, m, "250")
     before = await deposit_balance(db_session, merchant_id=m)
-    t = _transfer("250")
+    t = transfer(r.amount_usdt)
     res = await intake.ingest(db_session, t, received_at=now())
-    assert res.status == "matched"
-    assert res.reservation_number == r.number
-    assert await deposit_balance(db_session, merchant_id=m) == before + Decimal("250")
+    assert (res.status, res.reservation_number) == ("matched", r.number)
+    assert await deposit_balance(db_session, merchant_id=m) == before + r.amount_usdt
     await db_session.refresh(r)
     assert (r.status, r.holds_amount) == ("paid", True)
-    assert r.quarantine_until is not None
 
-    dup = await intake.ingest(db_session, t, received_at=now())
-    assert dup.status == "duplicate"
-    assert await deposit_balance(db_session, merchant_id=m) == before + Decimal("250")
+    assert (await intake.ingest(db_session, t, received_at=now())).status == "duplicate"
+    assert await deposit_balance(db_session, merchant_id=m) == before + r.amount_usdt
+
+
+@pytest.mark.asyncio
+async def test_a_transfer_already_on_chain_cannot_be_claimed_by_reserving_after_it(
+    db_session: AsyncSession,
+) -> None:
+    """Security review #1: the address is public and blocks show before confirmation."""
+    thief = await _merchant(db_session)
+    await open_usdt(db_session, [thief])
+    r = await reserve(db_session, thief, "100")
+    # Someone else's transfer of that exact amount, in a block 30 s before the hold.
+    stolen = transfer(r.amount_usdt, at_offset=timedelta(seconds=-30))
+    res = await intake.ingest(db_session, stolen, received_at=now())
+    assert res.status == "unmatched"
+    await db_session.refresh(r)
+    assert r.status == "pending"
 
 
 @pytest.mark.asyncio
 async def test_repeat_of_a_paid_amount_is_unmatched_and_alerts(db_session: AsyncSession) -> None:
     m = await _merchant(db_session)
-    await _open(db_session, [m])
-    await reservations.reserve(
-        db_session, merchant_id=m, amount=Decimal("40"), idempotency_key=None
+    await open_usdt(db_session, [m])
+    r = await reserve(db_session, m, "40")
+    assert (await intake.ingest(db_session, transfer(r.amount_usdt), received_at=now())).status == (
+        "matched"
     )
-    assert (await intake.ingest(db_session, _transfer("40"), received_at=now())).status == "matched"
-    second = await intake.ingest(db_session, _transfer("40"), received_at=now())
+    second = await intake.ingest(db_session, transfer(r.amount_usdt), received_at=now())
     assert second.status == "unmatched"
     assert [k for k, _ in second.alerts] == ["usdt_unmatched"]
 
 
 @pytest.mark.asyncio
-async def test_wrong_amount_and_dust(db_session: AsyncSession) -> None:
+async def test_round_short_odd_and_dust_never_match(db_session: AsyncSession) -> None:
     m = await _merchant(db_session)
-    await _open(db_session, [m])
-    await reservations.reserve(
-        db_session, merchant_id=m, amount=Decimal("100"), idempotency_key=None
-    )
-    short = await intake.ingest(db_session, _transfer("99.00"), received_at=now())
-    assert short.status == "unmatched"
-    odd = await intake.ingest(db_session, _transfer("100.000001"), received_at=now())
-    assert odd.status == "unmatched"
-    dust = await intake.ingest(db_session, _transfer("0.000001"), received_at=now())
+    await open_usdt(db_session, [m])
+    r = await reserve(db_session, m, "100")
+    for amount in ("100", "99.00", f"{r.amount_usdt}0001"):
+        assert (await intake.ingest(db_session, transfer(amount), received_at=now())).status == (
+            "unmatched"
+        )
+    dust = await intake.ingest(db_session, transfer("0.5"), received_at=now())
     assert (dust.status, dust.alerts) == ("ignored", [])
+
+
+@pytest.mark.asyncio
+async def test_two_transfers_in_one_transaction_are_both_journaled(
+    db_session: AsyncSession,
+) -> None:
+    """Security review #4: a batch payout carries several events under one tx id."""
+    a, b = await _merchant(db_session), await _merchant(db_session)
+    await open_usdt(db_session, [a, b])
+    ra, rb = await reserve(db_session, a, "100"), await reserve(db_session, b, "250")
+    first = transfer(ra.amount_usdt)
+    second = transfer(rb.amount_usdt, tx=first.tx_id)
+    assert (await intake.ingest(db_session, first, received_at=now())).status == "matched"
+    assert (await intake.ingest(db_session, second, received_at=now())).status == "matched"
+    count = len((await db_session.execute(select(UsdtIncoming.id))).all())
+    assert count == 2
 
 
 @pytest.mark.asyncio
 async def test_on_time_transfer_read_after_expiry_still_pays(db_session: AsyncSession) -> None:
     """The block time is the chain's: a poller outage must not cost the reseller."""
     m = await _merchant(db_session)
-    await _open(db_session, [m])
-    r = await reservations.reserve(
-        db_session, merchant_id=m, amount=Decimal("30"), idempotency_key=None
-    )
-    sent = _transfer("30")
-    later = now() + timedelta(hours=3)
+    await open_usdt(db_session, [m])
+    r = await reserve(db_session, m, "30")
+    sent = transfer(r.amount_usdt, at_offset=timedelta(seconds=10))
     await db_session.execute(
         update(UsdtReservation)
         .where(UsdtReservation.id == r.id)
         .values(expires_at=now() + timedelta(seconds=30))
     )
+    later = now() + timedelta(hours=3)
     await reservations.sweep(db_session, now_=later)
-    res = await intake.ingest(db_session, sent, received_at=later)
-    assert res.status == "matched"
+    assert (await intake.ingest(db_session, sent, received_at=later)).status == "matched"
 
 
 @pytest.mark.asyncio
-async def test_transfer_after_expiry_is_unmatched(db_session: AsyncSession) -> None:
+async def test_a_late_match_does_not_reclaim_an_amount_someone_else_now_holds(
+    db_session: AsyncSession,
+) -> None:
+    """Security review #3: re-holding broke the open-amount index and stalled the poller."""
+    a, b = await _merchant(db_session), await _merchant(db_session)
+    await open_usdt(db_session, [a, b])
+    ra = await reserve(db_session, a, "100")
+    sent = transfer(ra.amount_usdt, at_offset=timedelta(seconds=10))
+    await db_session.execute(
+        update(UsdtReservation)
+        .where(UsdtReservation.id == ra.id)
+        .values(expires_at=now() + timedelta(seconds=30))
+    )
+    await reservations.sweep(db_session, now_=now() + timedelta(hours=2))
+    rb = UsdtReservation(
+        id=new_id(),
+        number=reservations.new_number(),
+        merchant_id=b,
+        address=OURS,
+        amount_usdt=ra.amount_usdt,
+        status="pending",
+        holds_amount=True,
+        created_at=now() + timedelta(hours=2),
+        expires_at=now() + timedelta(hours=3),
+    )
+    db_session.add(rb)
+    await db_session.flush()
+    res = await intake.ingest(db_session, sent, received_at=now() + timedelta(hours=2))
+    assert res.status == "matched"
+    await db_session.refresh(ra)
+    assert (ra.status, ra.holds_amount) == ("paid", False)
+
+
+@pytest.mark.asyncio
+async def test_transfer_after_expiry_or_to_another_address_is_unmatched(
+    db_session: AsyncSession,
+) -> None:
     m = await _merchant(db_session)
-    await _open(db_session, [m])
-    r = await reservations.reserve(
-        db_session, merchant_id=m, amount=Decimal("31"), idempotency_key=None
-    )
-    res = await intake.ingest(
-        db_session,
-        _transfer("31", at_offset=reservations.RESERVATION_TTL + timedelta(minutes=1)),
-        received_at=now(),
-    )
-    assert res.status == "unmatched"
-    await db_session.refresh(r)
-    assert r.status != "paid"
+    await open_usdt(db_session, [m])
+    r = await reserve(db_session, m, "31")
+    late = transfer(r.amount_usdt, at_offset=reservations.RESERVATION_TTL + timedelta(minutes=1))
+    assert (await intake.ingest(db_session, late, received_at=now())).status == "unmatched"
+    elsewhere = replace(transfer(r.amount_usdt), to_address=tron(5))
+    assert (await intake.ingest(db_session, elsewhere, received_at=now())).status == "unmatched"
 
 
 @pytest.mark.asyncio
@@ -261,79 +258,16 @@ async def test_sent_then_cancelled_still_pays_but_sent_after_cancel_does_not(
     db_session: AsyncSession,
 ) -> None:
     m = await _merchant(db_session)
-    await _open(db_session, [m])
-    r = await reservations.reserve(
-        db_session, merchant_id=m, amount=Decimal("32"), idempotency_key=None
-    )
-    sent_before = _transfer("32", at_offset=timedelta(seconds=-5))
+    await open_usdt(db_session, [m])
+    r = await reserve(db_session, m, "32")
+    sent_before = transfer(r.amount_usdt)
     await reservations.cancel(db_session, merchant_id=m, number=r.number)
     assert (await intake.ingest(db_session, sent_before, received_at=now())).status == "matched"
 
-    r2 = await reservations.reserve(
-        db_session, merchant_id=m, amount=Decimal("33"), idempotency_key=None
-    )
+    r2 = await reserve(db_session, m, "33")
     await reservations.cancel(db_session, merchant_id=m, number=r2.number)
-    after = await intake.ingest(
-        db_session, _transfer("33", at_offset=timedelta(minutes=2)), received_at=now()
-    )
-    assert after.status == "unmatched"
-
-
-# --- polling ---------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_poll_reads_journals_credits_and_advances_the_cursor(
-    db_engine: AsyncEngine, db_session: AsyncSession
-) -> None:
-    m = await _merchant(db_session)
-    await _open(db_session, [m])
-    await reservations.reserve(
-        db_session, merchant_id=m, amount=Decimal("120"), idempotency_key=None
-    )
-    await db_session.commit()
-    block = int(now().timestamp() * 1000)
-    rows = [
-        _row("120000000", block_timestamp=block, transaction_id="c1" * 32),
-        _row("5000000", block_timestamp=block, transaction_id="c2" * 32),
-        _row(
-            "120000000",
-            transaction_id="c3" * 32,
-            token_info={"address": _tron(7), "decimals": 6, "symbol": "USDT"},
-        ),
-    ]
-    seen: list[httpx.Request] = []
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        seen.append(request)
-        return httpx.Response(200, json={"success": True, "data": rows, "meta": {}})
-
-    sessions = async_sessionmaker(db_engine, expire_on_commit=False)
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
-        result = await poll.poll_once(sessions, now_=now(), http=http)
-        again = await poll.poll_once(sessions, now_=now(), http=http)
-
-    assert (result.seen, result.matched, result.unmatched) == (2, 1, 1)
-    assert again.seen == 0
-    assert seen[0].url.params["contract_address"] == USDT_CONTRACT
-    assert seen[0].url.params["only_confirmed"] == "true"
-    async with sessions() as db:
-        s = await load_settings(db)
-        assert s.cursor_block_ms == block
-        assert await deposit_balance(db, merchant_id=m) >= Decimal("120")
-        txs = set((await db.execute(select(UsdtIncoming.tx_id))).scalars())
-        assert txs == {"c1" * 32, "c2" * 32}
-
-
-@pytest.mark.asyncio
-async def test_poll_does_nothing_when_off(db_engine: AsyncEngine) -> None:
-    def handler(request: httpx.Request) -> httpx.Response:  # pragma: no cover - must not run
-        raise AssertionError("polled while off")
-
-    sessions = async_sessionmaker(db_engine, expire_on_commit=False)
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
-        result = await poll.poll_once(sessions, now_=now(), http=http)
-    assert result.seen == 0
+    after = transfer(r2.amount_usdt, at_offset=timedelta(minutes=2))
+    assert (await intake.ingest(db_session, after, received_at=now())).status == "unmatched"
 
 
 # --- admin -----------------------------------------------------------------------
@@ -346,7 +280,7 @@ def _k() -> dict[str, str]:
 
 
 @pytest.mark.asyncio
-async def test_admin_settings_refuse_a_typo_and_reset_the_cursor(
+async def test_admin_settings_refuse_a_typo_and_restart_the_cursor_exactly(
     integration_client: AsyncClient, admin_headers: dict[str, str]
 ) -> None:
     bad = await integration_client.patch(
@@ -370,13 +304,34 @@ async def test_admin_settings_refuse_a_typo_and_reset_the_cursor(
 
 
 @pytest.mark.asyncio
+async def test_changing_the_address_closes_pending_reservations(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """Security review #8: a pending row kept showing an address nobody reads."""
+    m = await _merchant(db_session)
+    await open_usdt(db_session, [m])
+    r = await reserve(db_session, m, "100")
+    rid = r.id
+    await db_session.commit()
+    moved = await integration_client.patch(
+        f"{A}/settings", headers={**admin_headers, **_k()}, json={"address": tron(9)}
+    )
+    assert moved.status_code == 200, moved.text
+    db_session.expire_all()
+    fresh = await db_session.get(UsdtReservation, rid)
+    assert fresh is not None
+    assert fresh.status == "expired"
+
+
+@pytest.mark.asyncio
 async def test_admin_credits_an_unmatched_transfer_once(
     integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
 ) -> None:
     m = await _merchant(db_session)
-    await _open(db_session, [m])
-    res = await intake.ingest(db_session, _transfer("77.123456"), received_at=now())
-    assert res.status == "unmatched"
+    await open_usdt(db_session, [m])
+    assert (
+        await intake.ingest(db_session, transfer("77.123456"), received_at=now())
+    ).status == "unmatched"
     await db_session.commit()
     row = await db_session.scalar(select(UsdtIncoming))
     assert row is not None
@@ -386,19 +341,25 @@ async def test_admin_credits_an_unmatched_transfer_once(
     listed = await integration_client.get(
         f"{A}/incoming", params={"result": "unmatched"}, headers=admin_headers
     )
-    assert [i["id"] for i in listed.json()["items"]] == [row.id]
+    assert [i["id"] for i in listed.json()["items"]] == [row_id]
 
-    url = f"{A}/incoming/{row.id}/credit"
+    url = f"{A}/incoming/{row_id}/credit"
     first = await integration_client.post(
         url, headers={**admin_headers, **_k()}, json={"merchant_id": m, "note": "sent short"}
     )
     assert first.status_code == 200, first.text
-    assert first.json()["result"] == "manual"
-    assert first.json()["merchant_id"] == m
+    assert (first.json()["result"], first.json()["merchant_id"]) == ("manual", m)
+    # A retry spelling the same id in upper case is the same credit, not a 409.
     again = await integration_client.post(
-        url, headers={**admin_headers, **_k()}, json={"merchant_id": m}
+        url, headers={**admin_headers, **_k()}, json={"merchant_id": m.upper()}
     )
     assert again.status_code == 200, again.text
+    other = await _merchant(db_session)
+    await db_session.commit()
+    elsewhere = await integration_client.post(
+        url, headers={**admin_headers, **_k()}, json={"merchant_id": other}
+    )
+    assert elsewhere.status_code == 409, elsewhere.text
     db_session.expire_all()
     assert await deposit_balance(db_session, merchant_id=m) == before + Decimal("77.12")
 
@@ -409,11 +370,28 @@ async def test_admin_credits_an_unmatched_transfer_once(
 
 
 @pytest.mark.asyncio
+async def test_admin_cannot_credit_a_matched_transfer(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    m = await _merchant(db_session)
+    await open_usdt(db_session, [m])
+    r = await reserve(db_session, m, "60")
+    await intake.ingest(db_session, transfer(r.amount_usdt), received_at=now())
+    await db_session.commit()
+    row = await db_session.scalar(select(UsdtIncoming))
+    assert row is not None
+    paid_twice = await integration_client.post(
+        f"{A}/incoming/{row.id}/credit", headers={**admin_headers, **_k()}, json={"merchant_id": m}
+    )
+    assert paid_twice.status_code == 409, paid_twice.text
+
+
+@pytest.mark.asyncio
 async def test_admin_dismisses(
     integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
 ) -> None:
-    await _open(db_session, [])
-    await intake.ingest(db_session, _transfer("12"), received_at=now())
+    await open_usdt(db_session, [])
+    await intake.ingest(db_session, transfer("12"), received_at=now())
     await db_session.commit()
     row = await db_session.scalar(select(UsdtIncoming))
     assert row is not None
@@ -442,33 +420,57 @@ async def test_cabinet_flow(
     off = await integration_client.get(f"{U}/status", headers=h)
     assert off.json()["enabled"] is False
 
-    await _open(db_session, [merchant_id])
+    await open_usdt(db_session, [merchant_id])
     await db_session.commit()
     on = await integration_client.get(f"{U}/status", headers=h)
-    assert on.json()["enabled"] is True
-    assert on.json()["network"] == "TRC20"
+    assert (on.json()["enabled"], on.json()["network"]) == (True, "TRC20")
 
     created = await integration_client.post(
         f"{U}/deposits", headers={**h, "Idempotency-Key": new_id()}, json={"amount": "150.50"}
     )
     assert created.status_code == 201, created.text
     dep = created.json()
-    assert (dep["address"], Decimal(dep["amount"]), dep["status"]) == (
-        OURS,
-        Decimal("150.50"),
-        "pending",
-    )
+    assert (dep["address"], dep["status"]) == (OURS, "pending")
+    assert Decimal("150.51") <= Decimal(dep["amount"]) <= Decimal("151.49")
     listed = await integration_client.get(f"{U}/deposits", headers=h)
     assert listed.json()["items"][0]["address"] is None
 
-    await intake.ingest(db_session, _transfer("150.50"), received_at=now())
+    await intake.ingest(db_session, transfer(dep["amount"]), received_at=now())
     await db_session.commit()
     paid = await integration_client.get(f"{U}/deposits/{dep['number']}", headers=h)
-    assert paid.json()["status"] == "paid"
-    assert paid.json()["address"] is None
+    assert (paid.json()["status"], paid.json()["address"]) == ("paid", None)
     assert paid.json()["tx_id"]
 
     cancel = await integration_client.post(
         f"{U}/deposits/{dep['number']}/cancel", headers={**h, "Idempotency-Key": new_id()}
     )
     assert cancel.status_code == 409, cancel.text
+
+
+@pytest.mark.asyncio
+async def test_cabinet_list_is_one_query_for_the_transactions(
+    integration_client: AsyncClient,
+    db_engine: AsyncEngine,
+    db_session: AsyncSession,
+    cabinet_mails: list[dict[str, str]],
+) -> None:
+    """AGENTS.md §10: the list must not look up each paid row's transaction alone."""
+    access, merchant_id = await _signed_up(integration_client, cabinet_mails, "n@acme.example.com")
+    await open_usdt(db_session, [merchant_id])
+    for amount in ("20", "30", "40"):
+        r = await reserve(db_session, merchant_id, amount)
+        await intake.ingest(db_session, transfer(r.amount_usdt), received_at=now())
+    await db_session.commit()
+
+    statements: list[str] = []
+
+    def _count(*args: object) -> None:
+        statements.append(str(args[2]))
+
+    event.listen(db_engine.sync_engine, "before_cursor_execute", _count)
+    try:
+        listed = await integration_client.get(f"{U}/deposits", headers=_auth(access))
+    finally:
+        event.remove(db_engine.sync_engine, "before_cursor_execute", _count)
+    assert len(listed.json()["items"]) == 3
+    assert sum("FROM usdt_incoming" in s for s in statements) == 1

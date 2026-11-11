@@ -105,9 +105,10 @@ export function shortHash(hash: string): string {
 /** The `topUpUsdt.*` message key for an API error code, or `null` for "something else". */
 export function usdtErrorKey(
   code: string | null,
-): "errPrecision" | "errAmountBusy" | "errRetry" | null {
+): "errPrecision" | "errAmountBusy" | "errRetry" | "errTooMany" | null {
   if (code === "usdt_amount_precision") return "errPrecision";
   if (code === "usdt_amount_busy") return "errAmountBusy";
   if (code === "usdt_idempotency_mismatch") return "errRetry";
+  if (code === "usdt_too_many") return "errTooMany";
   return null;
 }

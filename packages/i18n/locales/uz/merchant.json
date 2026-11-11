@@ -671,7 +671,9 @@
     "errOpen": "Sizda kutilayotgan to‘ldirish allaqachon bor",
     "errCancel": "Bekor qilib bo‘lmadi — aloqani tekshirib, qayta urinib ko‘ring",
     "errPrecision": "Nuqtadan keyin ikki raqamdan ko‘p emas",
-    "errAmountBusy": "Bu summa hozir band — uni bir necha sentga o‘zgartiring",
+    "errAmountBusy": "Bu summa hozir band — boshqasini kiriting",
+    "errTooMany": "Bir soatda juda ko‘p to‘ldirish. Keyinroq urinib ko‘ring",
+    "centsNote": "Summaga bir necha sent qo‘shamiz — o‘tkazmangizni shu orqali taniymiz",
     "errRetry": "Qayta urinib ko‘ring"
   },
   "stats": {

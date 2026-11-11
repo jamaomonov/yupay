@@ -34,6 +34,7 @@ def upgrade() -> None:
         sa.Column("min_amount_usd", sa.Numeric(18, 2), nullable=False, server_default="10"),
         sa.Column("max_amount_usd", sa.Numeric(18, 2), nullable=False, server_default="50000"),
         sa.Column("cursor_block_ms", sa.BigInteger, nullable=True),
+        sa.Column("cursor_exact", sa.Boolean, nullable=False, server_default=sa.false()),
         sa.Column("updated_by", UUID, nullable=True),
         sa.Column("updated_at", TS, nullable=False, server_default=NOW),
         sa.CheckConstraint("id = 1", name="singleton"),
@@ -108,7 +109,7 @@ def upgrade() -> None:
         sa.Column("resolved_at", TS, nullable=True),
         sa.Column("note", sa.String(256), nullable=True),
         sa.Column("received_at", TS, nullable=False),
-        sa.UniqueConstraint("tx_id", name="uq_usdt_incoming_tx_id"),
+        sa.UniqueConstraint("tx_id", "from_address", "amount_usdt", name="uq_usdt_incoming_event"),
         sa.CheckConstraint(
             "result IN ('matched','unmatched','ignored','manual','dismissed')",
             name="result",

@@ -372,9 +372,18 @@ address; the scheduler reads confirmed transfers from TronGrid every 20 s.
   never pages anyone and never pays a reservation.
 - **Wrong receiving address.** A typo would send every reseller's money to a stranger. The
   admin refuses anything whose base58check checksum fails; the address is public and the keys
-  never touch our systems. Changing it resets the poll cursor, so the new address's history
+  never touch our systems. Changing it closes pending reservations (they show the old address) and restarts the
+  poll cursor at now with no overlap, so the new address's history
   is not mistaken for top-ups.
-- **Replay and races.** The journal's unique `tx_id` makes a re-read a no-op; the credit key
+- **Claiming someone else's transfer.** The address is public and a block is visible ~1 min
+  before it is confirmed. A reservation only matches transfers in blocks no more than 5 s
+  before it was created, and its amount carries random cents (never `.00`), so a round or
+  short transfer can never pay a hold. At most 10 reservations per merchant an hour, so one
+  reseller cannot hold every cent of a popular amount.
+- **Stalling the poller.** Zero-value and dust transfers are dropped before the journal; a
+  page-capped read resumes exactly where it stopped (no overlap re-read); a transfer that
+  fails to ingest holds the cursor and alerts; any 15 min without a good poll alerts.
+- **Replay and races.** The journal's unique event `(tx_id, sender, amount)` makes a re-read a no-op; the credit key
   is `usdt:{reservation.id}` (auto) or `usdt:incoming:{id}` (admin), so one transfer moves
   money once. One open amount at a time is a partial unique index; the 60-minute quarantine
   after a reservation closes keeps an accidental second transfer from paying the next

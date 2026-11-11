@@ -2,25 +2,22 @@
 
 from __future__ import annotations
 
-from decimal import ROUND_DOWN
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import Select, func, select
 
 from yupay.core.clock import now
-from yupay.core.errors import ConflictError, NotFoundError, ValidationError
+from yupay.core.errors import ValidationError
 from yupay.core.idempotency import normalize_idempotency_key
 from yupay.core.logging import get_logger
 from yupay.modules.admin.deps import require_admin
 from yupay.modules.merchants import transactions
-from yupay.modules.merchants.deposit import credit_deposit
 from yupay.modules.merchants.models import Merchant
 from yupay.modules.merchants.route_replay import IdempotencyKeyHeader, remember, replayed
 from yupay.modules.p2p.admin_deps import Admin, Db, PageLimit, parse_uuid
-from yupay.modules.usdt.address import is_tron_address
+from yupay.modules.usdt import resolve
 from yupay.modules.usdt.models import UsdtIncoming, UsdtReservation
-from yupay.modules.usdt.reservations import CENT
 from yupay.modules.usdt.schemas import (
     UsdtCreditIn,
     UsdtDismissIn,
@@ -68,8 +65,8 @@ async def patch_usdt_settings(
 ) -> UsdtSettingsOut:
     """Apply the fields present in the body.
 
-    A new address resets the poll cursor to now: transfers the address received
-    before it was ours to watch are not top-ups and must not land in the journal.
+    A new address restarts the poll at now and closes pending reservations
+    (``resolve.change_address``).
     """
     key = normalize_idempotency_key(idempotency_key)
     if (
@@ -83,12 +80,7 @@ async def patch_usdt_settings(
     if body.allowlist_merchant_ids is not None:
         s.allowlist_merchant_ids = await _checked_allowlist(db, body.allowlist_merchant_ids)
     if "address" in sent:
-        address = (body.address or "").strip() or None
-        if address is not None and not is_tron_address(address):
-            raise ValidationError("not a TRON address", code="usdt_bad_address")
-        if address != s.address:
-            s.address = address
-            s.cursor_block_ms = int(now().timestamp() * 1000)
+        await resolve.change_address(db, s, body.address)
     lo = body.min_amount_usd if body.min_amount_usd is not None else s.min_amount_usd
     hi = body.max_amount_usd if body.max_amount_usd is not None else s.max_amount_usd
     if hi < lo:
@@ -166,18 +158,6 @@ async def list_incoming(
     )
 
 
-async def _unmatched(db: Db, incoming_id: str) -> UsdtIncoming:
-    rid = parse_uuid(incoming_id)
-    row: UsdtIncoming | None = (
-        await db.scalar(select(UsdtIncoming).where(UsdtIncoming.id == rid).with_for_update())
-        if rid
-        else None
-    )
-    if row is None:
-        raise NotFoundError("transfer not found", code="usdt_incoming_not_found")
-    return row
-
-
 async def _one_out(db: Db, row: UsdtIncoming) -> UsdtIncomingOut:
     found = (await db.execute(_joined().where(UsdtIncoming.id == row.id))).one()
     return _incoming_out(found[0], found[1], found[2], found[3])
@@ -200,29 +180,14 @@ async def credit_incoming(
     Idempotent by state: a row already credited to the same reseller is returned
     as is, and the ledger key ``usdt:incoming:{id}`` makes a racing twin a replay.
     """
-    row = await _unmatched(db, incoming_id)
-    if row.result == "manual" and row.merchant_id == body.merchant_id:
-        return await _one_out(db, row)
-    if row.result != "unmatched":
-        raise ConflictError("this transfer is already resolved", code="usdt_incoming_resolved")
-    merchant_id = parse_uuid(body.merchant_id)
-    if merchant_id is None or await db.get(Merchant, merchant_id) is None:
-        raise NotFoundError("merchant not found", code="merchant_not_found")
-    amount = row.amount_usdt.quantize(CENT, rounding=ROUND_DOWN)
-    await credit_deposit(
+    row = await resolve.credit(
         db,
-        merchant_id=merchant_id,
-        amount=amount,
-        actor=f"admin:{admin.id}",
-        idempotency_key=f"usdt:incoming:{row.id}",
-        order_id=None,
-        note=f"USDT · {row.tx_id[:10]}… {body.note or ''}".strip(),
+        incoming_id=incoming_id,
+        merchant_id=body.merchant_id,
+        note=body.note,
+        admin_id=admin.id,
     )
-    row.result, row.merchant_id = "manual", merchant_id
-    row.resolved_by, row.resolved_at, row.note = admin.id, now(), body.note
-    await db.flush()
     out = await _one_out(db, row)
-    log.info("usdt.manual_credit", admin_id=admin.id, amount=str(amount), tx_id=row.tx_id)
     await db.commit()
     return out
 
@@ -240,16 +205,8 @@ async def dismiss_incoming(
     idempotency_key: IdempotencyKeyHeader = None,  # noqa: ARG001 - idempotent by state
 ) -> UsdtIncomingOut:
     """Mark an unmatched transfer handled outside the system (refunded, not a top-up)."""
-    row = await _unmatched(db, incoming_id)
-    if row.result == "dismissed":
-        return await _one_out(db, row)
-    if row.result != "unmatched":
-        raise ConflictError("this transfer is already resolved", code="usdt_incoming_resolved")
-    row.result, row.note = "dismissed", body.note
-    row.resolved_by, row.resolved_at = admin.id, now()
-    await db.flush()
+    row = await resolve.dismiss(db, incoming_id=incoming_id, note=body.note, admin_id=admin.id)
     out = await _one_out(db, row)
-    log.info("usdt.dismissed", admin_id=admin.id, tx_id=row.tx_id)
     await db.commit()
     return out
 

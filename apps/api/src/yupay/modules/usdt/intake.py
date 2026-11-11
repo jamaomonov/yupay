@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Final, Literal
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -30,9 +30,14 @@ log = get_logger("yupay.usdt.intake")
 Status = Literal["duplicate", "matched", "unmatched", "ignored"]
 #: Below this a transfer is dust — address-poisoning spam, never a top-up.
 DUST: Final = Decimal("1")
-#: A reservation shown a moment before its row committed can still be paid.
-_EARLY: Final = timedelta(minutes=1)
-_TX_KEY: Final = "uq_usdt_incoming_tx_id"
+#: Clock skew allowed between our ``created_at`` and the chain's block time.
+#: Kept to seconds on purpose: the address is public and blocks are visible
+#: ~60 s before they are confirmed, so a generous grace lets a reseller who
+#: sees someone else's transfer land reserve that amount afterwards and claim
+#: it (security review 2026-11-11). Nobody can honestly pay before the
+#: response carrying the amount reached them, which is after this row exists.
+_SKEW: Final = timedelta(seconds=5)
+_TX_KEY: Final = "uq_usdt_incoming_event"
 
 
 @dataclass
@@ -47,27 +52,27 @@ class IntakeResult:
 async def _payable(db: AsyncSession, t: Transfer) -> UsdtReservation | None:
     """The one reservation whose amount and window this transfer fits, locked.
 
-    The window is ``[created_at - 1 min, closed_at or expires_at]``, whatever
+    The window is ``[created_at - 5 s, closed_at or expires_at]``, whatever
     the status except ``paid``: the block time is the chain's, so a transfer
     made in time pays its reservation even when we read it after expiry or the
     reseller cancelled after sending. Two windows for one amount cannot overlap
     — the amount stays held through the quarantine, after the window closes.
     """
+    # A pending row has no ``closed_at``, so ``end`` is its ``expires_at``.
     end = func.coalesce(UsdtReservation.closed_at, UsdtReservation.expires_at)
     found: UsdtReservation | None = await db.scalar(
         select(UsdtReservation)
         .where(
             UsdtReservation.amount_usdt == t.amount,
+            UsdtReservation.address == t.to_address,
             UsdtReservation.status != "paid",
-            UsdtReservation.created_at - _EARLY <= t.block_at,
-            or_(end >= t.block_at, UsdtReservation.status == "pending"),
+            UsdtReservation.created_at - _SKEW <= t.block_at,
+            end >= t.block_at,
         )
         .order_by(UsdtReservation.created_at.desc())
         .limit(1)
         .with_for_update()
     )
-    if found is None or (found.status == "pending" and found.expires_at < t.block_at):
-        return None
     return found
 
 
@@ -80,7 +85,8 @@ async def ingest(db: AsyncSession, t: Transfer, *, received_at: datetime) -> Int
         received_at: When we read it.
 
     Returns:
-        ``duplicate`` when this transaction id is already journaled; otherwise
+        ``duplicate`` when this event (transaction id, sender, amount) is
+        already journaled; otherwise
         the outcome and any alerts.
     """
     row = UsdtIncoming(
@@ -133,12 +139,15 @@ async def ingest(db: AsyncSession, t: Transfer, *, received_at: datetime) -> Int
     )
     # The amount stays held through the quarantine: an accidental second
     # transfer of it must land unmatched, not pay whoever reserves it next.
+    # A row the sweep already released is **not** re-held: another reseller
+    # may hold that amount now, and re-holding it broke the open-amount index
+    # and stalled the poller on every tick (security review 2026-11-11).
     closed = reservation.closed_at or received_at
     reservation.status = "paid"
     reservation.closed_at = closed
-    reservation.quarantine_until = max(received_at, closed) + QUARANTINE
+    if reservation.holds_amount:
+        reservation.quarantine_until = max(received_at, closed) + QUARANTINE
     reservation.incoming_id = row.id
-    reservation.holds_amount = True
     row.result, row.reservation_id = "matched", reservation.id
     await db.flush()
     log.info("usdt.matched", number=reservation.number, amount_usdt=str(reservation.amount_usdt))

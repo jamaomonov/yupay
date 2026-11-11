@@ -39,9 +39,10 @@ What to do:
 4. If it is not a top-up, return it from the wallet and choose «Закрыть без зачисления» with
    a note.
 
-## 3. Nothing is credited (alert `usdt_poll_down`, or resellers complain)
+## 3. Nothing is credited (alert `usdt_poll_down` / `usdt_ingest_failed`, or resellers complain)
 
-1. Check the scheduler logs for `usdt_poll.tron_unavailable` or `usdt_poll.failed`.
+1. Check the scheduler logs for `usdt_poll.tron_unavailable`, `usdt_poll.failed` or
+   `usdt.ingest_failed` (that one names the transaction the cursor is waiting on).
 2. **TronGrid down or rate-limited.** Credits catch up by themselves when it returns: the
    poll re-reads from the cursor and matches by block time. Adding `TRONGRID_API_KEY` lifts
    the rate limit.
@@ -54,11 +55,14 @@ What to do:
 Save the new address in Settings. The cursor resets to "now", so the new address's history
 is ignored.
 
-Reservations still pending keep the **old** address, and the poller no longer reads it. Do
-the change when nothing is pending, or credit transfers to the old address by hand from
-Tronscan.
+Saving closes every pending reservation, because those show the **old** address and the
+poller no longer reads it. A reseller who already sent to the old address is credited by
+hand: find the transfer on Tronscan, then use the admin's deposit credit with a note. Do the
+change when nothing is pending if you can.
 
 ## 5. Turning it off
 
-Set `mode = off`. The cabinet hides the method and the poller stops reading the chain.
+Set `mode = off`. The cabinet hides the method. The poller keeps reading until every
+reservation's amount is released (up to two hours), so a reseller who already sent is still
+credited.
 Credits from the journal stay as they are.

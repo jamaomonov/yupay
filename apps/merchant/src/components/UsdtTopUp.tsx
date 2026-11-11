@@ -99,6 +99,7 @@ function AmountForm({ flow, locale, onBack }: AmountFormProps) {
           {t("range", { min: formatUsdt(min, locale), max: formatUsdt(max, locale) })}
         </p>
       )}
+      <p className="text-tx-mute mt-1 text-sm">{t("centsNote")}</p>
       {flow.error !== null && (
         <p role="alert" className="mt-3 text-sm text-red-500">
           {flow.error}

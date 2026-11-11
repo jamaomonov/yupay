@@ -671,7 +671,9 @@
     "errOpen": "You already have a pending top-up",
     "errCancel": "Could not cancel — check your connection and try again",
     "errPrecision": "No more than two digits after the point",
-    "errAmountBusy": "This amount is taken right now — change it by a few cents",
+    "errAmountBusy": "This amount is taken right now — try another",
+    "errTooMany": "Too many top-ups this hour. Try again later",
+    "centsNote": "We add a few cents to the amount — that is how we recognise your transfer",
     "errRetry": "Try again"
   },
   "stats": {

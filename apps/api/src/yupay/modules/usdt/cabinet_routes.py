@@ -24,10 +24,19 @@ from yupay.modules.usdt.settings import admits, load_settings
 router = APIRouter(prefix="/merchant/cabinet/usdt", tags=["merchant-cabinet"])
 
 
-async def _out(db: Db, r: UsdtReservation, *, with_address: bool) -> UsdtDepositOut:
-    tx_id: str | None = None
-    if r.incoming_id is not None:
-        tx_id = await db.scalar(select(UsdtIncoming.tx_id).where(UsdtIncoming.id == r.incoming_id))
+async def _tx_ids(db: Db, rows: list[UsdtReservation]) -> dict[str, str]:
+    """The paying transaction of each paid row, in one query (no N+1 on the list)."""
+    ids = [r.incoming_id for r in rows if r.incoming_id is not None]
+    if not ids:
+        return {}
+    found = await db.execute(
+        select(UsdtIncoming.id, UsdtIncoming.tx_id).where(UsdtIncoming.id.in_(ids))
+    )
+    return dict(found.tuples().all())
+
+
+def _build(r: UsdtReservation, tx_ids: dict[str, str], *, with_address: bool) -> UsdtDepositOut:
+    tx_id = tx_ids.get(r.incoming_id) if r.incoming_id is not None else None
     show = with_address and r.status == "pending" and r.expires_at > now()
     return UsdtDepositOut(
         number=r.number,
@@ -39,6 +48,10 @@ async def _out(db: Db, r: UsdtReservation, *, with_address: bool) -> UsdtDeposit
         closed_at=r.closed_at,
         tx_id=tx_id,
     )
+
+
+async def _out(db: Db, r: UsdtReservation, *, with_address: bool) -> UsdtDepositOut:
+    return _build(r, await _tx_ids(db, [r]), with_address=with_address)
 
 
 @router.get("/status", response_model=UsdtStatusOut, summary="Whether USDT top-up is on for me")
@@ -126,8 +139,9 @@ async def list_deposits(
     rows, nxt = await reservations.list_for_merchant(
         db, merchant_id=merchant.id, limit=limit, cursor=cursor
     )
+    tx_ids = await _tx_ids(db, rows)
     return UsdtDepositsOut(
-        items=[await _out(db, r, with_address=False) for r in rows], next_cursor=nxt
+        items=[_build(r, tx_ids, with_address=False) for r in rows], next_cursor=nxt
     )
 
 

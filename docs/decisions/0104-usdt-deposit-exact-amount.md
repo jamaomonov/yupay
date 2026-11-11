@@ -27,23 +27,35 @@ reading a wallet by hand, and without a fee eating the 7–8 % margin.
 
 - **Wallet.** One TRON address owned by the owner, kept in `usdt_settings.address`. Only the
   public address is stored; the keys never touch our systems.
-- **Reservation.** The reseller enters a USD amount. We hold that exact USDT amount for
-  60 minutes, adding +0.01…+0.99 when the amount is already held. A partial unique index
-  makes "one open amount" a database rule. An expired, cancelled or paid amount stays held
-  for 60 more minutes.
+- **Reservation.** The reseller enters a USD amount. We hold it plus **random cents**
+  (+0.01…+0.99, never a whole number) for 60 minutes:
+  - A partial unique index makes "one open amount" a database rule.
+  - An expired, cancelled or paid amount stays held for 60 more minutes.
+  - One merchant may open 10 reservations an hour.
+
+  A round amount is never issued. Otherwise whoever held 1000.00 would be credited for
+  anyone's round transfer, sent without reserving or rounded by an exchange.
+
 - **Intake.** A scheduler job polls TronGrid every 20 s for confirmed TRC20 transfers to the
   address. It keeps a transfer only if:
   - the contract is the official USDT (`TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t`);
   - the recipient is our address;
   - the type is `Transfer` and the token has 6 decimals.
 
-  Each transaction id is journaled once. A fake token named "USDT" never matches.
+  A fake token named "USDT" never matches. Zero-value and dust transfers (under 1 USDT,
+  the address-poisoning spam) are never journaled. An event is
+  `(tx_id, sender, amount)`, journaled once; one transaction can carry several.
 
-- **Matching.** The amount equals the reservation, and the block time falls inside the
-  reservation's window, `[created_at − 1 min, closed_at or expires_at]`. Two windows for the
-  same amount never overlap, because the amount stays held 60 minutes after closing, so at
-  most one reservation can match. The block time comes from the chain, so a transfer found
-  late (the poller was down) still pays the reservation it was made for.
+- **Matching.** The amount and the address equal the reservation's, and the block time falls
+  inside its window, `[created_at − 5 s, closed_at or expires_at]`.
+  - Two windows for the same amount never overlap, because the amount stays held 60 minutes
+    after closing, so at most one reservation can match.
+  - The block time comes from the chain, so a transfer found late (the poller was down)
+    still pays the reservation it was made for.
+  - The window opens only seconds before the reservation existed. The address is public and
+    a block is visible about a minute before it is confirmed; a wider grace let a reseller
+    reserve an amount after seeing someone else's transfer land, and be credited for it
+    (security review, 2026-11-11).
 - **Credit.** `merchants.deposit.credit_deposit`, 1 USDT = 1 USD, idempotency key
   `usdt:{reservation.id}`.
 - **Unmatched.** A transfer that matches nothing lands `unmatched` in the journal and sends
@@ -62,8 +74,13 @@ reading a wallet by hand, and without a fee eating the 7–8 % margin.
 - The reseller must send the exact amount. An exchange that deducts its withdrawal fee from
   the amount sent produces an unmatched transfer, which is credited by hand.
 - **TronGrid dependency.** We trust TronGrid's answer over HTTPS. An outage delays credits
-  but loses nothing: the next poll reads from the stored cursor minus 10 minutes, and
-  journaling by transaction id makes the overlap harmless.
+  but loses nothing:
+  - The next poll reads from the stored cursor minus 10 minutes, and the event key makes the
+    overlap harmless.
+  - A poll that hits the page cap resumes exactly where it stopped, so a spam flood cannot
+    pin the cursor.
+  - The cursor never passes "now" or a transfer that failed to ingest.
+  - Any failure lasting 15 minutes alerts.
 - **Legal status of USDT receipts** for the owner's entity is an open question for the tax
   consultant. The feature ships with `mode = off`.
 
