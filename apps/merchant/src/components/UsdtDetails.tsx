@@ -1,6 +1,6 @@
 "use client";
 
-import { ExternalLink, TriangleAlert } from "lucide-react";
+import { TriangleAlert } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { toString as qrSvg } from "qrcode";
 import { useEffect, useState } from "react";
@@ -10,7 +10,7 @@ import type { UsdtDeposit } from "@/lib/types";
 import { CopyRow } from "@/components/CopyRow";
 import { CryptoLogo } from "@/components/CryptoLogo";
 import { formatClock, secondsLeft } from "@/lib/p2p";
-import { groupUsdt, networkLabel, trustWalletLink, USDT_NETWORKS } from "@/lib/usdt";
+import { groupUsdt, networkLabel, USDT_NETWORKS } from "@/lib/usdt";
 
 interface UsdtDetailsProps {
   deposit: UsdtDeposit;
@@ -137,22 +137,9 @@ export function UsdtDetails({ deposit, nowMs, busy, error, onCancel }: UsdtDetai
 
           {address !== "" && (
             <div className="mt-5 flex flex-col items-start gap-2 lg:mt-0 lg:items-center lg:text-center">
-              <div className="order-1 lg:order-2 lg:mt-2 lg:w-full">
-                <a
-                  href={trustWalletLink(deposit.network, address, deposit.amount)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="bg-primary text-primary-foreground rounded-btn inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold lg:w-full"
-                >
-                  {t("openWallet")}
-                  <ExternalLink aria-hidden size={14} />
-                </a>
-                <p className="text-tx-mute mt-1.5 text-xs">{t("openWalletHint")}</p>
-              </div>
-              <div className="order-2 mt-3 lg:order-1 lg:mt-0">
-                <AddressQr address={address} alt={t("qrAlt")} />
-              </div>
-              <p className="text-tx-mute order-3 text-xs">{t("qrHint")}</p>
+              {/* «Открыть в кошельке» (trustWalletLink) is off for now, owner 2026-11-11. */}
+              <AddressQr address={address} alt={t("qrAlt")} />
+              <p className="text-tx-mute text-xs">{t("qrHint")}</p>
             </div>
           )}
 
