@@ -5,6 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
+from typing import Final
+
+#: Below this a transfer is dust — address-poisoning spam, never a top-up.
+#: Readers drop it before any further work, so spam costs us nothing per row.
+DUST: Final = Decimal("1")
 
 
 class ChainUnavailableError(Exception):
@@ -51,4 +56,4 @@ class Batch:
     truncated: bool
 
 
-__all__ = ["Batch", "ChainUnavailableError", "Transfer"]
+__all__ = ["DUST", "Batch", "ChainUnavailableError", "Transfer"]

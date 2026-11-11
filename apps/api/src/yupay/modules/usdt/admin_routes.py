@@ -15,6 +15,7 @@ from yupay.modules.admin.deps import require_admin
 from yupay.modules.merchants import transactions
 from yupay.modules.merchants.models import Merchant
 from yupay.modules.merchants.route_replay import IdempotencyKeyHeader, remember, replayed
+from yupay.modules.notifications.alerts import send_admin_alert
 from yupay.modules.p2p.admin_deps import Admin, Db, PageLimit, parse_uuid
 from yupay.modules.usdt import resolve
 from yupay.modules.usdt.models import UsdtIncoming, UsdtReservation, UsdtSettings
@@ -121,16 +122,17 @@ async def patch_usdt_network(
     rows = {n.network: n for n in await load_networks(db)}
     n = rows[network]
     sent = body.model_fields_set
-    if "address" in sent:
-        await resolve.change_address(db, n, body.address)
+    alert = await resolve.change_address(db, n, body.address) if "address" in sent else None
     if body.enabled is not None:
-        n.enabled = body.enabled
+        await resolve.reenable(db, n, body.enabled)
     n.updated_by, n.updated_at = admin.id, now()
     await db.flush()
     out = await _settings_out(db, await load_settings(db))
     log.info("usdt.network_saved", admin_id=admin.id, network=network, changed=sorted(sent))
     await remember(db, scope=scope, key=key, body=out.model_dump(mode="json"))
     await db.commit()
+    if alert is not None:
+        await send_admin_alert(alert, kind="usdt_address_changed")
     return out
 
 

@@ -38,8 +38,13 @@ def admits(s: UsdtSettings, merchant_id: str) -> bool:
 
 
 def is_open(n: UsdtNetwork) -> bool:
-    """Whether resellers can pick this chain: switched on and given an address."""
-    return n.enabled and bool(n.address)
+    """Whether resellers can pick this chain: on, given an address, and being read.
+
+    The cursor must exist: after an address change it is cleared, and a
+    reservation taken before the poller fixed where to start reading could be
+    paid in a block the poller then starts after (security review 2026-11-11).
+    """
+    return n.enabled and bool(n.address) and n.cursor is not None
 
 
 __all__ = ["admits", "is_open", "load_networks", "load_settings"]

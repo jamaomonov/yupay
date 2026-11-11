@@ -35,6 +35,9 @@ class Network:
     decimals: int
     confirmations: int = 0
     max_blocks: int = 0
+    #: ``eth_chainId`` the node must report (EVM only): a misconfigured URL
+    #: pointing at another chain is refused rather than read.
+    chain_id: int = 0
 
 
 TRC20: Final = Network("trc20", "tron", "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t", 6)
@@ -46,6 +49,7 @@ BEP20: Final = Network(
     18,
     confirmations=20,
     max_blocks=1000,
+    chain_id=56,
 )
 #: ~12 s blocks: 12 confirmations is ~2.5 min.
 ERC20: Final = Network(
@@ -55,6 +59,7 @@ ERC20: Final = Network(
     6,
     confirmations=12,
     max_blocks=500,
+    chain_id=1,
 )
 
 NETWORKS: Final[dict[str, Network]] = {n.code: n for n in (TRC20, BEP20, ERC20)}

@@ -32,6 +32,10 @@ picked. The scheduler's `usdt_poll` job credits it after confirmation:
    `matched` and the deposit grew by 10.00.
 6. **Open to everyone** with `mode = all`.
 
+**Use addresses that receive nothing else.** A transfer that matches no hold, such as other
+income to the same address, can be claimed by someone who sees it in the mempool and
+reserves that exact amount before it lands. Top-up addresses should take top-ups only.
+
 ## 2. An unmatched transfer (alert `usdt_unmatched`)
 
 Usual causes:

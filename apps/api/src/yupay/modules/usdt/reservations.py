@@ -156,7 +156,7 @@ async def _after_race(
 
 
 async def suggest(
-    db: AsyncSession, network: str, amount: Decimal, ceiling: Decimal
+    db: AsyncSession, address: str, amount: Decimal, ceiling: Decimal
 ) -> Decimal | None:
     """A free amount near ``amount``: it plus random cents, or ``None`` if all are held.
 
@@ -168,7 +168,7 @@ async def suggest(
         (
             await db.execute(
                 select(UsdtReservation.amount_usdt).where(
-                    UsdtReservation.network == network,
+                    UsdtReservation.address == address,
                     UsdtReservation.holds_amount.is_(True),
                     UsdtReservation.amount_usdt.in_(candidates),
                 )
@@ -269,7 +269,7 @@ async def reserve(
         if hit is None:
             raise
         if hit == _OPEN_AMOUNT_INDEX:
-            if (offer := await suggest(db, network, amount, s.max_amount_usd)) is None:
+            if (offer := await suggest(db, net.address, amount, s.max_amount_usd)) is None:
                 raise ConflictError(
                     "this amount and every nearby one is held", code="usdt_amount_busy"
                 ) from exc

@@ -10,7 +10,7 @@ from __future__ import annotations
 from decimal import ROUND_DOWN
 from typing import Final
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.core.clock import now
@@ -29,7 +29,7 @@ log = get_logger("yupay.usdt.resolve")
 _RESOLVED: Final = "this transfer is already resolved"
 
 
-async def change_address(db: AsyncSession, n: UsdtNetwork, raw: str | None) -> None:
+async def change_address(db: AsyncSession, n: UsdtNetwork, raw: str | None) -> str | None:
     """Point one chain's top-ups at a new address (or none).
 
     The checksum is checked for the chain's kind. The cursor is cleared, so
@@ -39,6 +39,11 @@ async def change_address(db: AsyncSession, n: UsdtNetwork, raw: str | None) -> N
     them open kept a reseller paying into an address nobody watched. A
     transfer already sent to the old one is reconciled by hand (runbook §4).
 
+    Returns:
+        The alert text for the caller to send after commit (the one setting
+        that redirects every reseller's money must never change silently), or
+        ``None`` when nothing changed.
+
     Raises:
         ValidationError: ``usdt_bad_address`` when the checksum fails.
     """
@@ -46,19 +51,41 @@ async def change_address(db: AsyncSession, n: UsdtNetwork, raw: str | None) -> N
     if address is not None and not is_address(NETWORKS[n.network].kind, address):
         raise ValidationError("not a valid address for this network", code="usdt_bad_address")
     if address == n.address:
-        return
-    at = now()
+        return None
+    old, at = n.address, now()
     closed = await db.execute(
         update(UsdtReservation)
         .where(UsdtReservation.status == "pending", UsdtReservation.network == n.network)
         .values(status="expired", closed_at=at, quarantine_until=at + QUARANTINE)
     )
     n.address, n.cursor, n.cursor_exact = address, None, False
-    log.info(
-        "usdt.address_changed",
-        network=n.network,
-        closed_pending=getattr(closed, "rowcount", 0) or 0,
+    count = getattr(closed, "rowcount", 0) or 0
+    log.info("usdt.address_changed", network=n.network, closed_pending=count)
+    return (
+        f"USDT ({n.network.upper()}): адрес приёма изменён\n{old or '—'} → {address or '—'}\n"
+        f"Закрыто ожидающих пополнений: {count}. Переводы на старый адрес больше не "
+        "читаются — проверьте его в обозревателе и зачислите вручную. "
+        "Если меняли не вы — немедленно выключите сеть."
     )
+
+
+async def reenable(db: AsyncSession, n: UsdtNetwork, enabled: bool) -> None:
+    """Switch a chain; turning it back on after a pause restarts it at "now".
+
+    A chain with nothing held is not read while off, so its cursor stays where
+    it stopped. Resuming from there would journal — and page the urgent chat
+    for — every transfer the address received meanwhile, none of them top-ups.
+    While anything is still held the chain was being read, so it keeps going.
+    """
+    if enabled and not n.enabled:
+        held = await db.scalar(
+            select(func.count())
+            .select_from(UsdtReservation)
+            .where(UsdtReservation.network == n.network, UsdtReservation.holds_amount.is_(True))
+        )
+        if not held:
+            n.cursor, n.cursor_exact = None, False
+    n.enabled = enabled
 
 
 async def _locked(db: AsyncSession, incoming_id: str) -> UsdtIncoming:
@@ -131,4 +158,4 @@ async def dismiss(db: AsyncSession, *, incoming_id: str, note: str, admin_id: st
     return row
 
 
-__all__ = ["change_address", "credit", "dismiss"]
+__all__ = ["change_address", "credit", "dismiss", "reenable"]

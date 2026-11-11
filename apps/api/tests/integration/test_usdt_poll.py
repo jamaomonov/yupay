@@ -285,21 +285,38 @@ def _log(
     }
 
 
-def _rpc(head: int, logs: list[dict[str, Any]], seen: list[dict[str, Any]]) -> Handler:
-    """A JSON-RPC node: ``eth_blockNumber``, ``eth_getLogs`` over a range, block times."""
+def _rpc(
+    head: int,
+    logs: list[dict[str, Any]],
+    seen: list[dict[str, Any]],
+    *,
+    chain_id: int = BEP20.chain_id,
+    max_results: int | None = None,
+) -> Handler:
+    """A JSON-RPC node: chain id, head, ``eth_getLogs`` over a range, block times.
+
+    ``max_results`` mimics publicnode's "query exceeds max results" refusal.
+    """
 
     def handler(request: httpx.Request) -> httpx.Response:
         body = json.loads(request.content)
         seen.append(body)
         method, params = body["method"], body["params"]
-        if method == "eth_blockNumber":
-            result: Any = hex(head)
+        reply: dict[str, Any] = {"jsonrpc": "2.0", "id": body["id"]}
+        if method == "eth_chainId":
+            reply["result"] = hex(chain_id)
+        elif method == "eth_blockNumber":
+            reply["result"] = hex(head)
         elif method == "eth_getLogs":
             lo, hi = int(params[0]["fromBlock"], 16), int(params[0]["toBlock"], 16)
-            result = [log for log in logs if lo <= int(log["blockNumber"], 16) <= hi]
+            found = [log for log in logs if lo <= int(log["blockNumber"], 16) <= hi]
+            if max_results is not None and len(found) > max_results:
+                reply["error"] = {"code": -32602, "message": "query exceeds max results"}
+            else:
+                reply["result"] = found
         else:
-            result = {"timestamp": hex(int(now().timestamp()))}
-        return httpx.Response(200, json={"jsonrpc": "2.0", "id": body["id"], "result": result})
+            reply["result"] = {"timestamp": hex(int(now().timestamp()))}
+        return httpx.Response(200, json=reply)
 
     return handler
 
@@ -350,9 +367,9 @@ async def test_a_new_evm_address_starts_at_the_head_and_reads_no_history(
     await db_session.commit()
     seen: list[dict[str, Any]] = []
     sessions = async_sessionmaker(db_engine, expire_on_commit=False)
-    async with _client(_rpc(5000, [_log(_wei("9"), block=4000)], seen)) as http:
+    async with _client(_rpc(5000, [_log(_wei("9"), block=4000)], seen, chain_id=1)) as http:
         await poll.poll_once(sessions, now_=now(), http=http)
-    assert [b["method"] for b in seen] == ["eth_blockNumber"]
+    assert [b["method"] for b in seen] == ["eth_chainId", "eth_blockNumber"]
     async with sessions() as db:
         assert await _cursor(db, "erc20") == 5000 - ERC20.confirmations
 
@@ -375,3 +392,58 @@ async def test_one_chain_down_does_not_stop_another(
     async with _client(handler) as http:
         result = await poll.poll_once(sessions, now_=now(), http=http)
     assert (result.matched, result.unavailable) == (1, ["bep20"])
+
+
+@pytest.mark.asyncio
+async def test_a_spam_flood_narrows_the_range_instead_of_stalling(
+    db_engine: AsyncEngine, db_session: AsyncSession
+) -> None:
+    """Review 2: >max-results of spam in a window once failed the read forever."""
+    m = await _merchant(db_session)
+    await open_usdt(db_session, [m], networks=("bep20",), evm_cursor=1000)
+    r = await reserve(db_session, m, "150", "bep20")
+    await db_session.commit()
+    spam = [_log(_wei("2"), block=1001 + i % 600, index=i) for i in range(900)]
+    real = _log(_wei("150"), block=1700, index=9999)
+    head = 1800 + BEP20.confirmations
+    sessions = async_sessionmaker(db_engine, expire_on_commit=False)
+    async with _client(_rpc(head, [*spam, real], [], max_results=200)) as http:
+        for _ in range(4):
+            await poll.poll_once(sessions, now_=now(), http=http)
+    async with sessions() as db:
+        assert await deposit_balance(db, merchant_id=m) == r.amount_usdt
+        assert await _cursor(db, "bep20") == 1800
+
+
+@pytest.mark.asyncio
+async def test_dust_logs_cost_no_block_lookups(
+    db_engine: AsyncEngine, db_session: AsyncSession
+) -> None:
+    await open_usdt(db_session, [], mode="all", networks=("bep20",), evm_cursor=1000)
+    await db_session.commit()
+    dust = [_log(1, block=1001 + i, index=i) for i in range(50)]
+    seen: list[dict[str, Any]] = []
+    sessions = async_sessionmaker(db_engine, expire_on_commit=False)
+    async with _client(_rpc(1100 + BEP20.confirmations, dust, seen)) as http:
+        await poll.poll_once(sessions, now_=now(), http=http)
+    assert not [b for b in seen if b["method"] == "eth_getBlockByNumber"]
+
+
+@pytest.mark.asyncio
+async def test_a_wrong_chain_or_an_out_of_range_log_is_refused(db_session: AsyncSession) -> None:
+    async with _client(_rpc(5000, [], [], chain_id=1)) as http:
+        with pytest.raises(evm.EvmUnavailableError):
+            await evm.fetch_transfers(BEP20, EVM_OURS, after_block=4000, url="http://n", http=http)
+
+    def lying(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        result: Any = {
+            "eth_chainId": hex(BEP20.chain_id),
+            "eth_blockNumber": hex(5000),
+            "eth_getLogs": [_log(_wei("150"), block=4999)],  # past the confirmed head
+        }.get(body["method"], {"timestamp": "0x1"})
+        return httpx.Response(200, json={"jsonrpc": "2.0", "id": body["id"], "result": result})
+
+    async with _client(lying) as http:
+        with pytest.raises(evm.EvmUnavailableError):
+            await evm.fetch_transfers(BEP20, EVM_OURS, after_block=4900, url="http://n", http=http)

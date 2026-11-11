@@ -91,6 +91,14 @@ reading a wallet by hand, and without a fee eating the 7–8 % margin.
 
 ### Negative consequences
 
+- **Mempool view of an unreserved transfer.** A transfer that matches no hold (a mistake, a
+  late payment, other income) can be claimed by someone who sees it pending and reserves that
+  amount first. Reserved amounts are safe, held by the unique index. Hence: dedicated
+  addresses (runbook §1).
+- **Fixed confirmation depth, not finality.** 12 blocks on Ethereum and 20 on BNB Chain; a
+  deeper reorg is not handled. Reading up to the node's `finalized` block would close it at
+  the cost of ~13 min on Ethereum.
+
 - The reseller must send the exact amount. An exchange that deducts its withdrawal fee from
   the amount sent produces an unmatched transfer, which is credited by hand.
 - **TronGrid dependency.** We trust TronGrid's answer over HTTPS. An outage delays credits

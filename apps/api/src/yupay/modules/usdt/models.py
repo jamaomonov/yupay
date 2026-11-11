@@ -113,10 +113,13 @@ class UsdtReservation(Base):
         CheckConstraint("status IN ('pending','paid','expired','cancelled')", name="status"),
         CheckConstraint("amount_usdt > 0", name="amount"),
         CheckConstraint(NETWORK_CHECK, name="network"),
-        # The rule the design rests on: one open amount per network at a time.
+        # The rule the design rests on: one open amount per receiving address.
+        # Per address, not per chain: BEP20 and ERC20 share one 0x address, and
+        # a reseller who reserved on one but sent on the other must not pay
+        # someone else's hold of the same amount.
         Index(
             "uq_usdt_reservations_open_amount",
-            "network",
+            "address",
             "amount_usdt",
             unique=True,
             postgresql_where=text("holds_amount"),

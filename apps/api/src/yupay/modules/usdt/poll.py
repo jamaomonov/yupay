@@ -92,7 +92,8 @@ async def _targets(sessions: async_sessionmaker[AsyncSession]) -> list[_Target]:
     out: list[_Target] = []
     for r in rows:
         live = s.mode != "off" and r.enabled
-        if r.address and (live or r.network in holding):
+        starting = r.cursor is None  # set the start point at once, open or not
+        if r.address and (live or starting or r.network in holding):
             out.append(_Target(NETWORKS[r.network], r.address, r.cursor, r.cursor_exact))
     return out
 

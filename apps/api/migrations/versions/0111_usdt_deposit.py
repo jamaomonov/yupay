@@ -82,7 +82,7 @@ def upgrade() -> None:
     op.create_index(
         "uq_usdt_reservations_open_amount",
         "usdt_reservations",
-        ["network", "amount_usdt"],
+        ["address", "amount_usdt"],
         unique=True,
         postgresql_where=sa.text("holds_amount"),
     )

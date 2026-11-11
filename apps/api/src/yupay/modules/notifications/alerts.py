@@ -46,6 +46,8 @@ URGENT_KINDS: frozenset[str] = frozenset(
         "p2p_order_payment_missing",
         # A reseller sent USDT that matched nothing: their money waits on a person.
         "usdt_unmatched",
+        # The address every reseller's USDT goes to was changed.
+        "usdt_address_changed",
     }
 )
 

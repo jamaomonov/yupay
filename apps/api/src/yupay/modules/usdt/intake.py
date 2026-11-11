@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from decimal import Decimal
 from typing import Final, Literal
 
 from sqlalchemy import func, select
@@ -21,15 +20,13 @@ from yupay.core.ids import new_id
 from yupay.core.logging import get_logger
 from yupay.modules.merchants.deposit import credit_deposit
 from yupay.modules.p2p.integrity import violated_constraint
-from yupay.modules.usdt.chain import Transfer
+from yupay.modules.usdt.chain import DUST, Transfer
 from yupay.modules.usdt.models import UsdtIncoming, UsdtReservation
 from yupay.modules.usdt.reservations import CENT, QUARANTINE
 
 log = get_logger("yupay.usdt.intake")
 
 Status = Literal["duplicate", "matched", "unmatched", "ignored"]
-#: Below this a transfer is dust — address-poisoning spam, never a top-up.
-DUST: Final = Decimal("1")
 #: Clock skew allowed between our ``created_at`` and the chain's block time.
 #: Kept to seconds on purpose: the address is public and blocks are visible
 #: ~60 s before they are confirmed, so a generous grace lets a reseller who

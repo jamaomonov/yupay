@@ -18,9 +18,9 @@ from yupay.core.clock import now
 from yupay.core.errors import AppError
 from yupay.core.ids import new_id
 from yupay.modules.merchants.deposit import deposit_balance
-from yupay.modules.usdt import intake, reservations
+from yupay.modules.usdt import intake, reservations, resolve
 from yupay.modules.usdt.address import is_tron_address
-from yupay.modules.usdt.models import UsdtIncoming, UsdtReservation
+from yupay.modules.usdt.models import UsdtIncoming, UsdtNetwork, UsdtReservation
 from yupay.modules.usdt.tron import USDT_CONTRACT
 
 from tests.integration.cabinet_signup import BASE
@@ -86,6 +86,57 @@ async def test_networks_hold_amounts_separately_and_pay_only_their_own(
     assert res.reservation_number == on_bsc.number
     await db_session.refresh(on_tron)
     assert on_tron.status == "pending"
+
+
+@pytest.mark.asyncio
+async def test_bep20_and_erc20_on_one_address_never_share_an_amount(
+    db_session: AsyncSession,
+) -> None:
+    """Review 9: a send on the wrong chain must not pay someone else's hold."""
+    a, b = await _merchant(db_session), await _merchant(db_session)
+    await open_usdt(db_session, [a, b], networks=("bep20", "erc20"))
+    await reserve(db_session, a, "100", "erc20")
+    with pytest.raises(AppError) as taken:
+        await reserve(db_session, b, "100", "bep20")
+    assert _code(taken.value) == "usdt_amount_taken"
+
+
+@pytest.mark.asyncio
+async def test_a_network_without_a_start_point_is_not_open(db_session: AsyncSession) -> None:
+    """Review 2: reserving before the poller fixed its start could go unread."""
+    m = await _merchant(db_session)
+    await open_usdt(db_session, [m], networks=("bep20",))
+    row = await db_session.get(UsdtNetwork, "bep20")
+    assert row is not None
+    row.cursor = None
+    await db_session.flush()
+    with pytest.raises(AppError) as closed:
+        await reserve(db_session, m, "100", "bep20")
+    assert _code(closed.value) == "usdt_network_disabled"
+
+
+@pytest.mark.asyncio
+async def test_turning_a_paused_network_back_on_restarts_it(db_session: AsyncSession) -> None:
+    """Review 8: resuming an old cursor would replay months of the address's history."""
+    await open_usdt(db_session, [], networks=())
+    row = await db_session.get(UsdtNetwork, "erc20")
+    assert row is not None
+    await resolve.reenable(db_session, row, True)
+    assert (row.enabled, row.cursor) == (True, None)
+
+
+@pytest.mark.asyncio
+async def test_an_address_change_reports_what_it_closed(db_session: AsyncSession) -> None:
+    m = await _merchant(db_session)
+    await open_usdt(db_session, [m])
+    await reserve(db_session, m, "100")
+    row = await db_session.get(UsdtNetwork, "trc20")
+    assert row is not None
+    alert = await resolve.change_address(db_session, row, tron(9))
+    assert alert is not None
+    assert OURS in alert
+    assert tron(9) in alert
+    assert "1" in alert
 
 
 @pytest.mark.asyncio

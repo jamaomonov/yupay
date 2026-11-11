@@ -64,13 +64,10 @@ def evm_checksum(address: str) -> str:
 
 
 def is_evm_address(value: str) -> bool:
-    """Whether ``value`` is a checksummed EVM address (EIP-55, mixed case)."""
-    if not _EVM.fullmatch(value):
-        return False
-    body = value[2:]
-    if body.lower() == body or body.upper() == body:
-        return False
-    return evm_checksum(value) == value
+    """Whether ``value`` is an EVM address spelled exactly as its EIP-55 checksum."""
+    # An all-lowercase address passes only when its checksum really has no
+    # capitals (all digits, say): pasted lowercase, a typo would go unseen.
+    return bool(_EVM.fullmatch(value)) and evm_checksum(value) == value
 
 
 def is_address(kind: str, value: str) -> bool:

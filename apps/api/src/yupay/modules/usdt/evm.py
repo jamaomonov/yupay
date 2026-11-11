@@ -17,12 +17,11 @@ from typing import Any, Final
 import httpx
 
 from yupay.modules.usdt.address import evm_checksum
-from yupay.modules.usdt.chain import Batch, ChainUnavailableError, Transfer
+from yupay.modules.usdt.chain import DUST, Batch, ChainUnavailableError, Transfer
 from yupay.modules.usdt.networks import Network
 
 #: keccak256("Transfer(address,address,uint256)").
 TRANSFER_TOPIC: Final = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
-_CHUNKS_PER_READ: Final = 5
 _TIMEOUT_SECONDS: Final = 10.0
 
 
@@ -71,7 +70,10 @@ async def chain_head(net: Network, *, url: str, http: httpx.AsyncClient | None =
     """The newest block buried ``confirmations`` deep — where a fresh cursor starts."""
     client = http or httpx.AsyncClient(timeout=_TIMEOUT_SECONDS)
     try:
-        head = _hex_int(await _Rpc(client, url).call("eth_blockNumber", []))
+        rpc = _Rpc(client, url)
+        if _hex_int(await rpc.call("eth_chainId", [])) != net.chain_id:
+            raise EvmUnavailableError("wrong chain")
+        head = _hex_int(await rpc.call("eth_blockNumber", []))
     finally:
         if http is None:
             await client.aclose()
@@ -110,7 +112,9 @@ def parse_log(log: dict[str, Any], net: Network, address: str) -> tuple[Transfer
         _hex_int(log.get("logIndex")),
     )
     tx_id, sender = log.get("transactionHash"), str(topics[1])
-    if value is None or value <= 0 or block is None or index is None:
+    # Dust (under 1 USDT, incl. 1-wei poisoning spam) stops here, before it
+    # costs a block lookup or a journal row (security review 2026-11-11).
+    if value is None or value < DUST.scaleb(net.decimals) or block is None or index is None:
         return None
     if not isinstance(tx_id, str) or len(tx_id) != 66 or len(sender) != 66:
         return None
@@ -121,7 +125,9 @@ def parse_log(log: dict[str, Any], net: Network, address: str) -> tuple[Transfer
         from_address=evm_checksum("0x" + sender[-40:]),
         to_address=address,
         amount=Decimal(value).scaleb(-net.decimals),
-        block_at=datetime.fromtimestamp(0, tz=UTC),
+        # Nodes include ``blockTimestamp`` in every log (checked on publicnode);
+        # a node that omits it costs one ``eth_getBlockByNumber`` per block.
+        block_at=datetime.fromtimestamp(_hex_int(log.get("blockTimestamp")) or 0, tz=UTC),
         position=block,
     )
     return transfer, block
@@ -137,6 +143,52 @@ async def _block_time(rpc: _Rpc, block: int, cache: dict[int, datetime]) -> date
     return cache[block]
 
 
+#: ``eth_getLogs`` calls per read, halvings included: 1000 → 1 block is ten.
+_MAX_LOG_CALLS: Final = 30
+
+
+async def _logs(rpc: _Rpc, net: Network, address: str, start: int, end: int) -> list[Any]:
+    logs = await rpc.call(
+        "eth_getLogs",
+        [
+            {
+                "fromBlock": hex(start),
+                "toBlock": hex(end),
+                "address": net.contract,
+                "topics": [TRANSFER_TOPIC, None, _topic_for(address)],
+            }
+        ],
+    )
+    if not isinstance(logs, list):
+        raise EvmUnavailableError("bad logs")
+    return logs
+
+
+async def _collect(
+    rpc: _Rpc,
+    net: Network,
+    address: str,
+    logs: list[Any],
+    start: int,
+    end: int,
+    times: dict[int, datetime],
+) -> list[Transfer]:
+    out: list[Transfer] = []
+    for item in logs:
+        parsed = parse_log(item, net, address) if isinstance(item, dict) else None
+        if parsed is None:
+            continue
+        t, block = parsed
+        # A node must not hand back a log outside the range asked — that is
+        # how an unconfirmed block could slip in.
+        if not start <= block <= end:
+            raise EvmUnavailableError("log outside the requested range")
+        if t.block_at.timestamp() == 0:
+            t = replace(t, block_at=await _block_time(rpc, block, times))
+        out.append(t)
+    return out
+
+
 async def fetch_transfers(
     net: Network,
     address: str,
@@ -147,47 +199,45 @@ async def fetch_transfers(
 ) -> Batch:
     """Confirmed USDT transfers to ``address`` in blocks after ``after_block``.
 
-    Reads at most ``_CHUNKS_PER_READ`` ranges of ``net.max_blocks``; when the
-    confirmed head is further away the batch is ``truncated`` and the next
-    poll continues from ``last_position``.
+    The range starts at ``net.max_blocks`` and is **halved** whenever the node
+    refuses it (too many results, a timeout) down to one block, so a flood of
+    spam logs slows the read instead of stopping it. Ranges already read are
+    kept: the batch reports how far it got (``last_position``) and is
+    ``truncated`` when the confirmed head is further.
 
     Raises:
-        EvmUnavailableError: On any transport, HTTP or JSON-RPC failure.
-            Nothing partial is returned.
+        EvmUnavailableError: When the node is unusable before anything was
+            read — head, chain id, or a single block it will not return.
     """
     client = http or httpx.AsyncClient(timeout=_TIMEOUT_SECONDS)
     rpc = _Rpc(client, url)
     out: list[Transfer] = []
     times: dict[int, datetime] = {}
     try:
+        if _hex_int(await rpc.call("eth_chainId", [])) != net.chain_id:
+            raise EvmUnavailableError("wrong chain")
         head = _hex_int(await rpc.call("eth_blockNumber", []))
         if head is None:
             raise EvmUnavailableError("bad block number")
         safe = head - net.confirmations
-        start, last = after_block + 1, after_block
-        for _ in range(_CHUNKS_PER_READ):
+        start, last, span = after_block + 1, after_block, net.max_blocks
+        for _ in range(_MAX_LOG_CALLS):
             if start > safe:
                 break
-            end = min(safe, start + net.max_blocks - 1)
-            logs = await rpc.call(
-                "eth_getLogs",
-                [
-                    {
-                        "fromBlock": hex(start),
-                        "toBlock": hex(end),
-                        "address": net.contract,
-                        "topics": [TRANSFER_TOPIC, None, _topic_for(address)],
-                    }
-                ],
-            )
-            if not isinstance(logs, list):
-                raise EvmUnavailableError("bad logs")
-            for item in logs:
-                parsed = parse_log(item, net, address) if isinstance(item, dict) else None
-                if parsed is not None:
-                    t, block = parsed
-                    out.append(replace(t, block_at=await _block_time(rpc, block, times)))
+            end = min(safe, start + span - 1)
+            try:
+                logs = await _logs(rpc, net, address, start, end)
+                found = await _collect(rpc, net, address, logs, start, end, times)
+            except EvmUnavailableError:
+                if span > 1:
+                    span = max(1, span // 2)
+                    continue
+                if last > after_block:
+                    break  # keep what was read; the next tick resumes here
+                raise
+            out.extend(found)
             last, start = end, end + 1
+            span = min(net.max_blocks, span * 2)
     finally:
         if http is None:
             await client.aclose()

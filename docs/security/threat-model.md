@@ -367,7 +367,13 @@ address; the scheduler reads confirmed transfers from TronGrid every 20 s.
 - **EVM chains (BEP20 / ERC20).** We trust the JSON-RPC node's answer over HTTPS. Logs are
   read only from blocks 20 (BNB Chain) or 12 (Ethereum) deep, `removed` logs are dropped, and
   every log is re-checked for the USDT contract, the `Transfer` topic and our address as the
-  recipient. An EVM address must be EIP-55 checksummed to be saved.
+  recipient, and must lie inside the requested block range; the node must report the right
+  `eth_chainId`. Dust (incl. 1-wei spam) is dropped while parsing, before any block lookup; a
+  range the node refuses is halved down to one block and progress is kept, so a spam flood
+  slows the read and cannot stop it. Amounts are held per receiving address, so BEP20 and
+  ERC20 sharing a 0x address never share an amount. An EVM address must match its EIP-55
+  spelling to be saved. A chain opens for reservations only once the poller has fixed its
+  start block. Changing an address pages the urgent chat with the old and new address.
 - **Fake token.** Anyone can mint a TRC20 token called "USDT" and send it. Only transfers whose
   contract is Tether's (`TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t`), with 6 decimals, type `Transfer`
   and recipient equal to our address are journaled (`usdt.tron.parse_transfer`), and the query
