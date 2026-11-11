@@ -68,7 +68,7 @@ class UsdtSettings(Base):
 
 
 class UsdtReservation(Base):
-    """An exact USDT amount held for one reseller for 60 minutes."""
+    """An exact USDT amount held for one reseller for 30 minutes."""
 
     __tablename__ = "usdt_reservations"
 

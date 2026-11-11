@@ -38,7 +38,8 @@ from yupay.modules.usdt.settings import admits, load_settings
 
 log = get_logger("yupay.usdt.reservations")
 
-RESERVATION_TTL: Final = timedelta(minutes=60)
+#: How long the reseller has to send (owner, 2026-11-11: 30 min, as FZR does).
+RESERVATION_TTL: Final = timedelta(minutes=30)
 QUARANTINE: Final = timedelta(minutes=60)
 CENT: Final = Decimal("0.01")
 #: When the asked amount is held, the reseller is offered it plus random
@@ -199,7 +200,7 @@ def _validate_amount(amount: Decimal, lo: Decimal, hi: Decimal) -> Decimal:
 async def reserve(
     db: AsyncSession, *, merchant_id: str, amount: Decimal, idempotency_key: str | None
 ) -> UsdtReservation:
-    """Hold exactly ``amount`` USDT for 60 minutes.
+    """Hold exactly ``amount`` USDT for 30 minutes.
 
     When another reservation holds it, nothing is reserved: the 409 carries a
     free ``suggested`` amount (the request plus random cents) for the reseller

@@ -80,7 +80,7 @@ async def create_deposit(
     db: Db,
     idempotency_key: IdempotencyKeyHeader = None,
 ) -> UsdtDepositOut:
-    """Hold an exact amount for 60 minutes; races resolve inside the service."""
+    """Hold an exact amount for 30 minutes; races resolve inside the service."""
     merchant = await merchant_of(db, user)
     r = await reservations.reserve(
         db,

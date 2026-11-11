@@ -9,7 +9,7 @@ Docs: ADR-0104, `docs/runbooks/usdt-deposit.md`,
 
 ## Responsibilities
 
-- **Reserve** (`reservations.py`): hold exactly the asked amount for 60 minutes. When it is
+- **Reserve** (`reservations.py`): hold exactly the asked amount for 30 minutes. When it is
   held, answer `409 usdt_amount_taken` with a free `suggested` amount (plus random cents)
   and hold nothing. At most 10 reservations per merchant an hour. A closed amount
   (expired, cancelled **or paid**) stays

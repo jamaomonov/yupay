@@ -26,7 +26,7 @@ scheduler's `usdt_poll` job credits it within about a minute of confirmation.
 Usual causes:
 
 - an exchange deducted its fee, so 99.00 arrived instead of 100.00;
-- the reseller sent after the 60 minutes ran out;
+- the reseller sent after the 30 minutes ran out;
 - the reseller sent without opening a top-up.
 
 What to do:

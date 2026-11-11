@@ -12,7 +12,7 @@ sequenceDiagram
     R->>C: Top up, 100 USDT
     C->>API: POST /deposits {amount} + Idempotency-Key
     API->>DB: INSERT usdt_reservations (amount 100.00, bump +0.01… if held)
-    API-->>C: number, exact amount, address, expires_at (60 min)
+    API-->>C: number, exact amount, address, expires_at (30 min)
     R->>W: send exactly 100.00 USDT (TRC20)
     loop every 20 s
         S->>DB: sweep (expire, end quarantine)

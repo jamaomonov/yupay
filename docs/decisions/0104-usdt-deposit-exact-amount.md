@@ -28,7 +28,7 @@ reading a wallet by hand, and without a fee eating the 7–8 % margin.
 - **Wallet.** One TRON address owned by the owner, kept in `usdt_settings.address`. Only the
   public address is stored; the keys never touch our systems.
 - **Reservation.** The reseller enters a USD amount. If it is free, we hold exactly that
-  amount for 60 minutes:
+  amount for 30 minutes:
   - A partial unique index makes "one open amount" a database rule.
   - An expired, cancelled or paid amount stays held for 60 more minutes.
   - One merchant may open 10 reservations an hour.
