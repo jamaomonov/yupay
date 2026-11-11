@@ -160,7 +160,7 @@ export default function TransactionsList() {
   const tCommon = useTranslations("merchant.common");
   const { locale } = useParams<{ locale: string }>();
   const tTop = useTranslations("merchant.topUp");
-  const { profile, p2p } = useCabinet();
+  const { profile, p2p, selfServe: anySelfServe } = useCabinet();
   const [topUps, setTopUps] = useState<P2PDeposit[]>([]);
   const [rows, setRows] = useState<Transaction[] | null>(null);
   const [failed, setFailed] = useState(false);
@@ -187,15 +187,15 @@ export default function TransactionsList() {
     void fetchPage(null);
   }, [fetchPage]);
 
-  const selfServe = p2p?.enabled === true;
+  const cardTopUps = p2p?.enabled === true;
   useEffect(() => {
-    if (!selfServe) return;
+    if (!cardTopUps) return;
     void api<P2PDepositsPage>("/p2p/deposits?limit=10")
       .then((page) => {
         setTopUps(page.items);
       })
       .catch(() => undefined);
-  }, [selfServe]);
+  }, [cardTopUps]);
 
   const feed = useMemo(
     () => mergeFeed(rows ?? [], topUps, cursor !== null),
@@ -226,9 +226,9 @@ export default function TransactionsList() {
         </div>
         {/* The hint said "write to support" with nothing to click, while the
             string for the link sat unused in all three locales. */}
-        {/* Nothing until `/p2p/status` answers: the support hint used to flash
+        {/* Nothing until both top-up switches answer: the support hint used to flash
             for a moment before the top-up button replaced it. */}
-        {p2p === null ? null : selfServe ? (
+        {anySelfServe === null ? null : anySelfServe ? (
           <Link
             href={pathFor(locale, "/cabinet/top-up")}
             className="bg-primary text-primary-foreground rounded-btn px-4 py-2 text-sm font-semibold"

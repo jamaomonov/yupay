@@ -8,29 +8,26 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { P2PDeposit, P2PDepositsPage } from "@/lib/types";
 
 import { useCabinet } from "@/components/CabinetContext";
+import { CardAmountForm } from "@/components/CardAmountForm";
 import { PageHeading } from "@/components/PageHeading";
 import { TopUpDetails } from "@/components/TopUpDetails";
 import { type TopUpMethod, TopUpMethods } from "@/components/TopUpMethods";
+import { UsdtTopUp } from "@/components/UsdtTopUp";
 import { api, ApiError } from "@/lib/api";
-import {
-  acceptPoll,
-  errorKey,
-  formatRate,
-  formatSom,
-  phase,
-  pollDeadline,
-  secondsLeft,
-  usdPreview,
-} from "@/lib/p2p";
+import { acceptPoll, errorKey, phase, pollDeadline, secondsLeft } from "@/lib/p2p";
+import { useUsdtDeposit } from "@/lib/useUsdtDeposit";
 
 const SUPPORT = "https://t.me/yupay_support";
 const POLL_MS = 3000;
 
-/** Self-serve top-up: amount, then the exact amount and card with a clock, then the outcome. */
+/**
+ * Self-serve top-up: pick a method (card or USDT), then the amount, then the
+ * exact amount and where to send it with a clock, then the outcome.
+ */
 export default function TopUp() {
   const t = useTranslations("merchant.topUp");
   const { locale } = useParams<{ locale: string }>();
-  const { p2p, refreshProfile } = useCabinet();
+  const { p2p, usdt: usdtStatus, refreshProfile } = useCabinet();
   const [deposit, setDeposit] = useState<P2PDeposit | null>(null);
   const [method, setMethod] = useState<TopUpMethod | null>(null);
   const [amount, setAmount] = useState("");
@@ -109,8 +106,16 @@ export default function TopUp() {
     if (current === "paid") refreshProfile();
   }, [current, refreshProfile]);
 
-  const value = Number(amount);
-  const preview = usdPreview(value, p2p?.fx_rate ?? null);
+  const usdtEnabled = usdtStatus?.enabled === true;
+  const usdt = useUsdtDeposit(usdtEnabled);
+  const cardOn = enabled && !disabled;
+  const usdtOn = usdtEnabled && !usdt.disabled;
+  // A reservation of either kind on screen hides the picker and the other flow.
+  const cardIdle = current === "amount" || current === "cancelled";
+  const usdtIdle = usdt.phase === "amount" || usdt.phase === "cancelled";
+  const idle = cardIdle && usdtIdle;
+  const unavailable =
+    !cardOn && !usdtOn && ((p2p !== null && usdtStatus !== null) || disabled || usdt.disabled);
 
   const submit = async () => {
     setBusy(true);
@@ -119,7 +124,7 @@ export default function TopUp() {
     try {
       const created = await api<P2PDeposit>("/p2p/deposits", {
         method: "POST",
-        body: { amount_uzs: value },
+        body: { amount_uzs: Number(amount) },
         idempotencyKey: intentKey.current,
       });
       intentKey.current = null;
@@ -208,71 +213,48 @@ export default function TopUp() {
   return (
     <div>
       <PageHeading icon={Wallet} title={t("title")} />
-      {(disabled || p2p?.enabled === false) && (
+      {unavailable && (
         <section className="mt-5">
           <p className="text-tx-mute text-sm">{t("unavailable")}</p>
           {supportLink}
         </section>
       )}
-      {enabled &&
-        !disabled &&
-        (current === "amount" || current === "cancelled") &&
-        method === null && <TopUpMethods onPick={setMethod} />}
-      {enabled &&
-        !disabled &&
-        (current === "amount" || current === "cancelled") &&
-        method !== null && (
-          <form
-            className="border-border bg-card mt-5 max-w-md rounded-xl border p-6"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void submit();
-            }}
-          >
-            <button
-              type="button"
-              onClick={() => {
-                setMethod(null);
-                setError(null);
-              }}
-              className="text-tx-mute mb-3 text-sm underline-offset-4 hover:underline"
-            >
-              ← {t("changeMethod")}
-            </button>
-            <label className="text-tx-dim block text-xs" htmlFor="topup-amount">
-              {t("amountLabel")}
-            </label>
-            <input
-              id="topup-amount"
-              inputMode="numeric"
-              autoComplete="off"
-              value={amount === "" ? "" : formatSom(Number(amount), locale)}
-              onChange={(event) => {
-                // Digits only, grouped on display («50 000»); state keeps bare digits.
-                setAmount(event.target.value.replace(/\D/g, "").slice(0, 10));
-                intentKey.current = null;
-              }}
-              className="border-border bg-card-2 rounded-btn mt-1.5 block w-full border px-3 py-2 font-mono text-lg"
-            />
-            {preview !== null && (
-              <p className="text-tx-mute mt-2 text-sm">
-                {t("usdPreview", { usd: preview, rate: formatRate(p2p.fx_rate ?? "", locale) })}
-              </p>
-            )}
-            {error !== null && (
-              <p role="alert" className="mt-3 text-sm text-red-500">
-                {error}
-              </p>
-            )}
-            <button
-              type="submit"
-              disabled={busy || !(value > 0)}
-              className="bg-primary text-primary-foreground rounded-btn mt-4 px-4 py-2 text-sm font-semibold disabled:opacity-50"
-            >
-              {t("continue")}
-            </button>
-          </form>
-        )}
+      {idle && method === null && (cardOn || usdtOn) && (
+        <TopUpMethods card={cardOn} usdt={usdtOn} onPick={setMethod} />
+      )}
+      {idle && method === "card" && cardOn && (
+        <CardAmountForm
+          amount={amount}
+          onAmount={(digits) => {
+            setAmount(digits);
+            intentKey.current = null;
+          }}
+          fxRate={p2p.fx_rate}
+          locale={locale}
+          busy={busy}
+          error={error}
+          onSubmit={() => {
+            void submit();
+          }}
+          onBack={() => {
+            setMethod(null);
+            setError(null);
+          }}
+        />
+      )}
+      {cardIdle && usdtOn && (method === "usdt" || !usdtIdle) && (
+        <UsdtTopUp
+          flow={usdt}
+          locale={locale}
+          supportHref={SUPPORT}
+          onBack={() => {
+            setMethod(null);
+          }}
+          onAgain={() => {
+            setMethod(null);
+          }}
+        />
+      )}
       {current === "details" && deposit !== null && (
         <TopUpDetails
           deposit={deposit}

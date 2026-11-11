@@ -25,7 +25,7 @@ export function TopBar() {
   // A box that looks searchable and searches nothing is worse than no box, so
   // screens without one — Settings, Webhooks — declare no placeholder and the
   // slot collapses.
-  const { profile, p2p, search, setSearch, searchPlaceholder } = useCabinet();
+  const { profile, selfServe, search, setSearch, searchPlaceholder } = useCabinet();
   const { locale } = useParams<{ locale: string }>();
   const box = useRef<HTMLInputElement>(null);
 
@@ -109,7 +109,7 @@ export function TopBar() {
           <span className="text-primary-ink font-mono text-sm font-extrabold tabular-nums">
             {balance === null ? "—" : dollars(balance)}
           </span>
-          {p2p === null ? (
+          {selfServe === null ? (
             // Status still loading: neutral, so the control does not appear as
             // a support link and then swap to the top-up page.
             <button
@@ -120,7 +120,7 @@ export function TopBar() {
             >
               {plus}
             </button>
-          ) : p2p.enabled ? (
+          ) : selfServe ? (
             <Link
               href={pathFor(locale, "/cabinet/top-up")}
               aria-label={t("topUp")}

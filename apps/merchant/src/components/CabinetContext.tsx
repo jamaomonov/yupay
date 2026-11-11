@@ -3,7 +3,7 @@
 import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 
-import type { CatalogSummary, P2PStatus, Profile } from "@/lib/types";
+import type { CatalogSummary, P2PStatus, Profile, UsdtStatus } from "@/lib/types";
 
 import { api } from "@/lib/api";
 
@@ -17,6 +17,13 @@ interface CabinetData {
   catalog: CatalogSummary | null;
   /** Whether self-serve top-up is on for this reseller; `null` until asked. */
   p2p: P2PStatus | null;
+  /** Whether the USDT (TRC20) top-up is on, with its bounds; `null` until asked. */
+  usdt: UsdtStatus | null;
+  /**
+   * Whether any self-serve top-up (card or USDT) is on; `null` until both
+   * switches are read, so a control never flashes from support to top-up.
+   */
+  selfServe: boolean | null;
   /** Re-read the profile — the balance moves when an order is placed. */
   refreshProfile: () => void;
   /**
@@ -38,6 +45,8 @@ const Ctx = createContext<CabinetData>({
   profile: null,
   catalog: null,
   p2p: null,
+  usdt: null,
+  selfServe: null,
   refreshProfile: () => undefined,
   search: "",
   setSearch: () => undefined,
@@ -64,6 +73,7 @@ export function CabinetProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [catalog, setCatalog] = useState<CatalogSummary | null>(null);
   const [p2p, setP2p] = useState<P2PStatus | null>(null);
+  const [usdt, setUsdt] = useState<UsdtStatus | null>(null);
   const [search, setSearch] = useState("");
   const [searchPlaceholder, setSearchPlaceholder] = useState<string | null>(null);
   const pathname = usePathname();
@@ -97,6 +107,9 @@ export function CabinetProvider({ children }: { children: React.ReactNode }) {
     void api<P2PStatus>("/p2p/status").then(setP2p, () => {
       setP2p({ enabled: false, fx_rate: null });
     });
+    void api<UsdtStatus>("/usdt/status").then(setUsdt, () => {
+      setUsdt({ enabled: false, network: "TRC20", min_amount: null, max_amount: null });
+    });
   }, [refreshProfile]);
 
   return (
@@ -105,6 +118,8 @@ export function CabinetProvider({ children }: { children: React.ReactNode }) {
         profile,
         catalog,
         p2p,
+        usdt,
+        selfServe: p2p === null || usdt === null ? null : p2p.enabled || usdt.enabled,
         refreshProfile,
         search,
         setSearch,

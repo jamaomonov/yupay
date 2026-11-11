@@ -304,6 +304,36 @@ export interface P2PStatus {
   fx_rate: string | null;
 }
 
+/** Whether the cabinet offers a USDT (TRC20) top-up, and the bounds of one payment. */
+export interface UsdtStatus {
+  enabled: boolean;
+  network: "TRC20";
+  /** Decimal strings, `"10.00"`; `null` while the method is off. */
+  min_amount: string | null;
+  max_amount: string | null;
+}
+
+/** One USDT reservation: the exact amount to send, and where while it is open. */
+export interface UsdtDeposit {
+  number: string;
+  status: P2PDepositStatus;
+  /** What to send, exactly — may be a few cents over what was asked. */
+  amount: string;
+  network: "TRC20";
+  /** The receiving TRON address; set only while pending. */
+  address: string | null;
+  created_at: string;
+  expires_at: string;
+  closed_at: string | null;
+  /** The paying transaction, once paid. */
+  tx_id: string | null;
+}
+
+export interface UsdtDepositsPage {
+  items: UsdtDeposit[];
+  next_cursor: string | null;
+}
+
 /** `GET /stats` — one window's counts and money, from the ledger. */
 export interface StatsTotals {
   orders: number;

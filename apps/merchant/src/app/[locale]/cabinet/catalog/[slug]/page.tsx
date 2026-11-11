@@ -93,7 +93,7 @@ export default function BrandPage() {
   const tCabinet = useTranslations("merchant.cabinet");
   const locale = useLocale();
   const { locale: routeLocale, slug } = useParams<{ locale: string; slug: string }>();
-  const { profile, refreshProfile, p2p } = useCabinet();
+  const { profile, refreshProfile, selfServe } = useCabinet();
   const tTop = useTranslations("merchant.topUp");
   // This brand's own subtree, fetched here: the shell only holds the grid's
   // cards. `undefined` while loading, `null` when the reseller cannot buy it.
@@ -605,7 +605,7 @@ export default function BrandPage() {
                   {t("notEnough")}{" "}
                   {/* Self-serve top-up when it is on — sending a reseller to
                       support for something the cabinet does itself was a detour. */}
-                  {p2p?.enabled === true ? (
+                  {selfServe === true ? (
                     <Link href={pathFor(locale, "/cabinet/top-up")} className="underline">
                       {tTop("title")}
                     </Link>

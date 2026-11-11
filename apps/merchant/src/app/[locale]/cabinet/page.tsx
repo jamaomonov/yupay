@@ -28,7 +28,7 @@ export default function Dashboard() {
   const tOrders = useTranslations("merchant.orders");
   const { locale } = useParams<{ locale: string }>();
   const tTop = useTranslations("merchant.topUp");
-  const { catalog, profile, p2p } = useCabinet();
+  const { catalog, profile, selfServe: anySelfServe } = useCabinet();
   const [recent, setRecent] = useState<OrderRow[] | null>(null);
   const [today, setToday] = useState<Summary | null>(null);
 
@@ -49,16 +49,16 @@ export default function Dashboard() {
       .catch(() => undefined);
   }, []);
 
-  const selfServe = p2p?.enabled === true;
+  const selfServe = anySelfServe === true;
   const balance = profile ? toCents(profile.balance_usd) : null;
 
   return (
     <div>
       <h1 className="font-display text-xl font-semibold tracking-tight">{profile?.title ?? " "}</h1>
 
-      {/* Held until `/p2p/status` answers, so the support copy never flashes
+      {/* Held until both top-up switches answer, so the support copy never flashes
           before the top-up button. */}
-      {balance === 0n && p2p !== null && (
+      {balance === 0n && anySelfServe !== null && (
         // The one thing a fresh account needs to be told, and the spec's whole
         // onboarding shape: the catalog is open, buying waits on support. Said
         // without naming the mechanism — no "deposit through support" process

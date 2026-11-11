@@ -13,7 +13,7 @@ describe("TopUpMethods", () => {
         timeZone="Asia/Tashkent"
         messages={{ merchant: messages }}
       >
-        <TopUpMethods onPick={() => undefined} />
+        <TopUpMethods card usdt={false} onPick={() => undefined} />
       </NextIntlClientProvider>,
     );
 
@@ -24,5 +24,21 @@ describe("TopUpMethods", () => {
     expect(html).toContain("humo.png");
     expect(html).toContain('alt="Uzcard"');
     expect(html).toContain('alt="Humo"');
+    expect(html).not.toContain("USDT");
+  });
+
+  it("offers USDT alone when the card method is off", () => {
+    const html = renderToStaticMarkup(
+      <NextIntlClientProvider
+        locale="ru"
+        timeZone="Asia/Tashkent"
+        messages={{ merchant: messages }}
+      >
+        <TopUpMethods card={false} usdt onPick={() => undefined} />
+      </NextIntlClientProvider>,
+    );
+
+    expect(html).toContain("USDT · TRC20");
+    expect(html).not.toContain("Uzcard / Humo");
   });
 });
