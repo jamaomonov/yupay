@@ -17,33 +17,45 @@ from yupay.modules.merchants.models import Merchant
 from yupay.modules.merchants.route_replay import IdempotencyKeyHeader, remember, replayed
 from yupay.modules.p2p.admin_deps import Admin, Db, PageLimit, parse_uuid
 from yupay.modules.usdt import resolve
-from yupay.modules.usdt.models import UsdtIncoming, UsdtReservation
+from yupay.modules.usdt.models import UsdtIncoming, UsdtReservation, UsdtSettings
 from yupay.modules.usdt.schemas import (
     UsdtCreditIn,
     UsdtDismissIn,
     UsdtIncomingOut,
     UsdtIncomingPageOut,
+    UsdtNetworkCode,
+    UsdtNetworkIn,
+    UsdtNetworkOut,
     UsdtReservationAdminOut,
     UsdtReservationPageOut,
     UsdtResult,
     UsdtSettingsIn,
     UsdtSettingsOut,
 )
-from yupay.modules.usdt.settings import load_settings
+from yupay.modules.usdt.settings import load_networks, load_settings
 
 router = APIRouter(prefix="/admin/usdt", tags=["admin:usdt"], dependencies=[Depends(require_admin)])
 log = get_logger("yupay.usdt.admin")
 
 
-def _settings_out(s: object) -> UsdtSettingsOut:
-    return UsdtSettingsOut.model_validate(s, from_attributes=True)
+async def _settings_out(db: Db, s: UsdtSettings) -> UsdtSettingsOut:
+    return UsdtSettingsOut(
+        mode=s.mode,  # type: ignore[arg-type]  # the check constraint pins it
+        allowlist_merchant_ids=s.allowlist_merchant_ids,
+        min_amount_usd=s.min_amount_usd,
+        max_amount_usd=s.max_amount_usd,
+        updated_at=s.updated_at,
+        networks=[
+            UsdtNetworkOut.model_validate(n, from_attributes=True) for n in await load_networks(db)
+        ],
+    )
 
 
 @router.get("/settings", response_model=UsdtSettingsOut, summary="USDT switches")
 async def get_usdt_settings(db: Db) -> UsdtSettingsOut:
-    """Mode, allowlist, receiving address and amount bounds."""
-    out = _settings_out(await load_settings(db))
-    await db.commit()  # load_settings creates the row on a fresh database
+    """Mode, allowlist, amount bounds, and every chain's address and switch."""
+    out = await _settings_out(db, await load_settings(db))
+    await db.commit()  # load_* create the rows on a fresh database
     return out
 
 
@@ -63,11 +75,7 @@ async def _checked_allowlist(db: Db, ids_in: list[str]) -> list[str]:
 async def patch_usdt_settings(
     body: UsdtSettingsIn, db: Db, admin: Admin, idempotency_key: IdempotencyKeyHeader = None
 ) -> UsdtSettingsOut:
-    """Apply the fields present in the body.
-
-    A new address restarts the poll at now and closes pending reservations
-    (``resolve.change_address``).
-    """
+    """Apply the fields present in the body. Chains are changed one by one."""
     key = normalize_idempotency_key(idempotency_key)
     if (
         hit := await replayed(db, scope="usdt.settings", key=key, model=UsdtSettingsOut)
@@ -79,8 +87,6 @@ async def patch_usdt_settings(
         s.mode = body.mode
     if body.allowlist_merchant_ids is not None:
         s.allowlist_merchant_ids = await _checked_allowlist(db, body.allowlist_merchant_ids)
-    if "address" in sent:
-        await resolve.change_address(db, s, body.address)
     lo = body.min_amount_usd if body.min_amount_usd is not None else s.min_amount_usd
     hi = body.max_amount_usd if body.max_amount_usd is not None else s.max_amount_usd
     if hi < lo:
@@ -88,9 +94,42 @@ async def patch_usdt_settings(
     s.min_amount_usd, s.max_amount_usd = lo, hi
     s.updated_by, s.updated_at = admin.id, now()
     await db.flush()
-    out = _settings_out(s)
+    out = await _settings_out(db, s)
     log.info("usdt.settings_saved", admin_id=admin.id, changed=sorted(sent), mode=s.mode)
     await remember(db, scope="usdt.settings", key=key, body=out.model_dump(mode="json"))
+    await db.commit()
+    return out
+
+
+@router.patch("/networks/{network}", response_model=UsdtSettingsOut, summary="Change one chain")
+async def patch_usdt_network(
+    network: UsdtNetworkCode,
+    body: UsdtNetworkIn,
+    db: Db,
+    admin: Admin,
+    idempotency_key: IdempotencyKeyHeader = None,
+) -> UsdtSettingsOut:
+    """Switch a chain on or off, or set its receiving address.
+
+    A new address restarts that chain's poll at now and closes its pending
+    reservations (``resolve.change_address``).
+    """
+    key = normalize_idempotency_key(idempotency_key)
+    scope = f"usdt.network.{network}"
+    if (hit := await replayed(db, scope=scope, key=key, model=UsdtSettingsOut)) is not None:
+        return hit
+    rows = {n.network: n for n in await load_networks(db)}
+    n = rows[network]
+    sent = body.model_fields_set
+    if "address" in sent:
+        await resolve.change_address(db, n, body.address)
+    if body.enabled is not None:
+        n.enabled = body.enabled
+    n.updated_by, n.updated_at = admin.id, now()
+    await db.flush()
+    out = await _settings_out(db, await load_settings(db))
+    log.info("usdt.network_saved", admin_id=admin.id, network=network, changed=sorted(sent))
+    await remember(db, scope=scope, key=key, body=out.model_dump(mode="json"))
     await db.commit()
     return out
 
@@ -112,6 +151,7 @@ def _incoming_out(
 ) -> UsdtIncomingOut:
     return UsdtIncomingOut(
         id=row.id,
+        network=row.network,  # type: ignore[arg-type]  # the check constraint pins it
         tx_id=row.tx_id,
         from_address=row.from_address,
         amount_usdt=row.amount_usdt,
@@ -246,6 +286,7 @@ async def list_reservations(
                 number=r.number,
                 merchant_id=r.merchant_id,
                 merchant_title=title,
+                network=r.network,
                 amount=r.amount_usdt,
                 status=r.status,
                 created_at=r.created_at,

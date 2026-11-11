@@ -29,7 +29,7 @@ from yupay.core.db import Base
 
 
 class UsdtSettings(Base):
-    """The single row of USDT switches: who may top up and where they send."""
+    """The single row of USDT switches: who may top up, and the amount bounds."""
 
     __tablename__ = "usdt_settings"
 
@@ -38,22 +38,11 @@ class UsdtSettings(Base):
     allowlist_merchant_ids: Mapped[list[str]] = mapped_column(
         ARRAY(UUID(as_uuid=False)), nullable=False, server_default="{}"
     )
-    #: The owner's TRON address (base58, ``T…``). Public; the keys are never ours.
-    address: Mapped[str | None] = mapped_column(String(34), nullable=True)
     min_amount_usd: Mapped[Decimal] = mapped_column(
         Numeric(18, 2), nullable=False, server_default="10"
     )
     max_amount_usd: Mapped[Decimal] = mapped_column(
         Numeric(18, 2), nullable=False, server_default="50000"
-    )
-    #: Highest block timestamp (ms) the poller has journaled. The next poll
-    #: starts ten minutes before it; a new address resets it to "now".
-    cursor_block_ms: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
-    #: Resume at the cursor itself rather than ten minutes before it: set after
-    #: a poll hit TronGrid's page cap, and after an address change (so the new
-    #: address's earlier history is never read). See ``usdt.poll``.
-    cursor_exact: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, server_default=text("false")
     )
     updated_by: Mapped[str | None] = mapped_column(UUID(as_uuid=False), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
@@ -67,6 +56,35 @@ class UsdtSettings(Base):
     )
 
 
+NETWORK_CHECK = "network IN ('trc20','bep20','erc20')"
+
+
+class UsdtNetwork(Base):
+    """One chain's receiving address, switch and poll cursor (``networks.py`` has the facts)."""
+
+    __tablename__ = "usdt_networks"
+
+    network: Mapped[str] = mapped_column(String(8), primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    #: The owner's address on this chain (TRON base58 or checksummed ``0x``).
+    #: Public; the keys are never ours.
+    address: Mapped[str | None] = mapped_column(String(42), nullable=True)
+    #: Where the next poll starts: TRON — block time in ms; EVM — the last
+    #: block number read. A new address resets it to "now" / the chain head.
+    cursor: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    #: TRON only: resume at the cursor itself rather than ten minutes before
+    #: it — after a page-capped read and after an address change.
+    cursor_exact: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+    updated_by: Mapped[str | None] = mapped_column(UUID(as_uuid=False), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
+    )
+
+    __table_args__ = (CheckConstraint(NETWORK_CHECK, name="network"),)
+
+
 class UsdtReservation(Base):
     """An exact USDT amount held for one reseller for 30 minutes."""
 
@@ -77,7 +95,8 @@ class UsdtReservation(Base):
     merchant_id: Mapped[str] = mapped_column(
         UUID(as_uuid=False), ForeignKey("merchants.id"), nullable=False
     )
-    address: Mapped[str] = mapped_column(String(34), nullable=False)
+    network: Mapped[str] = mapped_column(String(8), nullable=False)
+    address: Mapped[str] = mapped_column(String(42), nullable=False)
     amount_usdt: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="pending")
     holds_amount: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
@@ -93,9 +112,11 @@ class UsdtReservation(Base):
     __table_args__ = (
         CheckConstraint("status IN ('pending','paid','expired','cancelled')", name="status"),
         CheckConstraint("amount_usdt > 0", name="amount"),
-        # The rule the design rests on: one open amount at a time.
+        CheckConstraint(NETWORK_CHECK, name="network"),
+        # The rule the design rests on: one open amount per network at a time.
         Index(
             "uq_usdt_reservations_open_amount",
+            "network",
             "amount_usdt",
             unique=True,
             postgresql_where=text("holds_amount"),
@@ -114,7 +135,7 @@ class UsdtReservation(Base):
             postgresql_where=text("idempotency_key IS NOT NULL"),
         ),
         Index("ix_usdt_reservations_sweep", "status", "expires_at"),
-        Index("ix_usdt_reservations_match", "amount_usdt", "created_at"),
+        Index("ix_usdt_reservations_match", "network", "amount_usdt", "created_at"),
     )
 
 
@@ -124,13 +145,16 @@ class UsdtIncoming(Base):
     __tablename__ = "usdt_incoming"
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True)
+    network: Mapped[str] = mapped_column(String(8), nullable=False)
     #: Not unique alone: one transaction can carry several USDT events to us
-    #: (a batch payout). TronGrid gives no event index, so an event is
-    #: ``(tx_id, from_address, amount_usdt)`` — see ``uq_usdt_incoming_event``.
-    tx_id: Mapped[str] = mapped_column(String(64), nullable=False)
-    from_address: Mapped[str] = mapped_column(String(34), nullable=False)
-    to_address: Mapped[str] = mapped_column(String(34), nullable=False)
-    amount_usdt: Mapped[Decimal] = mapped_column(Numeric(24, 6), nullable=False)
+    #: (a batch payout). ``event_key`` tells them apart: the log index on EVM
+    #: chains; sender + raw value on TRON, where TronGrid gives no index.
+    tx_id: Mapped[str] = mapped_column(String(66), nullable=False)
+    event_key: Mapped[str] = mapped_column(String(96), nullable=False)
+    from_address: Mapped[str] = mapped_column(String(42), nullable=False)
+    to_address: Mapped[str] = mapped_column(String(42), nullable=False)
+    #: Exact as the chain sent it: USDT on BNB Chain has 18 decimals.
+    amount_usdt: Mapped[Decimal] = mapped_column(Numeric(38, 18), nullable=False)
     block_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     result: Mapped[str] = mapped_column(String(16), nullable=False)
     reservation_id: Mapped[str | None] = mapped_column(UUID(as_uuid=False), nullable=True)
@@ -145,10 +169,11 @@ class UsdtIncoming(Base):
         CheckConstraint(
             "result IN ('matched','unmatched','ignored','manual','dismissed')", name="result"
         ),
-        UniqueConstraint("tx_id", "from_address", "amount_usdt", name="uq_usdt_incoming_event"),
+        CheckConstraint(NETWORK_CHECK, name="network"),
+        UniqueConstraint("network", "tx_id", "event_key", name="uq_usdt_incoming_event"),
         Index("ix_usdt_incoming_block_at", "block_at"),
         Index("ix_usdt_incoming_result", "result"),
     )
 
 
-__all__ = ["UsdtIncoming", "UsdtReservation", "UsdtSettings"]
+__all__ = ["UsdtIncoming", "UsdtNetwork", "UsdtReservation", "UsdtSettings"]

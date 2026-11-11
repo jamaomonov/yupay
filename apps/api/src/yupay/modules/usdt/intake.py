@@ -21,9 +21,9 @@ from yupay.core.ids import new_id
 from yupay.core.logging import get_logger
 from yupay.modules.merchants.deposit import credit_deposit
 from yupay.modules.p2p.integrity import violated_constraint
+from yupay.modules.usdt.chain import Transfer
 from yupay.modules.usdt.models import UsdtIncoming, UsdtReservation
 from yupay.modules.usdt.reservations import CENT, QUARANTINE
-from yupay.modules.usdt.tron import Transfer
 
 log = get_logger("yupay.usdt.intake")
 
@@ -63,6 +63,7 @@ async def _payable(db: AsyncSession, t: Transfer) -> UsdtReservation | None:
     found: UsdtReservation | None = await db.scalar(
         select(UsdtReservation)
         .where(
+            UsdtReservation.network == t.network,
             UsdtReservation.amount_usdt == t.amount,
             UsdtReservation.address == t.to_address,
             UsdtReservation.status != "paid",
@@ -85,13 +86,15 @@ async def ingest(db: AsyncSession, t: Transfer, *, received_at: datetime) -> Int
         received_at: When we read it.
 
     Returns:
-        ``duplicate`` when this event (transaction id, sender, amount) is
+        ``duplicate`` when this event (network, transaction id, event key) is
         already journaled; otherwise
         the outcome and any alerts.
     """
     row = UsdtIncoming(
         id=new_id(),
+        network=t.network,
         tx_id=t.tx_id,
+        event_key=t.event_key,
         from_address=t.from_address,
         to_address=t.to_address,
         amount_usdt=t.amount,
@@ -122,7 +125,8 @@ async def ingest(db: AsyncSession, t: Transfer, *, received_at: datetime) -> Int
             alerts=[
                 (
                     "usdt_unmatched",
-                    f"USDT: перевод {t.amount.normalize():f} USDT не совпал ни с одной заявкой — "
+                    f"USDT ({t.network.upper()}): перевод {t.amount.normalize():f} USDT не совпал "
+                    "ни с одной заявкой — "
                     "разберите в админке (USDT → журнал)",
                 )
             ],

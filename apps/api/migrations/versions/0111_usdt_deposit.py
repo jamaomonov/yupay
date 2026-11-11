@@ -1,4 +1,4 @@
-"""usdt_settings, usdt_reservations, usdt_incoming — reseller USDT (TRC20) top-up.
+"""usdt_settings, usdt_networks, usdt_reservations, usdt_incoming — reseller USDT top-up.
 
 Revision ID: 0111_usdt_deposit
 Revises: 0110_admin_sessions
@@ -24,34 +24,47 @@ NOW = sa.text("CURRENT_TIMESTAMP")
 TS = sa.DateTime(timezone=True)
 
 
+NETWORK_CHECK = "network IN ('trc20','bep20','erc20')"
+
+
 def upgrade() -> None:
     op.create_table(
         "usdt_settings",
         sa.Column("id", sa.Integer, primary_key=True),
         sa.Column("mode", sa.String(16), nullable=False, server_default="off"),
         sa.Column("allowlist_merchant_ids", pg.ARRAY(UUID), nullable=False, server_default="{}"),
-        sa.Column("address", sa.String(34), nullable=True),
         sa.Column("min_amount_usd", sa.Numeric(18, 2), nullable=False, server_default="10"),
         sa.Column("max_amount_usd", sa.Numeric(18, 2), nullable=False, server_default="50000"),
-        sa.Column("cursor_block_ms", sa.BigInteger, nullable=True),
-        sa.Column("cursor_exact", sa.Boolean, nullable=False, server_default=sa.false()),
         sa.Column("updated_by", UUID, nullable=True),
         sa.Column("updated_at", TS, nullable=False, server_default=NOW),
         sa.CheckConstraint("id = 1", name="singleton"),
         sa.CheckConstraint("mode IN ('off','allowlist','all')", name="mode"),
         sa.CheckConstraint(
-            "min_amount_usd > 0 AND max_amount_usd >= min_amount_usd",
-            name="bounds",
+            "min_amount_usd > 0 AND max_amount_usd >= min_amount_usd", name="bounds"
         ),
     )
     op.execute("INSERT INTO usdt_settings (id) VALUES (1)")
+
+    op.create_table(
+        "usdt_networks",
+        sa.Column("network", sa.String(8), primary_key=True),
+        sa.Column("enabled", sa.Boolean, nullable=False, server_default=sa.false()),
+        sa.Column("address", sa.String(42), nullable=True),
+        sa.Column("cursor", sa.BigInteger, nullable=True),
+        sa.Column("cursor_exact", sa.Boolean, nullable=False, server_default=sa.false()),
+        sa.Column("updated_by", UUID, nullable=True),
+        sa.Column("updated_at", TS, nullable=False, server_default=NOW),
+        sa.CheckConstraint(NETWORK_CHECK, name="network"),
+    )
+    op.execute("INSERT INTO usdt_networks (network) VALUES ('trc20'), ('bep20'), ('erc20')")
 
     op.create_table(
         "usdt_reservations",
         sa.Column("id", UUID, primary_key=True),
         sa.Column("number", sa.String(8), nullable=False),
         sa.Column("merchant_id", UUID, sa.ForeignKey("merchants.id"), nullable=False),
-        sa.Column("address", sa.String(34), nullable=False),
+        sa.Column("network", sa.String(8), nullable=False),
+        sa.Column("address", sa.String(42), nullable=False),
         sa.Column("amount_usdt", sa.Numeric(18, 2), nullable=False),
         sa.Column("status", sa.String(16), nullable=False, server_default="pending"),
         sa.Column("holds_amount", sa.Boolean, nullable=False, server_default=sa.text("true")),
@@ -62,16 +75,14 @@ def upgrade() -> None:
         sa.Column("incoming_id", UUID, nullable=True),
         sa.Column("idempotency_key", sa.String(128), nullable=True),
         sa.UniqueConstraint("number", name="uq_usdt_reservations_number"),
-        sa.CheckConstraint(
-            "status IN ('pending','paid','expired','cancelled')",
-            name="status",
-        ),
+        sa.CheckConstraint("status IN ('pending','paid','expired','cancelled')", name="status"),
         sa.CheckConstraint("amount_usdt > 0", name="amount"),
+        sa.CheckConstraint(NETWORK_CHECK, name="network"),
     )
     op.create_index(
         "uq_usdt_reservations_open_amount",
         "usdt_reservations",
-        ["amount_usdt"],
+        ["network", "amount_usdt"],
         unique=True,
         postgresql_where=sa.text("holds_amount"),
     )
@@ -91,16 +102,20 @@ def upgrade() -> None:
     )
     op.create_index("ix_usdt_reservations_sweep", "usdt_reservations", ["status", "expires_at"])
     op.create_index(
-        "ix_usdt_reservations_match", "usdt_reservations", ["amount_usdt", "created_at"]
+        "ix_usdt_reservations_match",
+        "usdt_reservations",
+        ["network", "amount_usdt", "created_at"],
     )
 
     op.create_table(
         "usdt_incoming",
         sa.Column("id", UUID, primary_key=True),
-        sa.Column("tx_id", sa.String(64), nullable=False),
-        sa.Column("from_address", sa.String(34), nullable=False),
-        sa.Column("to_address", sa.String(34), nullable=False),
-        sa.Column("amount_usdt", sa.Numeric(24, 6), nullable=False),
+        sa.Column("network", sa.String(8), nullable=False),
+        sa.Column("tx_id", sa.String(66), nullable=False),
+        sa.Column("event_key", sa.String(96), nullable=False),
+        sa.Column("from_address", sa.String(42), nullable=False),
+        sa.Column("to_address", sa.String(42), nullable=False),
+        sa.Column("amount_usdt", sa.Numeric(38, 18), nullable=False),
         sa.Column("block_at", TS, nullable=False),
         sa.Column("result", sa.String(16), nullable=False),
         sa.Column("reservation_id", UUID, nullable=True),
@@ -109,11 +124,11 @@ def upgrade() -> None:
         sa.Column("resolved_at", TS, nullable=True),
         sa.Column("note", sa.String(256), nullable=True),
         sa.Column("received_at", TS, nullable=False),
-        sa.UniqueConstraint("tx_id", "from_address", "amount_usdt", name="uq_usdt_incoming_event"),
+        sa.UniqueConstraint("network", "tx_id", "event_key", name="uq_usdt_incoming_event"),
         sa.CheckConstraint(
-            "result IN ('matched','unmatched','ignored','manual','dismissed')",
-            name="result",
+            "result IN ('matched','unmatched','ignored','manual','dismissed')", name="result"
         ),
+        sa.CheckConstraint(NETWORK_CHECK, name="network"),
     )
     op.create_index("ix_usdt_incoming_block_at", "usdt_incoming", ["block_at"])
     op.create_index("ix_usdt_incoming_result", "usdt_incoming", ["result"])
@@ -122,4 +137,5 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_table("usdt_incoming")
     op.drop_table("usdt_reservations")
+    op.drop_table("usdt_networks")
     op.drop_table("usdt_settings")

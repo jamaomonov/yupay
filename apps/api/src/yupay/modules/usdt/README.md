@@ -1,7 +1,7 @@
 # usdt
 
-Resellers top up the USD deposit by sending an exact USDT amount on TRON (TRC20) to the
-owner's address. A scheduler job reads confirmed transfers from TronGrid and credits the
+Resellers top up the USD deposit by sending an exact USDT amount to the owner's address on
+TRON (TRC20), BNB Chain (BEP20) or Ethereum (ERC20). A scheduler job reads confirmed transfers from TronGrid and credits the
 reservation each one pays. 1 USDT = 1 USD.
 
 Docs: ADR-0104, `docs/runbooks/usdt-deposit.md`,
@@ -14,6 +14,10 @@ Docs: ADR-0104, `docs/runbooks/usdt-deposit.md`,
   and hold nothing. At most 10 reservations per merchant an hour. A closed amount
   (expired, cancelled **or paid**) stays
   held for another 60 minutes. Also cancel, read, list and sweep.
+- **Chains** (`networks.py`): the fixed facts per chain (contract, decimals,
+  confirmations); `usdt_networks` holds the admin's address and switch and the poll cursor.
+- **Read EVM chains** (`evm.py`): JSON-RPC `eth_getLogs` for USDT `Transfer` to us over
+  confirmed blocks, re-checked per log; `keccak.py` backs the EIP-55 address check.
 - **Read the chain** (`tron.py`): TronGrid `GET /v1/accounts/{address}/transactions/trc20`
   with `only_to`, `only_confirmed` and the USDT contract. Every row is checked again: the
   contract, the recipient, the type `Transfer` and 6 decimals.

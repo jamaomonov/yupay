@@ -22,7 +22,6 @@ from yupay.modules.notifications.alerts import send_admin_alert
 from yupay.modules.usdt.models import UsdtReservation
 from yupay.modules.usdt.poll import poll_once
 from yupay.modules.usdt.reservations import sweep
-from yupay.modules.usdt.tron import TronUnavailableError
 
 log = get_logger("yupay.scheduler.usdt_poll")
 _JOB_ID: Final = "usdt_poll"
@@ -60,23 +59,21 @@ async def _tick() -> bool:
         await db.commit()
     if swept.expired or swept.released:
         log.info("usdt_poll.swept", expired=swept.expired, released=swept.released)
-    try:
-        result = await poll_once(sessions, now_=t)
-    except TronUnavailableError as exc:
-        log.warning("usdt_poll.tron_unavailable", reason=str(exc))
-        return False
+    result = await poll_once(sessions, now_=t)
+    if result.unavailable:
+        log.warning("usdt_poll.chain_unavailable", networks=result.unavailable)
     alerts = list(result.alerts)
     if result.truncated:
         alerts.append(
             (
                 "usdt_poll_flood",
-                "USDT: на адрес идёт поток мелких переводов (спам) — опрос читает его "
-                "постранично, зачисление может отставать",
+                f"USDT ({', '.join(n.upper() for n in result.truncated)}): переводов больше, "
+                "чем читается за один проход (спам или долгий простой) — зачисление может отставать",
             )
         )
     for kind, text in alerts:
         await _send(kind, text)
-    return not result.failed
+    return not result.failed and not result.unavailable
 
 
 async def _send(kind: str, text: str) -> None:
@@ -106,7 +103,7 @@ async def _maybe_alert_down(now_s: int) -> None:
         await _send(
             "usdt_poll_down",
             "USDT: зачисление не работает больше 15 минут, а пополнения ждут — "
-            "смотрите usdt_poll в логах планировщика",
+            "смотрите usdt_poll / usdt.chain_unavailable в логах планировщика",
         )
 
 

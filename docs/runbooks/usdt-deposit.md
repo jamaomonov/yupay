@@ -1,21 +1,32 @@
-# Runbook: USDT (TRC20) deposit top-up
+# Runbook: USDT deposit top-up (TRC20, BEP20, ERC20)
 
-ADR-0104. Resellers send an exact USDT amount on TRON to the owner's address. The
-scheduler's `usdt_poll` job credits it within about a minute of confirmation.
+ADR-0104. Resellers send an exact USDT amount to the owner's address on the chain they
+picked. The scheduler's `usdt_poll` job credits it after confirmation:
+
+- TRON: about a minute;
+- BNB Chain: under 30 s;
+- Ethereum: about 3 minutes.
 
 ## 1. Go-live
 
 1. **Ask the consultant first.** Receiving USDT on the owner's entity is an open legal
    question. Until it is answered, keep `mode = off`.
-2. **Create a wallet whose keys only the owner holds.** Use TronLink or a hardware wallet,
-   not an exchange deposit address. An exchange can change its addresses, and it
-   credits by its own rules. Activate the address: it needs at least one incoming transfer of
-   TRX or USDT.
+2. **Create wallets whose keys only the owner holds.** Use Trust Wallet, TronLink or a
+   hardware wallet, not an exchange deposit address. An exchange can change its addresses, and
+   it credits by its own rules.
+   - **TRON.** The address starts with `T`. Activate it: it needs at least one incoming
+     transfer of TRX or USDT.
+   - **BNB Chain and Ethereum.** The `0x` address can be the same for both. Copy it as the
+     wallet shows it, with capital letters: that is its checksum, and the admin refuses an
+     all-lowercase one.
 3. **Optional: a TronGrid API key.** Put it in `secrets/api.env` as `TRONGRID_API_KEY`, then
    recreate `scheduler` with `IMAGE_TAG` set.
-4. **Set the address in the admin.** Go to USDT → Settings, paste the address and check it
-   character by character against the wallet. The form refuses a broken checksum, but not
-   someone else's valid address.
+4. **Set each chain in the admin.** Go to USDT → Settings → Сети. For each chain, paste its
+   address, check it character by character against the wallet, switch it on and save. The
+   form refuses a broken checksum, but not someone else's valid address. A chain reads
+   nothing before the moment its address was saved.
+   - **Optional: own nodes.** The BEP20 / ERC20 nodes default to public keyless ones. A
+     provider's URL can go into `BSC_RPC_URL` / `ETH_RPC_URL` in `api.env`.
 5. **Test with the owner's own merchant.** Set `mode = allowlist`, top up 10 USDT from
    another wallet and wait for "Оплачено" in the cabinet. Check that the journal row shows
    `matched` and the deposit grew by 10.00.

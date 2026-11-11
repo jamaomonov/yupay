@@ -1,10 +1,12 @@
-"""The USDT switch row: who may top up, and the address they send to."""
+"""The USDT switches: who may top up (``usdt_settings``), and on which chains (``usdt_networks``)."""
 
 from __future__ import annotations
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from yupay.modules.usdt.models import UsdtSettings
+from yupay.modules.usdt.models import UsdtNetwork, UsdtSettings
+from yupay.modules.usdt.networks import CODES
 
 
 async def load_settings(db: AsyncSession) -> UsdtSettings:
@@ -17,16 +19,27 @@ async def load_settings(db: AsyncSession) -> UsdtSettings:
     return row
 
 
-def admits(s: UsdtSettings, merchant_id: str) -> bool:
-    """Whether this merchant may open a USDT top-up right now.
+async def load_networks(db: AsyncSession) -> list[UsdtNetwork]:
+    """One row per known chain, in ``networks.CODES`` order; missing ones created off."""
+    rows = {r.network: r for r in (await db.execute(select(UsdtNetwork))).scalars()}
+    for code in CODES:
+        if code not in rows:
+            rows[code] = UsdtNetwork(network=code, enabled=False)
+            db.add(rows[code])
+    await db.flush()
+    return [rows[c] for c in CODES]
 
-    No address means nowhere to send, so nobody is admitted whatever the mode.
-    """
-    if not s.address:
-        return False
+
+def admits(s: UsdtSettings, merchant_id: str) -> bool:
+    """Whether this merchant may open a USDT top-up at all (any chain)."""
     if s.mode == "all":
         return True
     return s.mode == "allowlist" and merchant_id in (s.allowlist_merchant_ids or [])
 
 
-__all__ = ["admits", "load_settings"]
+def is_open(n: UsdtNetwork) -> bool:
+    """Whether resellers can pick this chain: switched on and given an address."""
+    return n.enabled and bool(n.address)
+
+
+__all__ = ["admits", "is_open", "load_networks", "load_settings"]

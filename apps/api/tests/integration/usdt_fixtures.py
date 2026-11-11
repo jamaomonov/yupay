@@ -11,9 +11,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core.clock import now
 from yupay.core.ids import new_id
 from yupay.modules.usdt import reservations
+from yupay.modules.usdt.chain import Transfer
 from yupay.modules.usdt.models import UsdtReservation
-from yupay.modules.usdt.settings import load_settings
-from yupay.modules.usdt.tron import USDT_CONTRACT, Transfer
+from yupay.modules.usdt.settings import load_networks, load_settings
+from yupay.modules.usdt.tron import USDT_CONTRACT
 
 _B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
 
@@ -34,19 +35,41 @@ OURS = tron(1)
 PAYER = tron(2)
 
 
-async def open_usdt(db: AsyncSession, merchant_ids: list[str], *, mode: str = "allowlist") -> None:
-    """Admit ``merchant_ids`` with ``OURS`` as the address and a cursor an hour back."""
+#: A checksummed EVM address for BEP-20 / ERC-20 tests (EIP-55 spec vector).
+EVM_OURS = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed"
+EVM_PAYER = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359"
+
+
+async def open_usdt(
+    db: AsyncSession,
+    merchant_ids: list[str],
+    *,
+    mode: str = "allowlist",
+    networks: tuple[str, ...] = ("trc20",),
+    evm_cursor: int = 1000,
+) -> None:
+    """Admit ``merchant_ids`` and open ``networks``: TRON at ``OURS`` with a cursor an
+    hour back, EVM chains at ``EVM_OURS`` with ``evm_cursor`` as the last block read."""
     s = await load_settings(db)
-    s.mode, s.allowlist_merchant_ids, s.address = mode, merchant_ids, OURS
-    s.cursor_block_ms = int((now() - timedelta(hours=1)).timestamp() * 1000)
-    s.cursor_exact = False
+    s.mode, s.allowlist_merchant_ids = mode, merchant_ids
+    for n in await load_networks(db):
+        n.enabled = n.network in networks
+        if n.network == "trc20":
+            n.address = OURS
+            n.cursor = int((now() - timedelta(hours=1)).timestamp() * 1000)
+        else:
+            n.address = EVM_OURS
+            n.cursor = evm_cursor
+        n.cursor_exact = False
     await db.flush()
 
 
-async def reserve(db: AsyncSession, merchant_id: str, amount: str) -> UsdtReservation:
-    """A reservation for ``amount`` (its stored amount carries random cents)."""
+async def reserve(
+    db: AsyncSession, merchant_id: str, amount: str, network: str = "trc20"
+) -> UsdtReservation:
+    """A reservation for exactly ``amount`` on ``network``."""
     return await reservations.reserve(
-        db, merchant_id=merchant_id, amount=Decimal(amount), idempotency_key=None
+        db, merchant_id=merchant_id, network=network, amount=Decimal(amount), idempotency_key=None
     )
 
 
@@ -56,16 +79,20 @@ def transfer(
     at_offset: timedelta = timedelta(0),
     tx: str | None = None,
     sender: str = PAYER,
+    network: str = "trc20",
+    event_key: str | None = None,
 ) -> Transfer:
-    """A confirmed transfer of ``amount`` to ``OURS`` at now + ``at_offset``."""
+    """A confirmed transfer of ``amount`` to our address at now + ``at_offset``."""
     at = now() + at_offset
     return Transfer(
+        network=network,
         tx_id=tx or hashlib.sha256(new_id().encode()).hexdigest(),
+        event_key=event_key or f"{sender}:{amount}",
         from_address=sender,
-        to_address=OURS,
+        to_address=OURS if network == "trc20" else EVM_OURS,
         amount=Decimal(amount),
         block_at=at,
-        block_ms=int(at.timestamp() * 1000),
+        position=int(at.timestamp() * 1000),
     )
 
 
@@ -89,4 +116,15 @@ def units(amount: Decimal) -> str:
     return str(int(amount.scaleb(6)))
 
 
-__all__ = ["OURS", "PAYER", "open_usdt", "reserve", "row", "transfer", "tron", "units"]
+__all__ = [
+    "EVM_OURS",
+    "EVM_PAYER",
+    "OURS",
+    "PAYER",
+    "open_usdt",
+    "reserve",
+    "row",
+    "transfer",
+    "tron",
+    "units",
+]

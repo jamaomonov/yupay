@@ -364,6 +364,10 @@ address; the scheduler reads confirmed transfers from TronGrid every 20 s.
 
 - **No inbound surface.** Nothing posts to us: there is no webhook to forge. The trust is in
   TronGrid's HTTPS answer.
+- **EVM chains (BEP20 / ERC20).** We trust the JSON-RPC node's answer over HTTPS. Logs are
+  read only from blocks 20 (BNB Chain) or 12 (Ethereum) deep, `removed` logs are dropped, and
+  every log is re-checked for the USDT contract, the `Transfer` topic and our address as the
+  recipient. An EVM address must be EIP-55 checksummed to be saved.
 - **Fake token.** Anyone can mint a TRC20 token called "USDT" and send it. Only transfers whose
   contract is Tether's (`TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t`), with 6 decimals, type `Transfer`
   and recipient equal to our address are journaled (`usdt.tron.parse_transfer`), and the query

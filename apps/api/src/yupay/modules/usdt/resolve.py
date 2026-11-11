@@ -19,8 +19,9 @@ from yupay.core.logging import get_logger
 from yupay.modules.merchants.deposit import credit_deposit
 from yupay.modules.merchants.models import Merchant
 from yupay.modules.p2p.admin_deps import parse_uuid
-from yupay.modules.usdt.address import is_tron_address
-from yupay.modules.usdt.models import UsdtIncoming, UsdtReservation, UsdtSettings
+from yupay.modules.usdt.address import is_address
+from yupay.modules.usdt.models import UsdtIncoming, UsdtNetwork, UsdtReservation
+from yupay.modules.usdt.networks import NETWORKS
 from yupay.modules.usdt.reservations import CENT, QUARANTINE
 
 log = get_logger("yupay.usdt.resolve")
@@ -28,33 +29,36 @@ log = get_logger("yupay.usdt.resolve")
 _RESOLVED: Final = "this transfer is already resolved"
 
 
-async def change_address(db: AsyncSession, s: UsdtSettings, raw: str | None) -> None:
-    """Point top-ups at a new address (or none).
+async def change_address(db: AsyncSession, n: UsdtNetwork, raw: str | None) -> None:
+    """Point one chain's top-ups at a new address (or none).
 
-    The checksum is checked, the cursor restarts at "now" **exactly** (no
-    overlap: the new address's earlier history is not top-ups), and every
-    pending reservation is closed. Those show the old address, which the
-    poller no longer reads; leaving them open kept a reseller paying into an
-    address nobody watched for up to an hour. A transfer already sent to the
-    old one is reconciled by hand (runbook §4).
+    The checksum is checked for the chain's kind. The cursor is cleared, so
+    the poller starts that chain at "now" and never reads the new address's
+    earlier history. Every pending reservation **on this chain** is closed:
+    those show the old address, which the poller no longer reads, and leaving
+    them open kept a reseller paying into an address nobody watched. A
+    transfer already sent to the old one is reconciled by hand (runbook §4).
 
     Raises:
         ValidationError: ``usdt_bad_address`` when the checksum fails.
     """
     address = (raw or "").strip() or None
-    if address is not None and not is_tron_address(address):
-        raise ValidationError("not a TRON address", code="usdt_bad_address")
-    if address == s.address:
+    if address is not None and not is_address(NETWORKS[n.network].kind, address):
+        raise ValidationError("not a valid address for this network", code="usdt_bad_address")
+    if address == n.address:
         return
     at = now()
     closed = await db.execute(
         update(UsdtReservation)
-        .where(UsdtReservation.status == "pending")
+        .where(UsdtReservation.status == "pending", UsdtReservation.network == n.network)
         .values(status="expired", closed_at=at, quarantine_until=at + QUARANTINE)
     )
-    s.address = address
-    s.cursor_block_ms, s.cursor_exact = int(at.timestamp() * 1000), True
-    log.info("usdt.address_changed", closed_pending=getattr(closed, "rowcount", 0) or 0)
+    n.address, n.cursor, n.cursor_exact = address, None, False
+    log.info(
+        "usdt.address_changed",
+        network=n.network,
+        closed_pending=getattr(closed, "rowcount", 0) or 0,
+    )
 
 
 async def _locked(db: AsyncSession, incoming_id: str) -> UsdtIncoming:

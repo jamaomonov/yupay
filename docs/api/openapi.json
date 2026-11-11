@@ -22119,10 +22119,20 @@
               }
             ],
             "title": "Amount"
+          },
+          "network": {
+            "enum": [
+              "trc20",
+              "bep20",
+              "erc20"
+            ],
+            "title": "Network",
+            "type": "string"
           }
         },
         "required": [
-          "amount"
+          "amount",
+          "network"
         ],
         "title": "UsdtDepositIn",
         "type": "object"
@@ -22169,7 +22179,11 @@
             "type": "string"
           },
           "network": {
-            "default": "TRC20",
+            "enum": [
+              "trc20",
+              "bep20",
+              "erc20"
+            ],
             "title": "Network",
             "type": "string"
           },
@@ -22198,6 +22212,7 @@
           "number",
           "status",
           "amount",
+          "network",
           "address",
           "created_at",
           "expires_at",
@@ -22295,6 +22310,15 @@
             ],
             "title": "Merchant Title"
           },
+          "network": {
+            "enum": [
+              "trc20",
+              "bep20",
+              "erc20"
+            ],
+            "title": "Network",
+            "type": "string"
+          },
           "note": {
             "anyOf": [
               {
@@ -22352,6 +22376,7 @@
         },
         "required": [
           "id",
+          "network",
           "tx_id",
           "from_address",
           "amount_usdt",
@@ -22394,6 +22419,90 @@
           "next_cursor"
         ],
         "title": "UsdtIncomingPageOut",
+        "type": "object"
+      },
+      "UsdtNetworkIn": {
+        "description": "Partial update of one chain; absent fields are left alone.",
+        "properties": {
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          }
+        },
+        "title": "UsdtNetworkIn",
+        "type": "object"
+      },
+      "UsdtNetworkOut": {
+        "description": "One chain as the admin sees it.",
+        "properties": {
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
+          "cursor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Read-only: where the next poll starts (TRON: block time ms; EVM: block).",
+            "title": "Cursor"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "network": {
+            "enum": [
+              "trc20",
+              "bep20",
+              "erc20"
+            ],
+            "title": "Network",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "network",
+          "enabled",
+          "address",
+          "cursor",
+          "updated_at"
+        ],
+        "title": "UsdtNetworkOut",
         "type": "object"
       },
       "UsdtReservationAdminOut": {
@@ -22441,6 +22550,15 @@
             ],
             "title": "Merchant Title"
           },
+          "network": {
+            "enum": [
+              "trc20",
+              "bep20",
+              "erc20"
+            ],
+            "title": "Network",
+            "type": "string"
+          },
           "number": {
             "title": "Number",
             "type": "string"
@@ -22454,6 +22572,7 @@
           "number",
           "merchant_id",
           "merchant_title",
+          "network",
           "amount",
           "status",
           "created_at",
@@ -22495,17 +22614,6 @@
       "UsdtSettingsIn": {
         "description": "Partial update of the switch row; absent fields are left alone.",
         "properties": {
-          "address": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Address"
-          },
           "allowlist_merchant_ids": {
             "anyOf": [
               {
@@ -22573,37 +22681,14 @@
         "type": "object"
       },
       "UsdtSettingsOut": {
-        "description": "The USDT switch row.",
+        "description": "The USDT switch row and every chain.",
         "properties": {
-          "address": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Address"
-          },
           "allowlist_merchant_ids": {
             "items": {
               "type": "string"
             },
             "title": "Allowlist Merchant Ids",
             "type": "array"
-          },
-          "cursor_block_ms": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Read-only: where the next poll starts.",
-            "title": "Cursor Block Ms"
           },
           "max_amount_usd": {
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
@@ -22624,6 +22709,13 @@
             "title": "Mode",
             "type": "string"
           },
+          "networks": {
+            "items": {
+              "$ref": "#/components/schemas/UsdtNetworkOut"
+            },
+            "title": "Networks",
+            "type": "array"
+          },
           "updated_at": {
             "format": "date-time",
             "title": "Updated At",
@@ -22633,17 +22725,16 @@
         "required": [
           "mode",
           "allowlist_merchant_ids",
-          "address",
           "min_amount_usd",
           "max_amount_usd",
-          "cursor_block_ms",
-          "updated_at"
+          "updated_at",
+          "networks"
         ],
         "title": "UsdtSettingsOut",
         "type": "object"
       },
       "UsdtStatusOut": {
-        "description": "Whether the cabinet should offer a USDT top-up, and its bounds.",
+        "description": "Whether the cabinet should offer a USDT top-up, on which chains, and its bounds.",
         "properties": {
           "enabled": {
             "title": "Enabled",
@@ -22673,14 +22764,23 @@
             ],
             "title": "Min Amount"
           },
-          "network": {
-            "default": "TRC20",
-            "title": "Network",
-            "type": "string"
+          "networks": {
+            "description": "Chains open now, in display order.",
+            "items": {
+              "enum": [
+                "trc20",
+                "bep20",
+                "erc20"
+              ],
+              "type": "string"
+            },
+            "title": "Networks",
+            "type": "array"
           }
         },
         "required": [
           "enabled",
+          "networks",
           "min_amount",
           "max_amount"
         ],
@@ -37886,6 +37986,96 @@
         ]
       }
     },
+    "/api/v1/admin/usdt/networks/{network}": {
+      "patch": {
+        "description": "Switch a chain on or off, or set its receiving address.\n\nA new address restarts that chain's poll at now and closes its pending\nreservations (``resolve.change_address``).",
+        "operationId": "patch_usdt_network_api_v1_admin_usdt_networks__network__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "network",
+            "required": true,
+            "schema": {
+              "enum": [
+                "trc20",
+                "bep20",
+                "erc20"
+              ],
+              "title": "Network",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UsdtNetworkIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsdtSettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Change one chain",
+        "tags": [
+          "admin:usdt"
+        ]
+      }
+    },
     "/api/v1/admin/usdt/reservations": {
       "get": {
         "description": "Newest first, keyset-paged.",
@@ -37966,7 +38156,7 @@
     },
     "/api/v1/admin/usdt/settings": {
       "get": {
-        "description": "Mode, allowlist, receiving address and amount bounds.",
+        "description": "Mode, allowlist, amount bounds, and every chain's address and switch.",
         "operationId": "get_usdt_settings_api_v1_admin_usdt_settings_get",
         "parameters": [
           {
@@ -38014,7 +38204,7 @@
         ]
       },
       "patch": {
-        "description": "Apply the fields present in the body.\n\nA new address restarts the poll at now and closes pending reservations\n(``resolve.change_address``).",
+        "description": "Apply the fields present in the body. Chains are changed one by one.",
         "operationId": "patch_usdt_settings_api_v1_admin_usdt_settings_patch",
         "parameters": [
           {
@@ -46573,7 +46763,7 @@
         ]
       },
       "post": {
-        "description": "Hold an exact amount for 60 minutes; races resolve inside the service.",
+        "description": "Hold an exact amount for 30 minutes; races resolve inside the service.",
         "operationId": "create_deposit_merchant_cabinet_usdt_deposits_post",
         "parameters": [
           {
@@ -46783,7 +46973,7 @@
     },
     "/merchant/cabinet/usdt/status": {
       "get": {
-        "description": "The switch for showing the USDT method, with the amount bounds.",
+        "description": "The switch for showing the USDT method: the open chains and the amount bounds.",
         "operationId": "usdt_status_merchant_cabinet_usdt_status_get",
         "parameters": [
           {

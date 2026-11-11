@@ -33,8 +33,8 @@ from yupay.core.logging import get_logger
 from yupay.modules.merchants import transactions
 from yupay.modules.p2p.integrity import violated_constraint
 from yupay.modules.p2p.numbers import ALPHABET
-from yupay.modules.usdt.models import UsdtReservation
-from yupay.modules.usdt.settings import admits, load_settings
+from yupay.modules.usdt.models import UsdtNetwork, UsdtReservation
+from yupay.modules.usdt.settings import admits, is_open, load_settings
 
 log = get_logger("yupay.usdt.reservations")
 
@@ -67,14 +67,14 @@ def new_number() -> str:
     return "U" + "".join(secrets.choice(ALPHABET) for _ in range(7))
 
 
-def _same_intent(prior: UsdtReservation, amount: Decimal) -> UsdtReservation:
-    """Return ``prior`` if a replay asks for exactly its amount.
+def _same_intent(prior: UsdtReservation, amount: Decimal, network: str) -> UsdtReservation:
+    """Return ``prior`` if a replay asks for exactly its amount on its network.
 
     Raises:
         ConflictError: ``usdt_idempotency_mismatch`` when the key was used for
             another amount.
     """
-    if prior.amount_usdt != amount:
+    if prior.amount_usdt != amount or prior.network != network:
         raise ConflictError(
             "this Idempotency-Key was used for another amount", code="usdt_idempotency_mismatch"
         )
@@ -122,7 +122,12 @@ async def _pending(db: AsyncSession, merchant_id: str) -> UsdtReservation | None
 
 
 async def _guard_open(
-    db: AsyncSession, merchant_id: str, key: str | None, amount: Decimal, now_: datetime
+    db: AsyncSession,
+    merchant_id: str,
+    key: str | None,
+    amount: Decimal,
+    network: str,
+    now_: datetime,
 ) -> UsdtReservation | None:
     """Refuse a second pending reservation; hand back an idempotent twin instead."""
     open_one = await _pending(db, merchant_id)
@@ -131,18 +136,18 @@ async def _guard_open(
     if open_one is None or open_one.status != "pending":
         return None
     if key is not None and open_one.idempotency_key == key:
-        return _same_intent(open_one, amount)
+        return _same_intent(open_one, amount, network)
     raise ConflictError(
         "a top-up is already waiting", code="usdt_reservation_open", number=open_one.number
     )
 
 
 async def _after_race(
-    db: AsyncSession, merchant_id: str, key: str | None, amount: Decimal
+    db: AsyncSession, merchant_id: str, key: str | None, amount: Decimal, network: str
 ) -> UsdtReservation | None:
     """Resolve a one-pending / idempotency collision into the winner's row or a 409."""
     if key is not None and (same := await _prior(db, merchant_id, key)) is not None:
-        return _same_intent(same, amount)
+        return _same_intent(same, amount, network)
     if (pending := await _pending(db, merchant_id)) is not None:
         raise ConflictError(
             "a top-up is already waiting", code="usdt_reservation_open", number=pending.number
@@ -150,7 +155,9 @@ async def _after_race(
     return None
 
 
-async def suggest(db: AsyncSession, amount: Decimal, ceiling: Decimal) -> Decimal | None:
+async def suggest(
+    db: AsyncSession, network: str, amount: Decimal, ceiling: Decimal
+) -> Decimal | None:
     """A free amount near ``amount``: it plus random cents, or ``None`` if all are held.
 
     Only a suggestion — nothing is held until the reseller accepts it and asks
@@ -161,6 +168,7 @@ async def suggest(db: AsyncSession, amount: Decimal, ceiling: Decimal) -> Decima
         (
             await db.execute(
                 select(UsdtReservation.amount_usdt).where(
+                    UsdtReservation.network == network,
                     UsdtReservation.holds_amount.is_(True),
                     UsdtReservation.amount_usdt.in_(candidates),
                 )
@@ -198,16 +206,22 @@ def _validate_amount(amount: Decimal, lo: Decimal, hi: Decimal) -> Decimal:
 
 
 async def reserve(
-    db: AsyncSession, *, merchant_id: str, amount: Decimal, idempotency_key: str | None
+    db: AsyncSession,
+    *,
+    merchant_id: str,
+    network: str,
+    amount: Decimal,
+    idempotency_key: str | None,
 ) -> UsdtReservation:
-    """Hold exactly ``amount`` USDT for 30 minutes.
+    """Hold exactly ``amount`` USDT on ``network`` for 30 minutes.
 
     When another reservation holds it, nothing is reserved: the 409 carries a
     free ``suggested`` amount (the request plus random cents) for the reseller
     to accept or replace.
 
     Raises:
-        NotFoundError: ``usdt_disabled`` when the merchant is not admitted.
+        NotFoundError: ``usdt_disabled`` when the merchant is not admitted, or
+            ``usdt_network_disabled`` when that chain is off or has no address.
         ValidationError: ``usdt_amount_precision`` / ``usdt_amount_out_of_bounds``.
         ConflictError: ``usdt_reservation_open`` when one is already pending, or
             ``usdt_idempotency_mismatch`` when the key was used for another amount.
@@ -216,23 +230,29 @@ async def reserve(
             is held; ``usdt_amount_busy`` when every nearby amount is held too.
     """
     if idempotency_key is not None and (prior := await _prior(db, merchant_id, idempotency_key)):
-        _same_intent(prior, amount)
+        _same_intent(prior, amount, network)
         if prior.status == "pending" and prior.expires_at <= now():
             await _expire_stale(db, prior, now())
         return prior
     s = await load_settings(db)
-    if not admits(s, merchant_id) or s.address is None:
+    if not admits(s, merchant_id):
         raise NotFoundError("usdt top-up is not enabled", code="usdt_disabled")
+    net = await db.get(UsdtNetwork, network)
+    if net is None or not is_open(net) or net.address is None:
+        raise NotFoundError("this network is not enabled", code="usdt_network_disabled")
     amount = _validate_amount(amount, s.min_amount_usd, s.max_amount_usd)
     now_ = now()
-    if (twin := await _guard_open(db, merchant_id, idempotency_key, amount, now_)) is not None:
+    if (
+        twin := await _guard_open(db, merchant_id, idempotency_key, amount, network, now_)
+    ) is not None:
         return twin
     await _guard_rate(db, merchant_id, now_)
     row = UsdtReservation(
         id=new_id(),
         number=new_number(),
         merchant_id=merchant_id,
-        address=s.address,
+        network=network,
+        address=net.address,
         amount_usdt=amount,
         status="pending",
         holds_amount=True,
@@ -249,7 +269,7 @@ async def reserve(
         if hit is None:
             raise
         if hit == _OPEN_AMOUNT_INDEX:
-            if (offer := await suggest(db, amount, s.max_amount_usd)) is None:
+            if (offer := await suggest(db, network, amount, s.max_amount_usd)) is None:
                 raise ConflictError(
                     "this amount and every nearby one is held", code="usdt_amount_busy"
                 ) from exc
@@ -258,7 +278,7 @@ async def reserve(
                 code="usdt_amount_taken",
                 suggested=format(offer, "f"),
             ) from exc
-        if (raced := await _after_race(db, merchant_id, idempotency_key, amount)) is None:
+        if (raced := await _after_race(db, merchant_id, idempotency_key, amount, network)) is None:
             raise
         return raced
     log.info("usdt.reserved", number=row.number, amount_usdt=str(row.amount_usdt))

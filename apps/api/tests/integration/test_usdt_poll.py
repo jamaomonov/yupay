@@ -8,6 +8,7 @@ ahead, and polling while the method is switched off.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from datetime import timedelta
 from decimal import Decimal
@@ -19,8 +20,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from yupay.core.clock import now
 from yupay.modules.merchants.deposit import deposit_balance
-from yupay.modules.usdt import intake, poll
-from yupay.modules.usdt.models import UsdtIncoming
+from yupay.modules.usdt import evm, intake, poll
+from yupay.modules.usdt.models import UsdtIncoming, UsdtNetwork
+from yupay.modules.usdt.networks import BEP20, ERC20
 from yupay.modules.usdt.settings import load_settings
 from yupay.modules.usdt.tron import (
     USDT_CONTRACT,
@@ -30,9 +32,25 @@ from yupay.modules.usdt.tron import (
 )
 
 from tests.integration.p2p_fixtures import _merchant
-from tests.integration.usdt_fixtures import OURS, open_usdt, reserve, row, tron, units
+from tests.integration.usdt_fixtures import (
+    EVM_OURS,
+    EVM_PAYER,
+    OURS,
+    open_usdt,
+    reserve,
+    row,
+    tron,
+    units,
+)
 
 Handler = Callable[[httpx.Request], httpx.Response]
+
+
+async def _cursor(db: AsyncSession, network: str = "trc20") -> int | None:
+    row = await db.get(UsdtNetwork, network)
+    assert row is not None
+    await db.refresh(row)
+    return row.cursor
 
 
 def _client(handler: Handler) -> httpx.AsyncClient:
@@ -139,8 +157,7 @@ async def test_poll_reads_journals_credits_and_advances_the_cursor(
     assert (result.seen, result.matched, result.unmatched) == (2, 1, 1)
     assert again.seen == 0
     async with sessions() as db:
-        s = await load_settings(db)
-        assert s.cursor_block_ms == block
+        assert await _cursor(db) == block
         assert await deposit_balance(db, merchant_id=m) == r.amount_usdt
 
 
@@ -160,7 +177,7 @@ async def test_a_spam_flood_cannot_stall_the_cursor(
     async with _client(_paged([*spam, real])) as http:
         flooded = [await poll.poll_once(sessions, now_=now(), http=http) for _ in range(3)]
 
-    assert flooded[0].truncated is True
+    assert flooded[0].truncated == ["trc20"]
     assert sum(p.matched for p in flooded) == 1
     async with sessions() as db:
         assert await deposit_balance(db, merchant_id=m) == r.amount_usdt
@@ -176,7 +193,7 @@ async def test_a_failing_transfer_holds_the_cursor_and_alerts(
     await db_session.commit()
     sessions = async_sessionmaker(db_engine, expire_on_commit=False)
     async with sessions() as db:
-        start = (await load_settings(db)).cursor_block_ms
+        start = await _cursor(db)
     rows = [row("7000000"), row("8000000")]
     real_ingest = intake.ingest
 
@@ -191,9 +208,7 @@ async def test_a_failing_transfer_holds_the_cursor_and_alerts(
     assert result.failed is True
     assert [k for k, _ in result.alerts] == ["usdt_unmatched", "usdt_ingest_failed"]
     async with sessions() as db:
-        assert (await load_settings(db)).cursor_block_ms == max(
-            start or 0, rows[0]["block_timestamp"]
-        )
+        assert await _cursor(db) == max(start or 0, rows[0]["block_timestamp"])
 
     monkeypatch.setattr(poll, "ingest", real_ingest)
     async with _client(_paged(rows)) as http:
@@ -213,7 +228,7 @@ async def test_a_future_timestamp_cannot_push_the_cursor_ahead(
     async with _client(_paged([row("9000000", block_timestamp=future)])) as http:
         await poll.poll_once(sessions, now_=at, http=http)
     async with sessions() as db:
-        assert (await load_settings(db)).cursor_block_ms == int(at.timestamp() * 1000)
+        assert await _cursor(db) == int(at.timestamp() * 1000)
 
 
 @pytest.mark.asyncio
@@ -240,3 +255,123 @@ async def test_off_with_nothing_held_does_not_poll(db_engine: AsyncEngine) -> No
     sessions = async_sessionmaker(db_engine, expire_on_commit=False)
     async with _client(handler) as http:
         assert (await poll.poll_once(sessions, now_=now(), http=http)).seen == 0
+
+
+# --- EVM chains (BEP-20 / ERC-20) ---------------------------------------------------
+
+
+def _log(
+    value: int,
+    *,
+    block: int,
+    index: int = 0,
+    contract: str = BEP20.contract,
+    to: str = EVM_OURS,
+    removed: bool = False,
+    tx: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "address": contract.lower(),
+        "topics": [
+            evm.TRANSFER_TOPIC,
+            "0x" + "0" * 24 + EVM_PAYER[2:].lower(),
+            "0x" + "0" * 24 + to[2:].lower(),
+        ],
+        "data": hex(value),
+        "blockNumber": hex(block),
+        "logIndex": hex(index),
+        "transactionHash": tx or "0x" + f"{block:064x}",
+        "removed": removed,
+    }
+
+
+def _rpc(head: int, logs: list[dict[str, Any]], seen: list[dict[str, Any]]) -> Handler:
+    """A JSON-RPC node: ``eth_blockNumber``, ``eth_getLogs`` over a range, block times."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        seen.append(body)
+        method, params = body["method"], body["params"]
+        if method == "eth_blockNumber":
+            result: Any = hex(head)
+        elif method == "eth_getLogs":
+            lo, hi = int(params[0]["fromBlock"], 16), int(params[0]["toBlock"], 16)
+            result = [log for log in logs if lo <= int(log["blockNumber"], 16) <= hi]
+        else:
+            result = {"timestamp": hex(int(now().timestamp()))}
+        return httpx.Response(200, json={"jsonrpc": "2.0", "id": body["id"], "result": result})
+
+    return handler
+
+
+def _wei(amount: str) -> int:
+    return int(Decimal(amount).scaleb(BEP20.decimals))
+
+
+@pytest.mark.asyncio
+async def test_bep20_credits_only_confirmed_real_usdt_to_us(
+    db_engine: AsyncEngine, db_session: AsyncSession
+) -> None:
+    m = await _merchant(db_session)
+    await open_usdt(db_session, [m], networks=("bep20",), evm_cursor=1000)
+    r = await reserve(db_session, m, "150", "bep20")
+    await db_session.commit()
+    head = 1000 + BEP20.confirmations + 10  # confirmed up to block 1010
+    logs = [
+        _log(_wei("150"), block=1005, index=3),
+        _log(_wei("150"), block=1006, contract="0x" + "1" * 40),  # a fake "USDT"
+        _log(_wei("150"), block=1007, removed=True),  # reorged away
+        _log(_wei("150"), block=1008, to=EVM_PAYER),  # not to us
+        _log(_wei("150"), block=1011),  # not confirmed yet
+    ]
+    seen: list[dict[str, Any]] = []
+    sessions = async_sessionmaker(db_engine, expire_on_commit=False)
+    async with _client(_rpc(head, logs, seen)) as http:
+        result = await poll.poll_once(sessions, now_=now(), http=http)
+    assert (result.matched, result.unmatched) == (1, 0)
+    query = next(b for b in seen if b["method"] == "eth_getLogs")["params"][0]
+    assert query["address"] == BEP20.contract
+    assert int(query["toBlock"], 16) == 1010
+    async with sessions() as db:
+        assert await deposit_balance(db, merchant_id=m) == r.amount_usdt
+        assert await _cursor(db, "bep20") == 1010
+        journal = (await db.execute(select(UsdtIncoming))).scalars().all()
+        assert [(j.network, j.event_key) for j in journal] == [("bep20", "3")]
+
+
+@pytest.mark.asyncio
+async def test_a_new_evm_address_starts_at_the_head_and_reads_no_history(
+    db_engine: AsyncEngine, db_session: AsyncSession
+) -> None:
+    await open_usdt(db_session, [], mode="all", networks=("erc20",))
+    row = await db_session.get(UsdtNetwork, "erc20")
+    assert row is not None
+    row.cursor = None
+    await db_session.commit()
+    seen: list[dict[str, Any]] = []
+    sessions = async_sessionmaker(db_engine, expire_on_commit=False)
+    async with _client(_rpc(5000, [_log(_wei("9"), block=4000)], seen)) as http:
+        await poll.poll_once(sessions, now_=now(), http=http)
+    assert [b["method"] for b in seen] == ["eth_blockNumber"]
+    async with sessions() as db:
+        assert await _cursor(db, "erc20") == 5000 - ERC20.confirmations
+
+
+@pytest.mark.asyncio
+async def test_one_chain_down_does_not_stop_another(
+    db_engine: AsyncEngine, db_session: AsyncSession
+) -> None:
+    m = await _merchant(db_session)
+    await open_usdt(db_session, [m], networks=("trc20", "bep20"))
+    r = await reserve(db_session, m, "70")
+    await db_session.commit()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST":  # the BSC node
+            return httpx.Response(502)
+        return _paged([row(units(r.amount_usdt))])(request)
+
+    sessions = async_sessionmaker(db_engine, expire_on_commit=False)
+    async with _client(handler) as http:
+        result = await poll.poll_once(sessions, now_=now(), http=http)
+    assert (result.matched, result.unavailable) == (1, ["bep20"])

@@ -19,7 +19,7 @@ from yupay.modules.usdt.schemas import (
     UsdtDepositsOut,
     UsdtStatusOut,
 )
-from yupay.modules.usdt.settings import admits, load_settings
+from yupay.modules.usdt.settings import admits, is_open, load_networks, load_settings
 
 router = APIRouter(prefix="/merchant/cabinet/usdt", tags=["merchant-cabinet"])
 
@@ -42,6 +42,7 @@ def _build(r: UsdtReservation, tx_ids: dict[str, str], *, with_address: bool) ->
         number=r.number,
         status=r.status,
         amount=r.amount_usdt,
+        network=r.network,  # type: ignore[arg-type]  # the check constraint pins it
         address=r.address if show else None,
         created_at=r.created_at,
         expires_at=r.expires_at,
@@ -56,13 +57,15 @@ async def _out(db: Db, r: UsdtReservation, *, with_address: bool) -> UsdtDeposit
 
 @router.get("/status", response_model=UsdtStatusOut, summary="Whether USDT top-up is on for me")
 async def usdt_status(user: CurrentUser, db: Db) -> UsdtStatusOut:
-    """The switch for showing the USDT method, with the amount bounds."""
+    """The switch for showing the USDT method: the open chains and the amount bounds."""
     merchant = await merchant_of(db, user)
     s = await load_settings(db)
-    enabled = admits(s, merchant.id)
-    await db.commit()  # load_settings creates the row on a fresh database
+    nets = [n.network for n in await load_networks(db) if is_open(n)]
+    enabled = admits(s, merchant.id) and bool(nets)
+    await db.commit()  # load_* create the rows on a fresh database
     return UsdtStatusOut(
         enabled=enabled,
+        networks=nets if enabled else [],  # type: ignore[arg-type]  # CODES are the literal
         min_amount=s.min_amount_usd if enabled else None,
         max_amount=s.max_amount_usd if enabled else None,
     )
@@ -85,6 +88,7 @@ async def create_deposit(
     r = await reservations.reserve(
         db,
         merchant_id=merchant.id,
+        network=body.network,
         amount=body.amount,
         idempotency_key=normalize_idempotency_key(idempotency_key),
     )

@@ -27,7 +27,7 @@ from tests.integration.cabinet_signup import BASE
 from tests.integration.cabinet_signup import auth as _auth
 from tests.integration.cabinet_signup import signed_up as _signed_up
 from tests.integration.p2p_fixtures import _code, _merchant
-from tests.integration.usdt_fixtures import OURS, open_usdt, reserve, transfer, tron
+from tests.integration.usdt_fixtures import EVM_OURS, OURS, open_usdt, reserve, transfer, tron
 
 
 def test_address_check_accepts_real_and_refuses_typos() -> None:
@@ -72,24 +72,50 @@ async def test_no_offer_beyond_the_maximum(db_session: AsyncSession) -> None:
 
 
 @pytest.mark.asyncio
+async def test_networks_hold_amounts_separately_and_pay_only_their_own(
+    db_session: AsyncSession,
+) -> None:
+    a, b = await _merchant(db_session), await _merchant(db_session)
+    await open_usdt(db_session, [a, b], networks=("trc20", "bep20"))
+    on_tron = await reserve(db_session, a, "100")
+    on_bsc = await reserve(db_session, b, "100", "bep20")
+    assert on_tron.amount_usdt == on_bsc.amount_usdt == Decimal("100.00")
+    res = await intake.ingest(
+        db_session, transfer("100", network="bep20", event_key="0"), received_at=now()
+    )
+    assert res.reservation_number == on_bsc.number
+    await db_session.refresh(on_tron)
+    assert on_tron.status == "pending"
+
+
+@pytest.mark.asyncio
+async def test_a_closed_network_refuses_reservations(db_session: AsyncSession) -> None:
+    m = await _merchant(db_session)
+    await open_usdt(db_session, [m], networks=("trc20",))
+    with pytest.raises(AppError) as closed:
+        await reserve(db_session, m, "100", "erc20")
+    assert _code(closed.value) == "usdt_network_disabled"
+
+
+@pytest.mark.asyncio
 async def test_one_pending_per_merchant_and_idempotent_replay(db_session: AsyncSession) -> None:
     m = await _merchant(db_session)
     await open_usdt(db_session, [m])
     first = await reservations.reserve(
-        db_session, merchant_id=m, amount=Decimal("50"), idempotency_key="k1"
+        db_session, merchant_id=m, network="trc20", amount=Decimal("50"), idempotency_key="k1"
     )
     again = await reservations.reserve(
-        db_session, merchant_id=m, amount=Decimal("50"), idempotency_key="k1"
+        db_session, merchant_id=m, network="trc20", amount=Decimal("50"), idempotency_key="k1"
     )
     assert again.id == first.id
     with pytest.raises(AppError) as exc:
         await reservations.reserve(
-            db_session, merchant_id=m, amount=Decimal("60"), idempotency_key="k2"
+            db_session, merchant_id=m, network="trc20", amount=Decimal("60"), idempotency_key="k2"
         )
     assert _code(exc.value) == "usdt_reservation_open"
     with pytest.raises(AppError) as mismatch:
         await reservations.reserve(
-            db_session, merchant_id=m, amount=Decimal("70"), idempotency_key="k1"
+            db_session, merchant_id=m, network="trc20", amount=Decimal("70"), idempotency_key="k1"
         )
     assert _code(mismatch.value) == "usdt_idempotency_mismatch"
 
@@ -238,6 +264,7 @@ async def test_a_late_match_does_not_reclaim_an_amount_someone_else_now_holds(
         id=new_id(),
         number=reservations.new_number(),
         merchant_id=b,
+        network="trc20",
         address=OURS,
         amount_usdt=ra.amount_usdt,
         status="pending",
@@ -293,47 +320,62 @@ def _k() -> dict[str, str]:
 
 
 @pytest.mark.asyncio
-async def test_admin_settings_refuse_a_typo_and_restart_the_cursor_exactly(
+async def test_admin_settings_and_a_network_address(
     integration_client: AsyncClient, admin_headers: dict[str, str]
 ) -> None:
-    bad = await integration_client.patch(
-        f"{A}/settings", headers={**admin_headers, **_k()}, json={"address": OURS[:-1] + "x"}
-    )
-    assert bad.status_code == 422, bad.text
     ok = await integration_client.patch(
         f"{A}/settings",
         headers={**admin_headers, **_k()},
-        json={"address": OURS, "mode": "all", "min_amount_usd": "20"},
+        json={"mode": "all", "min_amount_usd": "20"},
     )
     assert ok.status_code == 200, ok.text
-    body = ok.json()
-    assert body["address"] == OURS
-    assert body["cursor_block_ms"] is not None
-    assert Decimal(body["min_amount_usd"]) == Decimal("20")
+    assert Decimal(ok.json()["min_amount_usd"]) == Decimal("20")
+    assert [n["network"] for n in ok.json()["networks"]] == ["trc20", "bep20", "erc20"]
     inverted = await integration_client.patch(
         f"{A}/settings", headers={**admin_headers, **_k()}, json={"max_amount_usd": "5"}
     )
     assert inverted.status_code == 422, inverted.text
 
+    typo = await integration_client.patch(
+        f"{A}/networks/trc20", headers={**admin_headers, **_k()}, json={"address": OURS[:-1] + "x"}
+    )
+    assert typo.status_code == 422, typo.text
+    # A TRON address on an EVM chain, and an EVM address without its checksum.
+    for net, bad in (("bep20", OURS), ("erc20", EVM_OURS.lower())):
+        wrong = await integration_client.patch(
+            f"{A}/networks/{net}", headers={**admin_headers, **_k()}, json={"address": bad}
+        )
+        assert wrong.status_code == 422, wrong.text
+    on = await integration_client.patch(
+        f"{A}/networks/bep20",
+        headers={**admin_headers, **_k()},
+        json={"address": EVM_OURS, "enabled": True},
+    )
+    assert on.status_code == 200, on.text
+    bep = next(n for n in on.json()["networks"] if n["network"] == "bep20")
+    assert (bep["address"], bep["enabled"], bep["cursor"]) == (EVM_OURS, True, None)
+
 
 @pytest.mark.asyncio
-async def test_changing_the_address_closes_pending_reservations(
+async def test_changing_an_address_closes_only_that_networks_pending_reservations(
     integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
 ) -> None:
     """Security review #8: a pending row kept showing an address nobody reads."""
-    m = await _merchant(db_session)
-    await open_usdt(db_session, [m])
-    r = await reserve(db_session, m, "100")
-    rid = r.id
+    a, b = await _merchant(db_session), await _merchant(db_session)
+    await open_usdt(db_session, [a, b], networks=("trc20", "bep20"))
+    on_tron = (await reserve(db_session, a, "100")).id
+    on_bsc = (await reserve(db_session, b, "100", "bep20")).id
     await db_session.commit()
     moved = await integration_client.patch(
-        f"{A}/settings", headers={**admin_headers, **_k()}, json={"address": tron(9)}
+        f"{A}/networks/trc20", headers={**admin_headers, **_k()}, json={"address": tron(9)}
     )
     assert moved.status_code == 200, moved.text
     db_session.expire_all()
-    fresh = await db_session.get(UsdtReservation, rid)
-    assert fresh is not None
-    assert fresh.status == "expired"
+    tron_row = await db_session.get(UsdtReservation, on_tron)
+    bsc_row = await db_session.get(UsdtReservation, on_bsc)
+    assert tron_row is not None
+    assert bsc_row is not None
+    assert (tron_row.status, bsc_row.status) == ("expired", "pending")
 
 
 @pytest.mark.asyncio
@@ -436,10 +478,12 @@ async def test_cabinet_flow(
     await open_usdt(db_session, [merchant_id])
     await db_session.commit()
     on = await integration_client.get(f"{U}/status", headers=h)
-    assert (on.json()["enabled"], on.json()["network"]) == (True, "TRC20")
+    assert (on.json()["enabled"], on.json()["networks"]) == (True, ["trc20"])
 
     created = await integration_client.post(
-        f"{U}/deposits", headers={**h, "Idempotency-Key": new_id()}, json={"amount": "150.50"}
+        f"{U}/deposits",
+        headers={**h, "Idempotency-Key": new_id()},
+        json={"amount": "150.50", "network": "trc20"},
     )
     assert created.status_code == 201, created.text
     dep = created.json()

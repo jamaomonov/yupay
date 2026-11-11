@@ -1096,6 +1096,11 @@ class Settings(BaseSettings):
     # 20-second poll still fits.
     trongrid_base_url: str = Field(default="https://api.trongrid.io")
     trongrid_api_key: str = Field(default="")
+    # BEP-20 / ERC-20: JSON-RPC nodes the poller reads ``eth_getLogs`` from.
+    # The public defaults need no key and cap request rates; a provider URL
+    # (with its key in the path) can replace either.
+    bsc_rpc_url: str = Field(default="https://bsc-rpc.publicnode.com")
+    eth_rpc_url: str = Field(default="https://ethereum-rpc.publicnode.com")
     # Threshold in percent (absolute) above which a supplier-price move
     # triggers a Telegram alert. Default 5% — anything smaller is noise
     # for ops.

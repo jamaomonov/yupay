@@ -11,14 +11,15 @@ from pydantic import BaseModel, Field
 from yupay.modules.merchants.machine_schemas import UsdAmount
 
 UsdtMode = Literal["off", "allowlist", "all"]
+UsdtNetworkCode = Literal["trc20", "bep20", "erc20"]
 UsdtResult = Literal["matched", "unmatched", "ignored", "manual", "dismissed"]
 
 
 class UsdtStatusOut(BaseModel):
-    """Whether the cabinet should offer a USDT top-up, and its bounds."""
+    """Whether the cabinet should offer a USDT top-up, on which chains, and its bounds."""
 
     enabled: bool
-    network: str = "TRC20"
+    networks: list[UsdtNetworkCode] = Field(description="Chains open now, in display order.")
     min_amount: UsdAmount | None
     max_amount: UsdAmount | None
 
@@ -27,6 +28,7 @@ class UsdtDepositIn(BaseModel):
     """Request to reserve an amount, in USDT with at most two decimals."""
 
     amount: Decimal = Field(gt=0, le=Decimal("1000000"), decimal_places=2)
+    network: UsdtNetworkCode
 
 
 class UsdtDepositOut(BaseModel):
@@ -35,7 +37,7 @@ class UsdtDepositOut(BaseModel):
     number: str
     status: str
     amount: UsdAmount
-    network: str = "TRC20"
+    network: UsdtNetworkCode
     address: str | None
     created_at: datetime
     expires_at: datetime
@@ -53,16 +55,34 @@ class UsdtDepositsOut(BaseModel):
 # --- admin -----------------------------------------------------------------
 
 
+class UsdtNetworkOut(BaseModel):
+    """One chain as the admin sees it."""
+
+    network: UsdtNetworkCode
+    enabled: bool
+    address: str | None
+    cursor: int | None = Field(
+        description="Read-only: where the next poll starts (TRON: block time ms; EVM: block)."
+    )
+    updated_at: datetime
+
+
+class UsdtNetworkIn(BaseModel):
+    """Partial update of one chain; absent fields are left alone."""
+
+    enabled: bool | None = None
+    address: str | None = None
+
+
 class UsdtSettingsOut(BaseModel):
-    """The USDT switch row."""
+    """The USDT switch row and every chain."""
 
     mode: UsdtMode
     allowlist_merchant_ids: list[str]
-    address: str | None
     min_amount_usd: UsdAmount
     max_amount_usd: UsdAmount
-    cursor_block_ms: int | None = Field(description="Read-only: where the next poll starts.")
     updated_at: datetime
+    networks: list[UsdtNetworkOut]
 
 
 class UsdtSettingsIn(BaseModel):
@@ -70,7 +90,6 @@ class UsdtSettingsIn(BaseModel):
 
     mode: UsdtMode | None = None
     allowlist_merchant_ids: list[str] | None = None
-    address: str | None = None
     min_amount_usd: Decimal | None = Field(default=None, gt=0, decimal_places=2)
     max_amount_usd: Decimal | None = Field(default=None, gt=0, decimal_places=2)
 
@@ -79,6 +98,7 @@ class UsdtIncomingOut(BaseModel):
     """One journal row: a confirmed transfer to our address."""
 
     id: str
+    network: UsdtNetworkCode
     tx_id: str
     from_address: str
     amount_usdt: Decimal
@@ -118,6 +138,7 @@ class UsdtReservationAdminOut(BaseModel):
     number: str
     merchant_id: str
     merchant_title: str | None
+    network: UsdtNetworkCode
     amount: UsdAmount
     status: str
     created_at: datetime
@@ -141,6 +162,9 @@ __all__ = [
     "UsdtIncomingOut",
     "UsdtIncomingPageOut",
     "UsdtMode",
+    "UsdtNetworkCode",
+    "UsdtNetworkIn",
+    "UsdtNetworkOut",
     "UsdtReservationAdminOut",
     "UsdtReservationPageOut",
     "UsdtSettingsIn",

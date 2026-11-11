@@ -1,4 +1,4 @@
-# 0104. USDT (TRC20) deposit top-up: one address, exact amounts, chain polling
+# 0104. USDT deposit top-up (TRC20, BEP20, ERC20): one address per chain, exact amounts, chain polling
 
 - **Status**: Accepted
 - **Date**: 2026-11-11
@@ -25,8 +25,13 @@ reading a wallet by hand, and without a fee eating the 7–8 % margin.
 
 **Chosen option:** 1. It is the ADR-0094 pattern with the chain as the notification source.
 
-- **Wallet.** One TRON address owned by the owner, kept in `usdt_settings.address`. Only the
-  public address is stored; the keys never touch our systems.
+- **Wallets.** One owner address per chain, in `usdt_networks` with its own on/off switch:
+  TRON for TRC20, and a `0x` address for BEP20 and ERC20 (the same one can serve both). Only
+  public addresses are stored; the keys never touch our systems. The admin refuses an
+  address whose checksum fails: base58check on TRON, EIP-55 on EVM chains. An all-lowercase
+  `0x` address carries no checksum and is refused. The reseller picks the chain after the
+  amount, as on FZR. Amounts are held per chain, so 100.00 can be open on TRON and on BNB
+  Chain at once.
 - **Reservation.** The reseller enters a USD amount. If it is free, we hold exactly that
   amount for 30 minutes:
   - A partial unique index makes "one open amount" a database rule.
@@ -43,7 +48,15 @@ reading a wallet by hand, and without a fee eating the 7–8 % margin.
   exact round amount. The 5-second window and the hourly cap keep that to a reseller's own
   mistake on an amount someone else reserved first.
 
-- **Intake.** A scheduler job polls TronGrid every 20 s for confirmed TRC20 transfers to the
+- **Intake, BEP20 / ERC20 (added 2026-11-11).** The same job reads plain JSON-RPC:
+  - It calls `eth_getLogs` for the USDT contract's `Transfer` event with our address as the
+    indexed recipient, and reads only blocks buried 20 deep (BNB Chain, ~15 s) or 12 deep
+    (Ethereum, ~2.5 min).
+  - Each log is re-checked: emitting contract, topic, recipient, and not `removed`.
+  - The block time comes from the block itself. An event is `(tx, log index)`.
+  - The node URLs are settings (`BSC_RPC_URL`, `ETH_RPC_URL`), with public keyless defaults.
+  - USDT on BNB Chain has 18 decimals, so the journal keeps 18.
+- **Intake, TRC20.** A scheduler job polls TronGrid every 20 s for confirmed TRC20 transfers to the
   address. It keeps a transfer only if:
   - the contract is the official USDT (`TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t`);
   - the recipient is our address;

@@ -8,7 +8,6 @@ another contract never becomes a :class:`Transfer`.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any, Final
@@ -17,50 +16,21 @@ import httpx
 
 from yupay.core.config import Settings, get_settings
 from yupay.core.logging import get_logger
+from yupay.modules.usdt.chain import Batch, ChainUnavailableError, Transfer
+from yupay.modules.usdt.networks import TRC20
 
 log = get_logger("yupay.usdt.tron")
 
 #: Tether's USDT on TRON mainnet. Nothing else is money here.
-USDT_CONTRACT: Final = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"
-_DECIMALS: Final = 6
+USDT_CONTRACT: Final = TRC20.contract
+_DECIMALS: Final = TRC20.decimals
 _PAGE: Final = 200
 _MAX_PAGES: Final = 25
 _TIMEOUT_SECONDS: Final = 10.0
 
 
-class TronUnavailableError(Exception):
+class TronUnavailableError(ChainUnavailableError):
     """TronGrid did not answer usably; the caller retries on the next tick."""
-
-
-@dataclass(frozen=True)
-class Batch:
-    """One read of the chain.
-
-    Attributes:
-        transfers: The rows that are ours to count, oldest first.
-        last_block_ms: The block time of the last row TronGrid returned,
-            counted or not — spam included — or ``None`` when none came back.
-        truncated: The page cap was hit before TronGrid ran out of rows. The
-            caller must resume from ``last_block_ms`` **without** its usual
-            overlap, or a flood of spam rows inside the overlap window would
-            be re-read forever and nothing after it ever reached.
-    """
-
-    transfers: list[Transfer]
-    last_block_ms: int | None
-    truncated: bool
-
-
-@dataclass(frozen=True)
-class Transfer:
-    """One confirmed USDT transfer to our address."""
-
-    tx_id: str
-    from_address: str
-    to_address: str
-    amount: Decimal
-    block_at: datetime
-    block_ms: int
 
 
 # ``Any``: a decoded TronGrid JSON row; every value is type-checked before use.
@@ -111,12 +81,16 @@ def parse_transfer(item: dict[str, Any], address: str) -> Transfer | None:
         return None
     tx_id, sender, value, block_ms = fields
     return Transfer(
+        network=TRC20.code,
         tx_id=tx_id,
+        # TronGrid names no event index: sender + raw value tells apart the
+        # transfers one transaction carries, short of two identical ones.
+        event_key=f"{sender[:34]}:{value}"[:96],
         from_address=sender[:34],
         to_address=address,
         amount=Decimal(value).scaleb(-_DECIMALS),
         block_at=datetime.fromtimestamp(block_ms / 1000, tz=UTC),
-        block_ms=block_ms,
+        position=block_ms,
     )
 
 
@@ -177,7 +151,7 @@ async def fetch_transfers(
     finally:
         if http is None:
             await client.aclose()
-    return Batch(transfers=out, last_block_ms=last, truncated=truncated)
+    return Batch(transfers=out, last_position=last, truncated=truncated)
 
 
 async def _page(
