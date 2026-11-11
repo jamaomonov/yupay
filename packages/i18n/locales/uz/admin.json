@@ -775,5 +775,105 @@
       }
     },
     "loading": "Yuklanmoqda…"
+  },
+  "usdt": {
+    "nav": "USDT",
+    "title": "USDT (TRC20)",
+    "description": "Reseller depozitini USDT bilan toʻldirish: manzil, oʻtkazmalar jurnali va rezervlar.",
+    "loading": "Yuklanmoqda…",
+    "loadError": "Maʼlumotlarni yuklab boʻlmadi.",
+    "empty": "Hech narsa topilmadi.",
+    "loadMore": "Yana yuklash",
+    "errors": {
+      "usdt_bad_address": "TRON manzili notoʻgʻri: nazorat summasi mos kelmadi. Uni hamyondan qayta nusxalang.",
+      "usdt_bad_bounds": "Maksimal summa minimaldan kam boʻlishi mumkin emas.",
+      "usdt_unknown_merchant": "Roʻyxatda mavjud boʻlmagan resellerlar bor: {ids}",
+      "usdt_incoming_resolved": "Bu oʻtkazma allaqachon koʻrib chiqilgan. Jurnalni yangilang.",
+      "usdt_incoming_not_found": "Oʻtkazma topilmadi.",
+      "merchant_not_found": "Reseller topilmadi."
+    },
+    "settings": {
+      "title": "Rejim",
+      "mode": "Kimga ochiq",
+      "modes": {
+        "off": "Oʻchirilgan",
+        "allowlist": "Faqat roʻyxat",
+        "all": "Hammaga"
+      },
+      "allowlist": "Roʻyxatdagi resellerlar (id vergul bilan)",
+      "address": "Qabul manzili (TRON, TRC20)",
+      "addressWarning": "Manzilni tekshiring: barcha toʻlovlar unga tushadi. Hamyon kalitlarini faqat oʻzingizda saqlang.",
+      "noAddress": "Manzil koʻrsatilmagan — u kiritilmaguncha USDT bilan toʻldirish hech kimga ochiq emas.",
+      "min": "Min. summa, USD",
+      "max": "Maks. summa, USD",
+      "badAmount": "Summa noldan katta, sentgacha aniqlikdagi son boʻlishi kerak.",
+      "cursor": "Tarmoq oʻqilgan vaqt",
+      "save": "Saqlash",
+      "saving": "Saqlanmoqda…",
+      "saved": "Sozlamalar saqlandi."
+    },
+    "tabs": {
+      "aria": "Boʻlim",
+      "journal": "Jurnal",
+      "reservations": "Rezervlar"
+    },
+    "filters": {
+      "result": "Natija",
+      "any": "Barchasi",
+      "unmatched": "Aniqlanmaganlar"
+    },
+    "results": {
+      "matched": "Moslashtirildi",
+      "unmatched": "Aniqlanmagan",
+      "ignored": "Oʻtkazib yuborildi",
+      "manual": "Qoʻlda hisoblandi",
+      "dismissed": "Yopildi"
+    },
+    "journal": {
+      "blockTime": "Blok vaqti",
+      "amount": "Summa, USDT",
+      "from": "Yuboruvchi",
+      "tx": "Tranzaksiya",
+      "result": "Natija",
+      "reseller": "Reseller / rezerv",
+      "note": "Izoh",
+      "actions": "Amallar",
+      "credit": "Hisoblash",
+      "dismiss": "Hisoblamasdan yopish"
+    },
+    "resolve": {
+      "creditTitle": "{amount} USDT oʻtkazmani hisoblash",
+      "dismissTitle": "{amount} USDT oʻtkazmani hisoblamasdan yopish",
+      "merchant": "Reseller",
+      "pickMerchant": "Resellerni tanlang",
+      "merchantsError": "Resellerlarni yuklab boʻlmadi.",
+      "note": "Izoh",
+      "noteOptional": "Izoh (ixtiyoriy)",
+      "noteRequired": "Izoh majburiy: oʻtkazma nega hisoblanmasdan yopilyapti.",
+      "cancel": "Bekor qilish",
+      "confirmCreditTitle": "Depozitga hisoblansinmi?",
+      "confirmCreditBody": "«{merchant}» depozitiga ${amount} hisoblanadi. Bir sentdan kam qoldiq hisoblanmaydi.",
+      "confirmCredit": "${amount} hisoblash",
+      "confirmDismissTitle": "Hisoblamasdan yopilsinmi?",
+      "confirmDismissBody": "{amount} USDT oʻtkazma hech kimga hisoblanmaydi. Buni bekor qilib boʻlmaydi.",
+      "confirmDismiss": "Yopish",
+      "credited": "${amount} hisoblandi.",
+      "dismissed": "Oʻtkazma yopildi."
+    },
+    "reservations": {
+      "number": "Raqam",
+      "merchant": "Reseller",
+      "amount": "Summa, USDT",
+      "status": "Holat",
+      "created": "Yaratilgan",
+      "expires": "Muddati",
+      "closed": "Yopilgan",
+      "statuses": {
+        "pending": "Kutilmoqda",
+        "paid": "Toʻlangan",
+        "expired": "Muddati oʻtgan",
+        "cancelled": "Bekor qilingan"
+      }
+    }
   }
 }

@@ -775,5 +775,105 @@
       }
     },
     "loading": "Loading…"
+  },
+  "usdt": {
+    "nav": "USDT",
+    "title": "USDT (TRC20)",
+    "description": "Reseller deposit top-ups in USDT: address, transfer journal and reservations.",
+    "loading": "Loading…",
+    "loadError": "Could not load data.",
+    "empty": "Nothing found.",
+    "loadMore": "Load more",
+    "errors": {
+      "usdt_bad_address": "Invalid TRON address: the checksum does not match. Copy it from the wallet again.",
+      "usdt_bad_bounds": "The maximum amount cannot be less than the minimum.",
+      "usdt_unknown_merchant": "The list contains unknown resellers: {ids}",
+      "usdt_incoming_resolved": "This transfer has already been resolved. Refresh the journal.",
+      "usdt_incoming_not_found": "Transfer not found.",
+      "merchant_not_found": "Reseller not found."
+    },
+    "settings": {
+      "title": "Mode",
+      "mode": "Available to",
+      "modes": {
+        "off": "Off",
+        "allowlist": "Allowlist only",
+        "all": "Everyone"
+      },
+      "allowlist": "Allowlisted resellers (comma-separated ids)",
+      "address": "Receiving address (TRON, TRC20)",
+      "addressWarning": "Check the address: every top-up goes to it. Keep the wallet keys only with yourself.",
+      "noAddress": "No address set — USDT top-up is unavailable to everyone until one is set.",
+      "min": "Min amount, USD",
+      "max": "Max amount, USD",
+      "badAmount": "Amount must be a positive number with up to two decimals.",
+      "cursor": "Chain read up to",
+      "save": "Save",
+      "saving": "Saving…",
+      "saved": "Settings saved."
+    },
+    "tabs": {
+      "aria": "Section",
+      "journal": "Journal",
+      "reservations": "Reservations"
+    },
+    "filters": {
+      "result": "Result",
+      "any": "All",
+      "unmatched": "Unidentified"
+    },
+    "results": {
+      "matched": "Matched",
+      "unmatched": "Unidentified",
+      "ignored": "Ignored",
+      "manual": "Credited manually",
+      "dismissed": "Dismissed"
+    },
+    "journal": {
+      "blockTime": "Block time",
+      "amount": "Amount, USDT",
+      "from": "Sender",
+      "tx": "Transaction",
+      "result": "Result",
+      "reseller": "Reseller / reservation",
+      "note": "Note",
+      "actions": "Actions",
+      "credit": "Credit",
+      "dismiss": "Close without credit"
+    },
+    "resolve": {
+      "creditTitle": "Credit transfer {amount} USDT",
+      "dismissTitle": "Close transfer {amount} USDT without credit",
+      "merchant": "Reseller",
+      "pickMerchant": "Choose a reseller",
+      "merchantsError": "Could not load resellers.",
+      "note": "Note",
+      "noteOptional": "Note (optional)",
+      "noteRequired": "A note is required: why the transfer is closed without credit.",
+      "cancel": "Cancel",
+      "confirmCreditTitle": "Credit the deposit?",
+      "confirmCreditBody": "${amount} will be credited to the deposit of “{merchant}”. Anything below a cent is not credited.",
+      "confirmCredit": "Credit ${amount}",
+      "confirmDismissTitle": "Close without credit?",
+      "confirmDismissBody": "The {amount} USDT transfer will not be credited to anyone. This cannot be undone.",
+      "confirmDismiss": "Close",
+      "credited": "Credited ${amount}.",
+      "dismissed": "Transfer closed."
+    },
+    "reservations": {
+      "number": "Number",
+      "merchant": "Reseller",
+      "amount": "Amount, USDT",
+      "status": "Status",
+      "created": "Created",
+      "expires": "Expires",
+      "closed": "Closed",
+      "statuses": {
+        "pending": "Pending",
+        "paid": "Paid",
+        "expired": "Expired",
+        "cancelled": "Cancelled"
+      }
+    }
   }
 }

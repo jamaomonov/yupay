@@ -53,6 +53,7 @@ import { SkinSalesPage } from "@/features/skins/SkinSalesPage";
 import { SkinTradesPage } from "@/features/skins/SkinTradesPage";
 import { BrandSourcingPage } from "@/features/sourcing/BrandSourcingPage";
 import { SourcingPage } from "@/features/sourcing/SourcingPage";
+import { UsdtPage } from "@/features/usdt/UsdtPage";
 import { UsersListPage } from "@/features/users/UsersListPage";
 import { WalletPage } from "@/features/wallet/WalletPage";
 import { WebhooksPage } from "@/features/webhooks/WebhooksPage";
@@ -96,6 +97,7 @@ export const router = createBrowserRouter([
           { path: "/payments/providers", element: <ProvidersPage /> },
           { path: "/payments/p2p-cards", element: <P2PCardsPage /> },
           { path: "/payments/transfers", element: <P2PTransfersPage /> },
+          { path: "/payments/usdt", element: <UsdtPage /> },
           { path: "/webhooks", element: <WebhooksPage /> },
           { path: "/fulfillment", element: <InboxPage /> },
           {

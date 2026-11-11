@@ -234,6 +234,12 @@ export const qk = {
   p2pIncomingDetail: (id: string) => ["admin", "p2p", "incoming", "detail", id] as const,
   p2pReservations: (status: string) => ["admin", "p2p", "reservations", status] as const,
 
+  // usdt deposit (ADR-0104)
+  usdtSettings: () => ["admin", "usdt", "settings"] as const,
+  usdtIncomingAll: () => ["admin", "usdt", "incoming"] as const,
+  usdtIncoming: (result: string) => ["admin", "usdt", "incoming", result] as const,
+  usdtReservations: () => ["admin", "usdt", "reservations"] as const,
+
   // promo
   promoCodes: () => ["admin", "promo"] as const,
 
