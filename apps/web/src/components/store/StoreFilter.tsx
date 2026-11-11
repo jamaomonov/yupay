@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
+import { pushAnalyticsEvent, viewItemListEvent } from "@/lib/analytics-events";
 import { pathFor } from "@/lib/seo";
 
 export interface StoreChip {
@@ -74,13 +75,31 @@ export function StoreFilter({
 }) {
   const [active, setActive] = useState("all");
   const [query, setQuery] = useState("");
+  // The list GA4's `view_item_list` last went out for, so a re-render of the
+  // same category never sends it again.
+  const listSent = useRef<string | null>(null);
 
   useEffect(() => {
     const cat = new URLSearchParams(window.location.search).get("cat");
     // An unknown ?cat= shows everything rather than an empty page — the same
     // fallback the server-side version applied.
-    setActive(cat && items.some((i) => i.category === cat) ? cat : "all");
-  }, [items]);
+    const list = cat && items.some((i) => i.category === cat) ? cat : "all";
+    setActive(list);
+    // Sent from here, where the category is settled, not from a render with
+    // the pre-mount "all" a `?cat=` hit starts on. The search box is not a
+    // list view and sends nothing: what is typed there is free text.
+    if (listSent.current !== list) {
+      listSent.current = list;
+      const shown = list === "all" ? items : items.filter((i) => i.category === list);
+      pushAnalyticsEvent(
+        viewItemListEvent(
+          list,
+          chips.find((c) => c.slug === list)?.label ?? list,
+          shown.map((i) => ({ slug: i.key, name: i.name })),
+        ),
+      );
+    }
+  }, [items, chips]);
 
   // A search looks across every category: someone typing «pubg» while
   // «Подарочные карты» is picked still means PUBG.

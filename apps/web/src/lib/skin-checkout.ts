@@ -9,8 +9,11 @@
  * trade link that is someone else's. Uses `apiFetch`, so an expired access
  * token is refreshed on the way.
  */
+import { addPaymentInfoEvent, beginCheckoutEvent, trackOrderEvent } from "./analytics-events";
 import { ApiError, apiFetch, getAccessToken } from "./client";
 import { pathFor } from "./seo";
+
+import type { OrderOut } from "./orders-types";
 
 export interface BuySkinParams {
   locale: string;
@@ -109,9 +112,9 @@ function skinError(err: unknown): unknown {
 
 export async function buySkin(params: BuySkinParams): Promise<BuySkinResult> {
   if (!getAccessToken()) throw new SignInRequiredError();
-  let order: { id: string };
+  let order: OrderOut;
   try {
-    order = await apiFetch<{ id: string }>("/orders", {
+    order = await apiFetch<OrderOut>("/orders", {
       method: "POST",
       headers: { "Idempotency-Key": params.orderKey, "Accept-Language": params.locale },
       body: {
@@ -133,6 +136,7 @@ export async function buySkin(params: BuySkinParams): Promise<BuySkinResult> {
   } catch (err) {
     throw skinError(err);
   }
+  trackOrderEvent(beginCheckoutEvent, order);
   const trackHref = pathFor(params.locale, `/orders/${order.id}`);
   const intent = await apiFetch<{ intent_url: string | null }>("/payments/intents", {
     method: "POST",
@@ -143,5 +147,6 @@ export async function buySkin(params: BuySkinParams): Promise<BuySkinResult> {
       return_url: `${window.location.origin}${trackHref}`,
     },
   });
+  trackOrderEvent((o) => addPaymentInfoEvent(o, params.provider), order);
   return { orderId: order.id, intentUrl: intent.intent_url, trackHref };
 }

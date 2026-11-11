@@ -1,5 +1,7 @@
 import type { OrderOut } from "@/lib/orders-types";
 
+import { orderItems, type PurchaseEvent, pushAnalyticsEvent } from "@/lib/analytics-events";
+
 /**
  * The GA4 `purchase` event for the data layer, read by the GTM container
  * (Google Ads conversion, GA4) and by Metrika (`ecommerce:"dataLayer"`, which
@@ -15,47 +17,19 @@ const FRESH_MS = 24 * 60 * 60 * 1000;
 
 const sentKey = (orderId: string) => `yp_purchase_sent:${orderId}`;
 
-interface PurchaseItem {
-  item_id: string;
-  item_name: string;
-  item_brand: string;
-  price: number;
-  quantity: number;
-}
-
-export interface PurchaseEvent {
-  event: "purchase";
-  ecommerce: {
-    transaction_id: string;
-    value: number;
-    currency: string;
-    items: PurchaseItem[];
-  };
-}
-
 /** The event for `order`, or `null` when it is not a fresh paid sale. */
 export function purchaseEventFor(order: OrderOut, nowMs: number): PurchaseEvent | null {
   if (order.purpose === "wallet_topup" || order.paid_at === null) return null;
   if (nowMs - Date.parse(order.paid_at) > FRESH_MS) return null;
   const value = Number(order.total_charged);
   if (!Number.isFinite(value) || value <= 0) return null;
-  const totalUsd = Number(order.total_usd);
-  // Line prices are in USD; spread the charged total over them so the items add
-  // up to `value` in the order's own currency.
-  const rate = totalUsd > 0 ? value / totalUsd : 0;
   return {
     event: "purchase",
     ecommerce: {
       transaction_id: order.id,
       value,
       currency: order.currency,
-      items: order.items.map((item) => ({
-        item_id: item.display?.sku_code ?? item.sku_id,
-        item_name: item.display?.product_name ?? "",
-        item_brand: item.display?.brand_slug ?? "",
-        price: Math.round(Number(item.unit_price_usd) * rate * 100) / 100,
-        quantity: item.qty,
-      })),
+      items: orderItems(order),
     },
   };
 }
@@ -74,15 +48,6 @@ export function sendPurchaseOnce(order: OrderOut, nowMs: number = Date.now()): b
   } catch {
     // storage unavailable — send anyway
   }
-  window.dataLayer = window.dataLayer ?? [];
-  // GA4 asks to clear the previous ecommerce object before a new one.
-  window.dataLayer.push({ ecommerce: null });
-  window.dataLayer.push(event);
-  return true;
-}
-
-declare global {
-  interface Window {
-    dataLayer?: unknown[];
-  }
+  // Clears the previous ecommerce object first, as GA4 asks.
+  return pushAnalyticsEvent(event);
 }

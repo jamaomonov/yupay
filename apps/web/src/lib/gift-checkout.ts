@@ -16,10 +16,13 @@
  * `mock` provider, which the caller already treats as "done, go to the
  * order page" rather than "redirect to a hosted payment page".
  */
+import { addPaymentInfoEvent, beginCheckoutEvent, trackOrderEvent } from "./analytics-events";
 import { ApiError, getAccessToken, SURFACE } from "./client";
 import { mintGuestToken } from "./guest";
 import { rememberGuestEmail, saveGuestOrder } from "./guest-orders";
 import { pathFor } from "./seo";
+
+import type { OrderOut } from "./orders-types";
 
 const API = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000").replace(/\/$/, "");
 
@@ -235,7 +238,9 @@ export async function buyGift(params: BuyGiftParams): Promise<BuyGiftResult> {
     }
     throw new Error(`gift checkout: order creation failed (${String(orderRes.status)})`);
   }
-  const order = (await orderRes.json()) as { id: string };
+  // The API's `OrderCreatedOut`, which is an `OrderOut`.
+  const order = (await orderRes.json()) as OrderOut;
+  trackOrderEvent(beginCheckoutEvent, order);
 
   // No email in the page we navigate to — see `PurchasePanel`; only the
   // acquirer's return keeps it, for a return that lands in another browser.
@@ -284,6 +289,7 @@ export async function buyGift(params: BuyGiftParams): Promise<BuyGiftResult> {
     throw new ApiError(intentRes.status, "/payments/intents", type, detail, extra);
   }
   const intent = (await intentRes.json()) as { intent_url: string | null };
+  trackOrderEvent((o) => addPaymentInfoEvent(o, provider), order);
 
   if (!isLoggedIn) {
     saveGuestOrder({

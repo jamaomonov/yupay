@@ -9,6 +9,7 @@ import { Suspense } from "react";
 
 import type { Metadata } from "next";
 
+import { TrackEvent } from "@/components/analytics/TrackEvent";
 import { BrandBlogBlock } from "@/components/blog/BrandBlogBlock";
 import { JsonLd } from "@/components/JsonLd";
 import { SteamSkinsPromo } from "@/components/skins/SteamSkinsPromo";
@@ -24,6 +25,7 @@ import { ReviewAvatar } from "@/components/store/ReviewAvatar";
 import { Stars } from "@/components/store/Stars";
 import { WriteReviewPanel } from "@/components/store/WriteReviewPanel";
 import { routing } from "@/i18n/routing";
+import { viewItemEvent } from "@/lib/analytics-events";
 import { brandPath, CS2_SKINS_BRAND } from "@/lib/brand-href";
 import { isVoucherBrand } from "@/lib/brand-kind";
 import { brandPageDescription, brandPageTitle, brandReviewsLd, priceFaqRow } from "@/lib/brand-seo";
@@ -588,6 +590,8 @@ export default async function BrandPage({
           {(brand.variants ?? []).length > 1 && (
             <BrandVariants variants={brand.variants ?? []} current={brand.slug} locale={locale} />
           )}
+          {/* GA4 `view_item`: once per brand page view (lib/analytics-events.ts). */}
+          <TrackEvent event={viewItemEvent(brand)} dedupeKey={brand.slug} />
           {brand.maintenance && brand.maintenance_redirect && (
             <MaintenanceRedirect
               target={brand.maintenance_redirect}

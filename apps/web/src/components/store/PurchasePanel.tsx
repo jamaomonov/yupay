@@ -23,9 +23,18 @@ import { type AppliedPromo, PromoField } from "./PromoField";
 import { WhereToFindModal, type WhereToFindImage } from "./WhereToFindModal";
 
 import type { FormField, HelpImage, ProductDetail, SkuOut } from "@/lib/catalog";
+import type { OrderOut } from "@/lib/orders-types";
 import type { PlayerCheckResult } from "@/lib/player-check";
 
 import { WalletMark } from "@/components/icons/WalletMark";
+import {
+  addPaymentInfoEvent,
+  beginCheckoutEvent,
+  playerCheckEvent,
+  pushAnalyticsEvent,
+  selectItemEvent,
+  trackOrderEvent,
+} from "@/lib/analytics-events";
 import { useAuth } from "@/lib/auth";
 import { buttonStyles } from "@/lib/button";
 import { ApiError, getAccessToken, SURFACE } from "@/lib/client";
@@ -348,6 +357,8 @@ function CheckablePlayerField({
       // `runPlayerCheck` folds every fault into a `result`, so it cannot
       // reject: this reports at most once, and never throws past the caller.
       const result = await runPlayerCheck(brandSlug, { playerId: value, serverId });
+      // GA4 `player_check`: the verdict and the brand, never the id or nickname.
+      pushAnalyticsEvent(playerCheckEvent(result.status, brandSlug));
       // Reported straight from here, not from an effect — this verdict is the
       // one thing Pay reasons about, and an effect lands a commit later — and
       // only if this press is still the latest. Two checks can be in flight
@@ -1299,6 +1310,9 @@ export function PurchasePanel({
     accessToken: string | null;
     createdAt: number;
   } | null>(null);
+  // The order the last `begin_checkout` described, for the `add_payment_info`
+  // that follows it — a retry pays `pendingOrderRef`'s order, which holds no lines.
+  const checkoutOrderRef = useRef<OrderOut | null>(null);
   const [done, setDone] = useState<{
     orderId: string;
     intentUrl: string | null;
@@ -1418,7 +1432,16 @@ export function PurchasePanel({
   // More than one piece: the summary lists them instead of naming one pack.
   const isMultiCart = cartPieces > 1;
   const lineName = (s: SkuOut): string => displayDenomination(s.denomination ?? s.sku_code);
+  // GA4 `select_item`, once per change of nominal: re-tapping the pack, a
+  // refocus of the amount box or a quick amount on the SKU already picked
+  // sends nothing. A typed-amount SKU has no price until the amount is in.
+  const trackSelect = (sku: SkuOut, product: ProductDetail): void => {
+    if (sku.id === skuId) return;
+    const priced = !(sku.variable_amount ?? false) && !isUnitSku(sku);
+    pushAnalyticsEvent(selectItemEvent(sku, product, product.brand.slug, priced));
+  };
   const pickPack = (sku: SkuOut, product: ProductDetail): void => {
+    trackSelect(sku, product);
     setCounts(
       addPack(
         cartCounts,
@@ -1980,11 +2003,14 @@ export function PurchasePanel({
           }
           throw new ApiError(ord.status, "/orders", type);
         }
-        order = (await ord.json()) as {
-          id: string;
+        // The API's `OrderCreatedOut`: the order plus the two fields below.
+        const created = (await ord.json()) as OrderOut & {
           discount_charged?: string;
           access_token?: string | null;
         };
+        order = created;
+        checkoutOrderRef.current = created;
+        trackOrderEvent(beginCheckoutEvent, created);
         // A guest's own way to the codes, independent of the mailbox (ADR-0096).
         if (!isLoggedIn && order.access_token) saveOrderAccess(order.id, order.access_token);
         // Authoritative. A code the server refused leaves this at zero, and
@@ -2058,6 +2084,10 @@ export function PurchasePanel({
       }
       // Paid, or handed to the acquirer: nothing left to reuse.
       pendingOrderRef.current = null;
+      const forEvent = checkoutOrderRef.current;
+      if (forEvent?.id === order.id) {
+        trackOrderEvent((o) => addPaymentInfoEvent(o, provider ?? "unknown"), forEvent);
+      }
       const intent = (await intentRes.json()) as { intent_url: string | null };
 
       if (!isLoggedIn) {
@@ -2216,12 +2246,14 @@ export function PurchasePanel({
                     selected={skuId === variableSku.id}
                     onChange={setAmountInput}
                     onFocus={() => {
+                      trackSelect(variableSku, product);
                       setSkuId(variableSku.id);
                     }}
                     onPick={(n) => {
                       // Marked as this SKU's amount first, so the switch-clears-
                       // the-amount effect does not wipe the sum just picked.
                       amountSkuId.current = variableSku.id;
+                      trackSelect(variableSku, product);
                       setSkuId(variableSku.id);
                       setAmountInput(String(n));
                     }}
@@ -2237,6 +2269,7 @@ export function PurchasePanel({
                       selected={skuId === unitSku.id}
                       onChange={setAmountInput}
                       onFocus={() => {
+                        trackSelect(unitSku, product);
                         setSkuId(unitSku.id);
                       }}
                       locale={locale}
@@ -2246,6 +2279,7 @@ export function PurchasePanel({
                       sku={unitSku}
                       qty={skuId === unitSku.id ? parseAmount(amountInput) : null}
                       onPick={(n) => {
+                        trackSelect(unitSku, product);
                         setSkuId(unitSku.id);
                         setAmountInput(String(n));
                       }}
