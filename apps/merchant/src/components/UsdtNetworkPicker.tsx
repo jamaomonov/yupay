@@ -6,14 +6,23 @@ import { useTranslations } from "next-intl";
 import type { UsdtNetwork } from "@/lib/types";
 import type { UsdtFlow } from "@/lib/useUsdtDeposit";
 
+import { CryptoLogo } from "@/components/CryptoLogo";
 import { formatUsdt, USDT_NETWORKS } from "@/lib/usdt";
 
-/** A letter disc in the chain's colour — drawn inline, no image asset to load. */
-const MARK: Readonly<Record<UsdtNetwork, string>> = {
-  trc20: "bg-[#eb0029] text-white",
-  bep20: "bg-[#f0b90b] text-black",
-  erc20: "bg-[#627eea] text-white",
+/** The `topUpUsdt.*` key for how long a transfer takes to land on each chain. */
+const SPEED: Readonly<Record<UsdtNetwork, "speedTrc20" | "speedBep20" | "speedErc20">> = {
+  trc20: "speedTrc20",
+  bep20: "speedBep20",
+  erc20: "speedErc20",
 };
+
+/**
+ * A tile's border lights up under a mouse or keyboard focus only. Hover is
+ * gated on a fine pointer: some touch browsers claim `hover: hover` and keep
+ * the last tapped tile green.
+ */
+const TILE =
+  "border-border bg-card pointer-fine:hover:border-primary focus-visible:border-primary mt-2 flex w-full items-center gap-4 rounded-xl border p-4 text-left transition-colors disabled:opacity-50";
 
 interface UsdtNetworkPickerProps {
   flow: UsdtFlow;
@@ -50,19 +59,16 @@ export function UsdtNetworkPicker({ flow, locale }: UsdtNetworkPickerProps) {
             onClick={() => {
               void flow.pickNetwork(network);
             }}
-            className="border-border bg-card hover:border-primary mt-2 flex w-full items-center gap-4 rounded-xl border p-4 text-left transition-colors disabled:opacity-50"
+            className={TILE}
           >
-            <span
-              aria-hidden
-              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold ${MARK[network]}`}
-            >
-              {spec.name.charAt(0)}
-            </span>
+            <CryptoLogo src={spec.logo} size={36} />
             <span className="min-w-0 flex-1">
-              <span className="block font-semibold">{spec.name}</span>
+              <span className="block font-semibold">
+                {spec.name} <span className="text-tx-mute font-normal">{spec.standard}</span>
+              </span>
               <span className="text-tx-mute block text-sm">
-                {spec.standard}
-                {spec.costly && <span className="text-tx-dim"> · {t("networkCostly")}</span>}
+                {t(SPEED[network])}
+                {spec.costly && ` · ${t("networkCostly")}`}
               </span>
             </span>
             <ChevronRight aria-hidden size={18} className="text-tx-dim shrink-0" />

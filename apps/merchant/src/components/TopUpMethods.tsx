@@ -6,8 +6,8 @@ import { useTranslations } from "next-intl";
 
 import type { UsdtNetwork } from "@/lib/types";
 
-import { TetherMark } from "@/components/TetherMark";
-import { USDT_NETWORKS } from "@/lib/usdt";
+import { CryptoLogo } from "@/components/CryptoLogo";
+import { USDT_LOGO, USDT_NETWORKS } from "@/lib/usdt";
 
 /** Ways to top up: a card transfer to Uzcard or Humo, or USDT on one of its chains. */
 export type TopUpMethod = "card" | "usdt";
@@ -22,7 +22,7 @@ interface TopUpMethodsProps {
 }
 
 const TILE =
-  "border-border bg-card hover:border-primary mt-2 flex w-full items-center gap-4 rounded-xl border p-4 text-left transition-colors";
+  "border-border bg-card pointer-fine:hover:border-primary focus-visible:border-primary mt-2 flex w-full items-center gap-4 rounded-xl border p-4 text-left transition-colors";
 
 const CARD_LOGOS = [
   { src: "/payment/uzcard.png", alt: "Uzcard", w: 461, h: 676 },
@@ -77,12 +77,24 @@ export function TopUpMethods({ card, usdt, usdtNetworks, onPick }: TopUpMethodsP
           className={TILE}
         >
           <span className="flex h-10 w-14 shrink-0 items-center justify-center">
-            <TetherMark size={36} />
+            <CryptoLogo src={USDT_LOGO} size={36} />
           </span>
           <span className="min-w-0 flex-1">
             <span className="block font-semibold">{t("methodUsdt")}</span>
-            <span className="text-tx-mute block text-sm">
-              {usdtNetworks.map((network) => USDT_NETWORKS[network].standard).join(" · ")}
+            <span className="mt-1 flex items-center gap-2">
+              <span className="flex shrink-0 -space-x-1.5">
+                {usdtNetworks.map((network) => (
+                  <CryptoLogo
+                    key={network}
+                    src={USDT_NETWORKS[network].logo}
+                    size={20}
+                    className="ring-card ring-2"
+                  />
+                ))}
+              </span>
+              <span className="text-tx-mute min-w-0 truncate text-xs">
+                {usdtNetworks.map((network) => USDT_NETWORKS[network].standard).join(" · ")}
+              </span>
             </span>
           </span>
           <ChevronRight aria-hidden size={18} className="text-tx-dim shrink-0" />

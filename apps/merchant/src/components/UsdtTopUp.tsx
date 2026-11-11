@@ -1,26 +1,36 @@
 "use client";
 
-import { CircleCheck } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import type { UsdtFlow } from "@/lib/useUsdtDeposit";
 
 import { useCabinet } from "@/components/CabinetContext";
+import { CryptoLogo } from "@/components/CryptoLogo";
 import { UsdtDetails } from "@/components/UsdtDetails";
 import { UsdtNetworkPicker } from "@/components/UsdtNetworkPicker";
-import { formatMoment } from "@/lib/datetime";
+import { UsdtPaid } from "@/components/UsdtPaid";
 import {
   checkAmount,
-  explorerTxLink,
   formatUsdt,
-  networkLabel,
+  isPreset,
   sanitizeAmount,
-  shortHash,
+  USDT_LOGO,
   USDT_PRESETS,
 } from "@/lib/usdt";
 
 const BUTTON =
   "bg-primary text-primary-foreground rounded-btn mt-4 inline-flex px-4 py-2 text-sm font-semibold";
+
+/**
+ * A primary button that reads as off when it is: a muted fill and muted text,
+ * not the accent at half opacity (olive and low-contrast on both grounds).
+ */
+const PRIMARY =
+  "bg-primary text-primary-foreground rounded-btn px-4 py-2 text-sm font-semibold disabled:bg-muted disabled:text-tx-mute disabled:cursor-not-allowed";
+
+const CHIP = "rounded-btn border px-3 py-1.5 font-mono text-sm tabular-nums transition-colors";
+const CHIP_ON = "border-primary bg-primary/10 text-primary-ink";
+const CHIP_OFF = "border-border pointer-fine:hover:border-primary";
 
 interface UsdtTopUpProps {
   flow: UsdtFlow;
@@ -74,9 +84,10 @@ function AmountForm({ flow, locale, onBack }: AmountFormProps) {
           onChange={(event) => {
             flow.setAmount(sanitizeAmount(event.target.value));
           }}
-          className="border-border bg-card-2 rounded-btn block w-full border py-2 pl-3 pr-16 font-mono text-lg"
+          className="border-border bg-card-2 rounded-btn block w-full border py-2 pl-3 pr-24 font-mono text-lg"
         />
-        <span className="text-tx-dim pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm font-semibold">
+        <span className="text-tx-mute pointer-events-none absolute inset-y-0 right-3 flex items-center gap-1.5 text-sm font-semibold">
+          <CryptoLogo src={USDT_LOGO} size={20} />
           USDT
         </span>
       </div>
@@ -85,10 +96,11 @@ function AmountForm({ flow, locale, onBack }: AmountFormProps) {
           <button
             key={preset}
             type="button"
+            aria-pressed={isPreset(flow.amount, preset)}
             onClick={() => {
               flow.setAmount(String(preset));
             }}
-            className="border-border hover:border-primary rounded-btn border px-3 py-1.5 font-mono text-sm tabular-nums transition-colors"
+            className={`${CHIP} ${isPreset(flow.amount, preset) ? CHIP_ON : CHIP_OFF}`}
           >
             {grouped.format(preset)}
           </button>
@@ -119,7 +131,7 @@ function AmountForm({ flow, locale, onBack }: AmountFormProps) {
               onClick={() => {
                 void flow.acceptOffer();
               }}
-              className="bg-primary text-primary-foreground rounded-btn px-4 py-2 text-sm font-semibold disabled:opacity-50"
+              className={PRIMARY}
             >
               {t("takenAccept", { suggested: flow.offer.suggested })}
             </button>
@@ -142,11 +154,7 @@ function AmountForm({ flow, locale, onBack }: AmountFormProps) {
         </p>
       )}
       {flow.offer === null && (
-        <button
-          type="submit"
-          disabled={flow.busy || check !== "ok"}
-          className="bg-primary text-primary-foreground rounded-btn mt-4 px-4 py-2 text-sm font-semibold disabled:opacity-50"
-        >
+        <button type="submit" disabled={flow.busy || check !== "ok"} className={`${PRIMARY} mt-4`}>
           {t("continue")}
         </button>
       )}
@@ -193,42 +201,7 @@ export function UsdtTopUp({ flow, locale, supportHref, onBack, onAgain }: UsdtTo
       />
     );
 
-  if (phase === "paid")
-    return (
-      <section className="border-border bg-card mt-5 max-w-md rounded-xl border p-6">
-        <CircleCheck aria-hidden size={36} className="text-emerald-500" />
-        <p className="mt-3 text-lg font-semibold">
-          {t("paid", { amount: formatUsdt(deposit.amount, locale) })}
-        </p>
-        <p className="text-tx-mute text-sm">{t("credited")}</p>
-        <dl className="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
-          <dt className="text-tx-dim">{t("network")}</dt>
-          <dd>{networkLabel(deposit.network)}</dd>
-          {deposit.closed_at !== null && (
-            <>
-              <dt className="text-tx-dim">{t("paidAt")}</dt>
-              <dd>{formatMoment(deposit.closed_at, locale)}</dd>
-            </>
-          )}
-          {deposit.tx_id !== null && (
-            <>
-              <dt className="text-tx-dim">{t("tx")}</dt>
-              <dd>
-                <a
-                  href={explorerTxLink(deposit.network, deposit.tx_id)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary-ink font-mono underline-offset-4 hover:underline"
-                >
-                  {shortHash(deposit.tx_id)}
-                </a>
-              </dd>
-            </>
-          )}
-        </dl>
-        {again}
-      </section>
-    );
+  if (phase === "paid") return <UsdtPaid deposit={deposit} locale={locale} again={again} />;
 
   return (
     <section className="border-border bg-card mt-5 max-w-md rounded-xl border p-6">

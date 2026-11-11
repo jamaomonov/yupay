@@ -13,6 +13,8 @@ interface UsdtNetworkSpec {
   txUrl: string;
   /** Gas is dear here: the picker says so. */
   costly: boolean;
+  /** The chain's round logo, 128×128 on transparent, under `public/`. */
+  logo: string;
 }
 
 /** Everything that differs between the chains a USDT top-up can use. */
@@ -22,6 +24,7 @@ export const USDT_NETWORKS: Readonly<Record<UsdtNetwork, UsdtNetworkSpec>> = {
     standard: "TRC20",
     trustAsset: "c195_tTR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t",
     txUrl: "https://tronscan.org/#/transaction/",
+    logo: "/crypto/tron.png",
     costly: false,
   },
   bep20: {
@@ -29,6 +32,7 @@ export const USDT_NETWORKS: Readonly<Record<UsdtNetwork, UsdtNetworkSpec>> = {
     standard: "BEP20",
     trustAsset: "c20000714_t0x55d398326f99059fF775485246999027B3197955",
     txUrl: "https://bscscan.com/tx/",
+    logo: "/crypto/bnb.png",
     costly: false,
   },
   erc20: {
@@ -36,6 +40,7 @@ export const USDT_NETWORKS: Readonly<Record<UsdtNetwork, UsdtNetworkSpec>> = {
     standard: "ERC20",
     trustAsset: "c60_t0xdAC17F958D2ee523a2206206994597C13D831ec7",
     txUrl: "https://etherscan.io/tx/",
+    logo: "/crypto/eth.png",
     costly: true,
   },
 };
@@ -50,6 +55,9 @@ export function networkLabel(network: UsdtNetwork): string {
   const spec = USDT_NETWORKS[network];
   return `${spec.name} (${spec.standard})`;
 }
+
+/** Tether's round logo, the same size and shape as the chains'. */
+export const USDT_LOGO = "/crypto/usdt.png";
 
 /** Quick picks on the amount step, in whole USDT. */
 export const USDT_PRESETS = [100, 500, 1000, 3000] as const;
@@ -130,6 +138,24 @@ export function formatUsdt(amount: string, locale: string): string {
       ?.value ?? ".";
   const cents = (match[2] ?? "").padEnd(2, "0");
   return cents === "00" ? whole : `${whole}${decimal}${cents}`;
+}
+
+/**
+ * "1 000.00" — the amount to send, grouped by thousands with a narrow
+ * no-break space but keeping the point: a wallet's send form takes a point,
+ * and a locale comma read by eye is the wrong number. Display only — the copy
+ * button still hands over the raw string. Anything else is shown as sent.
+ */
+export function groupUsdt(amount: string): string {
+  const match = /^(\d+)(\.\d+)?$/.exec(amount);
+  if (match === null) return amount;
+  const whole = (match[1] ?? "").replace(/\B(?=(\d{3})+(?!\d))/g, "\u202F");
+  return `${whole}${match[2] ?? ""}`;
+}
+
+/** Whether the amount box holds exactly this whole preset. */
+export function isPreset(amount: string, preset: number): boolean {
+  return toCents(amount) === BigInt(preset) * 100n;
 }
 
 /** Trust Wallet's send screen with the address and amount filled in. */

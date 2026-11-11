@@ -45,6 +45,10 @@ describe("TopUpMethods", () => {
 
     expect(html).toContain("USDT");
     expect(html).toContain("TRC20 · BEP20 · ERC20");
+    expect(html).toContain("usdt.png");
+    expect(html).toContain("tron.png");
+    expect(html).toContain("bnb.png");
+    expect(html).toContain("eth.png");
     expect(html).not.toContain("Uzcard / Humo");
   });
 });

@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   checkAmount,
   formatUsdt,
+  groupUsdt,
+  isPreset,
   sanitizeAmount,
   explorerTxLink,
   isUsdtNetwork,
@@ -13,6 +15,7 @@ import {
   usdtErrorKey,
   usdtPhase,
   usdtPollDeadline,
+  USDT_NETWORKS,
 } from "./usdt";
 
 import type { UsdtDeposit } from "./types";
@@ -92,6 +95,32 @@ describe("formatUsdt", () => {
   });
 });
 
+describe("groupUsdt", () => {
+  it("groups thousands with a narrow no-break space and keeps the point", () => {
+    expect(groupUsdt("1000.00")).toBe("1\u202F000.00");
+    expect(groupUsdt("1234567.89")).toBe("1\u202F234\u202F567.89");
+    expect(groupUsdt("100.01")).toBe("100.01");
+    expect(groupUsdt("5")).toBe("5");
+    expect(groupUsdt("12345")).toBe("12\u202F345");
+  });
+
+  it("leaves anything that is not a plain decimal as sent", () => {
+    expect(groupUsdt("1e3")).toBe("1e3");
+    expect(groupUsdt("")).toBe("");
+    expect(groupUsdt("1,000.00")).toBe("1,000.00");
+  });
+});
+
+describe("isPreset", () => {
+  it("matches the amount box against a whole preset, exactly", () => {
+    expect(isPreset("1000", 1000)).toBe(true);
+    expect(isPreset("1000.00", 1000)).toBe(true);
+    expect(isPreset("1000.01", 1000)).toBe(false);
+    expect(isPreset("", 100)).toBe(false);
+    expect(isPreset("100.", 100)).toBe(true);
+  });
+});
+
 describe("networks", () => {
   it("names each chain with its standard and knows only these three", () => {
     expect(networkLabel("trc20")).toBe("TRON (TRC20)");
@@ -100,6 +129,12 @@ describe("networks", () => {
     expect(isUsdtNetwork("bep20")).toBe(true);
     expect(isUsdtNetwork("TRC20")).toBe(false);
     expect(isUsdtNetwork("toString")).toBe(false);
+  });
+
+  it("points each chain at its logo", () => {
+    expect(USDT_NETWORKS.trc20.logo).toBe("/crypto/tron.png");
+    expect(USDT_NETWORKS.bep20.logo).toBe("/crypto/bnb.png");
+    expect(USDT_NETWORKS.erc20.logo).toBe("/crypto/eth.png");
   });
 });
 
