@@ -4,15 +4,20 @@ import { ChevronRight } from "lucide-react";
 import Image from "next/image";
 import { useTranslations } from "next-intl";
 
-import { TetherMark } from "@/components/TetherMark";
+import type { UsdtNetwork } from "@/lib/types";
 
-/** Ways to top up: a card transfer to Uzcard or Humo, or USDT on TRON. */
+import { TetherMark } from "@/components/TetherMark";
+import { USDT_NETWORKS } from "@/lib/usdt";
+
+/** Ways to top up: a card transfer to Uzcard or Humo, or USDT on one of its chains. */
 export type TopUpMethod = "card" | "usdt";
 
 interface TopUpMethodsProps {
   /** Which methods are on for this reseller; a method that is off has no tile. */
   card: boolean;
   usdt: boolean;
+  /** The open USDT chains, listed on its tile. */
+  usdtNetworks: readonly UsdtNetwork[];
   onPick: (method: TopUpMethod) => void;
 }
 
@@ -25,7 +30,7 @@ const CARD_LOGOS = [
 ] as const;
 
 /** The first step of a top-up: pick how to pay, then enter the amount. */
-export function TopUpMethods({ card, usdt, onPick }: TopUpMethodsProps) {
+export function TopUpMethods({ card, usdt, usdtNetworks, onPick }: TopUpMethodsProps) {
   const t = useTranslations("merchant.topUp");
   return (
     <section className="mt-5 max-w-md">
@@ -76,7 +81,9 @@ export function TopUpMethods({ card, usdt, onPick }: TopUpMethodsProps) {
           </span>
           <span className="min-w-0 flex-1">
             <span className="block font-semibold">{t("methodUsdt")}</span>
-            <span className="text-tx-mute block text-sm">{t("methodUsdtHint")}</span>
+            <span className="text-tx-mute block text-sm">
+              {usdtNetworks.map((network) => USDT_NETWORKS[network].standard).join(" · ")}
+            </span>
           </span>
           <ChevronRight aria-hidden size={18} className="text-tx-dim shrink-0" />
         </button>

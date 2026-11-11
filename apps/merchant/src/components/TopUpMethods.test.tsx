@@ -13,7 +13,7 @@ describe("TopUpMethods", () => {
         timeZone="Asia/Tashkent"
         messages={{ merchant: messages }}
       >
-        <TopUpMethods card usdt={false} onPick={() => undefined} />
+        <TopUpMethods card usdt={false} usdtNetworks={[]} onPick={() => undefined} />
       </NextIntlClientProvider>,
     );
 
@@ -34,11 +34,17 @@ describe("TopUpMethods", () => {
         timeZone="Asia/Tashkent"
         messages={{ merchant: messages }}
       >
-        <TopUpMethods card={false} usdt onPick={() => undefined} />
+        <TopUpMethods
+          card={false}
+          usdt
+          usdtNetworks={["trc20", "bep20", "erc20"]}
+          onPick={() => undefined}
+        />
       </NextIntlClientProvider>,
     );
 
-    expect(html).toContain("USDT · TRC20");
+    expect(html).toContain("USDT");
+    expect(html).toContain("TRC20 · BEP20 · ERC20");
     expect(html).not.toContain("Uzcard / Humo");
   });
 });

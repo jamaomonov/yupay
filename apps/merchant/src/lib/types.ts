@@ -304,10 +304,14 @@ export interface P2PStatus {
   fx_rate: string | null;
 }
 
-/** Whether the cabinet offers a USDT (TRC20) top-up, and the bounds of one payment. */
+/** A chain USDT can arrive on, as the API names it. */
+export type UsdtNetwork = "trc20" | "bep20" | "erc20";
+
+/** Whether the cabinet offers a USDT top-up, on which chains, and the bounds of one payment. */
 export interface UsdtStatus {
   enabled: boolean;
-  network: "TRC20";
+  /** The open chains, in display order; empty while the method is off. */
+  networks: UsdtNetwork[];
   /** Decimal strings, `"10.00"`; `null` while the method is off. */
   min_amount: string | null;
   max_amount: string | null;
@@ -319,8 +323,8 @@ export interface UsdtDeposit {
   status: P2PDepositStatus;
   /** What to send, exactly — may be a few cents over what was asked. */
   amount: string;
-  network: "TRC20";
-  /** The receiving TRON address; set only while pending. */
+  network: UsdtNetwork;
+  /** The receiving address on that chain; set only while pending. */
   address: string | null;
   created_at: string;
   expires_at: string;

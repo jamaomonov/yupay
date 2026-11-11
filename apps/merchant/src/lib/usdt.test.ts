@@ -4,9 +4,11 @@ import {
   checkAmount,
   formatUsdt,
   sanitizeAmount,
+  explorerTxLink,
+  isUsdtNetwork,
+  networkLabel,
   shortHash,
   toCents,
-  tronscanLink,
   trustWalletLink,
   usdtErrorKey,
   usdtPhase,
@@ -18,7 +20,7 @@ import type { UsdtDeposit } from "./types";
 const base: Omit<UsdtDeposit, "status"> = {
   number: "U1",
   amount: "100.01",
-  network: "TRC20",
+  network: "trc20",
   address: null,
   created_at: "2026-11-11T10:00:00Z",
   expires_at: "2026-11-11T11:00:00Z",
@@ -90,16 +92,36 @@ describe("formatUsdt", () => {
   });
 });
 
+describe("networks", () => {
+  it("names each chain with its standard and knows only these three", () => {
+    expect(networkLabel("trc20")).toBe("TRON (TRC20)");
+    expect(networkLabel("bep20")).toBe("BNB Chain (BEP20)");
+    expect(networkLabel("erc20")).toBe("Ethereum (ERC20)");
+    expect(isUsdtNetwork("bep20")).toBe(true);
+    expect(isUsdtNetwork("TRC20")).toBe(false);
+    expect(isUsdtNetwork("toString")).toBe(false);
+  });
+});
+
 describe("links and hashes", () => {
-  it("builds the Trust Wallet send link with address and amount", () => {
-    expect(trustWalletLink("TXyz", "100.01")).toBe(
-      "https://link.trustwallet.com/send?asset=c195_tTR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t&address=TXyz&amount=100.01",
+  it("builds the Trust Wallet send link with the chain's USDT, address and amount", () => {
+    const send = "https://link.trustwallet.com/send?asset=";
+    expect(trustWalletLink("trc20", "TXyz", "100.01")).toBe(
+      `${send}c195_tTR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t&address=TXyz&amount=100.01`,
+    );
+    expect(trustWalletLink("bep20", "0xAb", "5")).toBe(
+      `${send}c20000714_t0x55d398326f99059fF775485246999027B3197955&address=0xAb&amount=5`,
+    );
+    expect(trustWalletLink("erc20", "0xAb", "5")).toBe(
+      `${send}c60_t0xdAC17F958D2ee523a2206206994597C13D831ec7&address=0xAb&amount=5`,
     );
   });
 
-  it("links a transaction on Tronscan and shortens its hash", () => {
+  it("links a transaction on the chain's explorer and shortens its hash", () => {
     const tx = "a".repeat(30) + "b".repeat(34);
-    expect(tronscanLink(tx)).toBe(`https://tronscan.org/#/transaction/${tx}`);
+    expect(explorerTxLink("trc20", tx)).toBe(`https://tronscan.org/#/transaction/${tx}`);
+    expect(explorerTxLink("bep20", `0x${tx}`)).toBe(`https://bscscan.com/tx/0x${tx}`);
+    expect(explorerTxLink("erc20", `0x${tx}`)).toBe(`https://etherscan.io/tx/0x${tx}`);
     expect(shortHash(tx)).toBe("aaaaaa…bbbbbb");
     expect(shortHash("short")).toBe("short");
   });
@@ -110,6 +132,7 @@ describe("usdtErrorKey", () => {
     expect(usdtErrorKey("usdt_amount_precision")).toBe("errPrecision");
     expect(usdtErrorKey("usdt_amount_busy")).toBe("errAmountBusy");
     expect(usdtErrorKey("usdt_idempotency_mismatch")).toBe("errRetry");
+    expect(usdtErrorKey("usdt_network_disabled")).toBe("errNetworkOff");
     expect(usdtErrorKey("other")).toBeNull();
   });
 });

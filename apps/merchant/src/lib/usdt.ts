@@ -1,9 +1,55 @@
 import { type Phase } from "./p2p";
 
-import type { UsdtDeposit } from "./types";
+import type { UsdtDeposit, UsdtNetwork } from "./types";
 
-/** The official USDT contract on TRON, as Trust Wallet names the asset. */
-const TRUST_ASSET = "c195_tTR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t";
+interface UsdtNetworkSpec {
+  /** The chain's own name — a proper noun, the same in every locale. */
+  name: string;
+  /** The token standard wallets and exchanges list it under. */
+  standard: string;
+  /** The official USDT contract on this chain, as Trust Wallet names the asset. */
+  trustAsset: string;
+  /** The explorer's transaction page, without the hash. */
+  txUrl: string;
+  /** Gas is dear here: the picker says so. */
+  costly: boolean;
+}
+
+/** Everything that differs between the chains a USDT top-up can use. */
+export const USDT_NETWORKS: Readonly<Record<UsdtNetwork, UsdtNetworkSpec>> = {
+  trc20: {
+    name: "TRON",
+    standard: "TRC20",
+    trustAsset: "c195_tTR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t",
+    txUrl: "https://tronscan.org/#/transaction/",
+    costly: false,
+  },
+  bep20: {
+    name: "BNB Chain",
+    standard: "BEP20",
+    trustAsset: "c20000714_t0x55d398326f99059fF775485246999027B3197955",
+    txUrl: "https://bscscan.com/tx/",
+    costly: false,
+  },
+  erc20: {
+    name: "Ethereum",
+    standard: "ERC20",
+    trustAsset: "c60_t0xdAC17F958D2ee523a2206206994597C13D831ec7",
+    txUrl: "https://etherscan.io/tx/",
+    costly: true,
+  },
+};
+
+/** Whether a code from the API is a chain this build knows. */
+export function isUsdtNetwork(value: string): value is UsdtNetwork {
+  return Object.hasOwn(USDT_NETWORKS, value);
+}
+
+/** "TRON (TRC20)" — how the details and the paid screen name a chain. */
+export function networkLabel(network: UsdtNetwork): string {
+  const spec = USDT_NETWORKS[network];
+  return `${spec.name} (${spec.standard})`;
+}
 
 /** Quick picks on the amount step, in whole USDT. */
 export const USDT_PRESETS = [100, 500, 1000, 3000] as const;
@@ -87,14 +133,15 @@ export function formatUsdt(amount: string, locale: string): string {
 }
 
 /** Trust Wallet's send screen with the address and amount filled in. */
-export function trustWalletLink(address: string, amount: string): string {
-  const query = new URLSearchParams({ asset: TRUST_ASSET, address, amount });
+export function trustWalletLink(network: UsdtNetwork, address: string, amount: string): string {
+  const asset = USDT_NETWORKS[network].trustAsset;
+  const query = new URLSearchParams({ asset, address, amount });
   return `https://link.trustwallet.com/send?${query.toString()}`;
 }
 
-/** The transaction on Tronscan. */
-export function tronscanLink(txId: string): string {
-  return `https://tronscan.org/#/transaction/${encodeURIComponent(txId)}`;
+/** The transaction on the chain's explorer. */
+export function explorerTxLink(network: UsdtNetwork, txId: string): string {
+  return `${USDT_NETWORKS[network].txUrl}${encodeURIComponent(txId)}`;
 }
 
 /** "a1b2c3…d4e5f6" — enough of a hash to recognise it. */
@@ -105,10 +152,11 @@ export function shortHash(hash: string): string {
 /** The `topUpUsdt.*` message key for an API error code, or `null` for "something else". */
 export function usdtErrorKey(
   code: string | null,
-): "errPrecision" | "errAmountBusy" | "errRetry" | "errTooMany" | null {
+): "errPrecision" | "errAmountBusy" | "errRetry" | "errTooMany" | "errNetworkOff" | null {
   if (code === "usdt_amount_precision") return "errPrecision";
   if (code === "usdt_amount_busy") return "errAmountBusy";
   if (code === "usdt_idempotency_mismatch") return "errRetry";
   if (code === "usdt_too_many") return "errTooMany";
+  if (code === "usdt_network_disabled") return "errNetworkOff";
   return null;
 }

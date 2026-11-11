@@ -7,13 +7,15 @@ import type { UsdtFlow } from "@/lib/useUsdtDeposit";
 
 import { useCabinet } from "@/components/CabinetContext";
 import { UsdtDetails } from "@/components/UsdtDetails";
+import { UsdtNetworkPicker } from "@/components/UsdtNetworkPicker";
 import { formatMoment } from "@/lib/datetime";
 import {
   checkAmount,
+  explorerTxLink,
   formatUsdt,
+  networkLabel,
   sanitizeAmount,
   shortHash,
-  tronscanLink,
   USDT_PRESETS,
 } from "@/lib/usdt";
 
@@ -152,7 +154,7 @@ function AmountForm({ flow, locale, onBack }: AmountFormProps) {
   );
 }
 
-/** The USDT top-up: amount, then where and how much to send, then the outcome. */
+/** The USDT top-up: amount, then the chain, then where and how much to send, then the outcome. */
 export function UsdtTopUp({ flow, locale, supportHref, onBack, onAgain }: UsdtTopUpProps) {
   const t = useTranslations("merchant.topUpUsdt");
   const { deposit, phase } = flow;
@@ -171,7 +173,11 @@ export function UsdtTopUp({ flow, locale, supportHref, onBack, onAgain }: UsdtTo
   );
 
   if (phase === "amount" || phase === "cancelled" || deposit === null)
-    return <AmountForm flow={flow} locale={locale} onBack={onBack} />;
+    return flow.choosing ? (
+      <UsdtNetworkPicker flow={flow} locale={locale} />
+    ) : (
+      <AmountForm flow={flow} locale={locale} onBack={onBack} />
+    );
 
   if (phase === "details")
     return (
@@ -197,7 +203,7 @@ export function UsdtTopUp({ flow, locale, supportHref, onBack, onAgain }: UsdtTo
         <p className="text-tx-mute text-sm">{t("credited")}</p>
         <dl className="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
           <dt className="text-tx-dim">{t("network")}</dt>
-          <dd>{t("networkName")}</dd>
+          <dd>{networkLabel(deposit.network)}</dd>
           {deposit.closed_at !== null && (
             <>
               <dt className="text-tx-dim">{t("paidAt")}</dt>
@@ -209,7 +215,7 @@ export function UsdtTopUp({ flow, locale, supportHref, onBack, onAgain }: UsdtTo
               <dt className="text-tx-dim">{t("tx")}</dt>
               <dd>
                 <a
-                  href={tronscanLink(deposit.tx_id)}
+                  href={explorerTxLink(deposit.network, deposit.tx_id)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-primary-ink font-mono underline-offset-4 hover:underline"

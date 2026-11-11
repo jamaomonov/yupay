@@ -637,8 +637,7 @@
     "methodCardHint": "Перевод с карты",
     "changeMethod": "Другой способ",
     "somAmount": "{amount} сум",
-    "methodUsdt": "USDT · TRC20",
-    "methodUsdtHint": "Из кошелька или с биржи"
+    "methodUsdt": "USDT"
   },
   "topUpUsdt": {
     "amountLabel": "Сумма в USDT",
@@ -647,9 +646,12 @@
     "changeMethod": "Другой способ",
     "sendExactly": "Отправьте ровно",
     "exchangeFee": "С биржи — добавьте её комиссию сверху. Прийти должна ровно эта сумма.",
+    "networkTitle": "Выберите сеть",
+    "networkHint": "При отправке выберите в кошельке или на бирже ту же сеть.",
+    "networkCostly": "Комиссия сети выше",
+    "changeAmount": "Изменить сумму",
     "network": "Сеть",
-    "networkName": "TRON (TRC20)",
-    "networkWarning": "Только USDT в сети TRON (TRC20). Другая монета или сеть — деньги потеряются.",
+    "networkWarning": "Только USDT в сети {label}. Другая монета или сеть — деньги потеряются.",
     "address": "Адрес",
     "openWallet": "Открыть в кошельке",
     "openWalletHint": "Адрес и сумма подставятся сами",
@@ -677,7 +679,8 @@
     "takenAccept": "Продолжить с {suggested}",
     "takenBack": "Изменить сумму",
     "errTooMany": "Сейчас нельзя: слишком много пополнений за час. Попробуйте позже",
-    "errRetry": "Попробуйте ещё раз"
+    "errRetry": "Попробуйте ещё раз",
+    "errNetworkOff": "Эта сеть сейчас отключена — выберите другую"
   },
   "stats": {
     "title": "Статистика",

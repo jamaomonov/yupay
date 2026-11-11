@@ -220,7 +220,12 @@ export default function TopUp() {
         </section>
       )}
       {idle && method === null && (cardOn || usdtOn) && (
-        <TopUpMethods card={cardOn} usdt={usdtOn} onPick={setMethod} />
+        <TopUpMethods
+          card={cardOn}
+          usdt={usdtOn}
+          usdtNetworks={usdtStatus?.networks ?? []}
+          onPick={setMethod}
+        />
       )}
       {idle && method === "card" && cardOn && (
         <CardAmountForm

@@ -9,7 +9,7 @@ import type { UsdtDeposit } from "@/lib/types";
 
 import { CopyButton } from "@/components/CopyButton";
 import { formatClock, secondsLeft } from "@/lib/p2p";
-import { trustWalletLink } from "@/lib/usdt";
+import { networkLabel, trustWalletLink } from "@/lib/usdt";
 
 interface UsdtDetailsProps {
   deposit: UsdtDeposit;
@@ -56,6 +56,7 @@ export function UsdtDetails({ deposit, nowMs, busy, error, onCancel }: UsdtDetai
   const t = useTranslations("merchant.topUpUsdt");
   const left = secondsLeft(deposit.expires_at, nowMs);
   const address = deposit.address ?? "";
+  const label = networkLabel(deposit.network);
 
   return (
     <section className="border-border bg-card mt-5 max-w-md rounded-xl border">
@@ -72,10 +73,10 @@ export function UsdtDetails({ deposit, nowMs, busy, error, onCancel }: UsdtDetai
         <p className="text-tx-mute mt-1.5 text-[13px] leading-relaxed">{t("exchangeFee")}</p>
 
         <p className="text-tx-dim mt-5 text-xs">{t("network")}</p>
-        <p className="mt-0.5 text-sm font-semibold">{t("networkName")}</p>
+        <p className="mt-0.5 text-sm font-semibold">{label}</p>
         <p className="mt-2 flex gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-[13px] leading-relaxed">
           <TriangleAlert aria-hidden size={16} className="mt-0.5 shrink-0 text-amber-500" />
-          <span>{t("networkWarning")}</span>
+          <span>{t("networkWarning", { label })}</span>
         </p>
 
         {address !== "" && (
@@ -89,7 +90,7 @@ export function UsdtDetails({ deposit, nowMs, busy, error, onCancel }: UsdtDetai
             </p>
 
             <a
-              href={trustWalletLink(address, deposit.amount)}
+              href={trustWalletLink(deposit.network, address, deposit.amount)}
               target="_blank"
               rel="noopener noreferrer"
               className="bg-primary text-primary-foreground rounded-btn mt-5 inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold"

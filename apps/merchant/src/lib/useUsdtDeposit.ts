@@ -7,17 +7,27 @@ import { api, ApiError } from "./api";
 import { acceptPoll, type Phase, secondsLeft } from "./p2p";
 import { usdtErrorKey, usdtPhase, usdtPollDeadline } from "./usdt";
 
-import type { UsdtDeposit, UsdtDepositsPage } from "./types";
+import type { UsdtDeposit, UsdtDepositsPage, UsdtNetwork } from "./types";
 
 import { useCabinet } from "@/components/CabinetContext";
 
 const POLL_MS = 5000;
+
+/** Refusals about the amount itself: the chain picker steps back to the amount box. */
+const AMOUNT_CODES: ReadonlySet<string> = new Set([
+  "usdt_amount_taken",
+  "usdt_amount_busy",
+  "usdt_amount_precision",
+  "usdt_amount_out_of_bounds",
+]);
 
 export interface UsdtOffer {
   /** What the reseller asked for, as sent. */
   asked: string;
   /** A free amount near it, e.g. "100.37". Nothing is held until accepted. */
   suggested: string;
+  /** The chain the reseller picked; accepting reserves on the same one. */
+  network: UsdtNetwork;
 }
 
 export interface UsdtFlow {
@@ -31,7 +41,16 @@ export interface UsdtFlow {
   /** The server said the method is off for this reseller. */
   disabled: boolean;
   nowMs: number;
+  /** The open chains, in display order. */
+  networks: readonly UsdtNetwork[];
+  /** The amount is set and more than one chain is open: the reseller picks one. */
+  choosing: boolean;
+  /** Amount → the chain picker, or straight to a reservation when one chain is open. */
   submit: () => Promise<void>;
+  /** Reserve the amount on that chain. */
+  pickNetwork: (network: UsdtNetwork) => Promise<void>;
+  /** From the chain picker back to the amount box. */
+  backToAmount: () => void;
   /**
    * The asked amount is held by another top-up: the server offers a free one
    * near it. `null` when there is no offer on screen.
@@ -52,15 +71,18 @@ export interface UsdtFlow {
  */
 export function useUsdtDeposit(enabled: boolean): UsdtFlow {
   const t = useTranslations("merchant.topUpUsdt");
-  const { usdt, refreshProfile } = useCabinet();
+  const { usdt, refreshProfile, refreshUsdt } = useCabinet();
+  const networks = usdt?.networks ?? [];
   const [deposit, setDeposit] = useState<UsdtDeposit | null>(null);
   const [amount, setAmountState] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [offer, setOffer] = useState<UsdtOffer | null>(null);
+  const [choosing, setChoosing] = useState(false);
   const [disabled, setDisabled] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const intentKey = useRef<string | null>(null);
+  const intentOf = useRef(""); // what the key was minted for: amount and chain
   const epoch = useRef(0);
 
   const load = useCallback(async (number: string) => {
@@ -129,16 +151,25 @@ export function useUsdtDeposit(enabled: boolean): UsdtFlow {
     intentKey.current = null;
   }, []);
 
-  const failed = async (caught: unknown, asked: string) => {
+  const failed = async (caught: unknown, asked: string, network: UsdtNetwork) => {
+    // An answer about the amount is read where the amount is typed.
+    if (caught instanceof ApiError && AMOUNT_CODES.has(caught.code ?? "")) setChoosing(false);
     if (caught instanceof ApiError && caught.code === "usdt_amount_taken") {
       intentKey.current = null;
       const suggested = caught.body.suggested;
-      if (typeof suggested === "string") setOffer({ asked, suggested });
+      if (typeof suggested === "string") setOffer({ asked, suggested, network });
       else setError(t("errAmountBusy"));
     } else if (!(caught instanceof ApiError)) {
       setError(t("errBusy"));
+    } else if (caught.code === "usdt_network_disabled") {
+      // Switched off since the status was read: pick again from a fresh list.
+      intentKey.current = null;
+      setChoosing(networks.length > 1);
+      setError(t("errNetworkOff"));
+      refreshUsdt();
     } else if (caught.code === "usdt_reservation_open") {
       intentKey.current = null;
+      setChoosing(false);
       const open = caught.body.number;
       try {
         if (typeof open === "string") await load(open);
@@ -163,34 +194,49 @@ export function useUsdtDeposit(enabled: boolean): UsdtFlow {
     }
   };
 
-  const reserve = async (value: string) => {
+  const reserve = async (value: string, network: UsdtNetwork) => {
     setBusy(true);
     setError(null);
     setOffer(null);
+    // Another amount or chain is a new intent: the old key would be a mismatch.
+    const of = `${value}|${network}`;
+    if (intentOf.current !== of) intentKey.current = null;
+    intentOf.current = of;
     intentKey.current ??= crypto.randomUUID();
     try {
       const created = await api<UsdtDeposit>("/usdt/deposits", {
         method: "POST",
-        body: { amount: value },
+        body: { amount: value, network },
         idempotencyKey: intentKey.current,
       });
       intentKey.current = null;
+      setChoosing(false);
       setDeposit(created);
     } catch (caught) {
-      await failed(caught, value);
+      await failed(caught, value, network);
     } finally {
       setBusy(false);
     }
   };
 
-  const submit = () => reserve(amount);
+  const submit = async () => {
+    setError(null);
+    const only = networks.length === 1 ? networks[0] : undefined;
+    if (only === undefined) setChoosing(true);
+    else await reserve(amount, only);
+  };
+
+  const pickNetwork = (network: UsdtNetwork) => reserve(amount, network);
+
+  const backToAmount = useCallback(() => {
+    setChoosing(false);
+    setError(null);
+  }, []);
 
   const acceptOffer = async () => {
     if (offer === null) return;
-    // A new intent: the amount changed, so the old key would be a mismatch.
-    intentKey.current = null;
     setAmountState(offer.suggested);
-    await reserve(offer.suggested);
+    await reserve(offer.suggested, offer.network);
   };
 
   const declineOffer = useCallback(() => {
@@ -227,6 +273,7 @@ export function useUsdtDeposit(enabled: boolean): UsdtFlow {
     setDeposit(null);
     setAmountState("");
     setOffer(null);
+    setChoosing(false);
     setError(null);
   }, []);
 
@@ -239,7 +286,11 @@ export function useUsdtDeposit(enabled: boolean): UsdtFlow {
     busy,
     disabled,
     nowMs,
+    networks,
+    choosing,
     submit,
+    pickNetwork,
+    backToAmount,
     offer,
     acceptOffer,
     declineOffer,

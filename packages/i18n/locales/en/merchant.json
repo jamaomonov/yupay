@@ -637,8 +637,7 @@
     "methodCardHint": "Card transfer",
     "changeMethod": "Change method",
     "somAmount": "{amount} soʻm",
-    "methodUsdt": "USDT · TRC20",
-    "methodUsdtHint": "From a wallet or an exchange"
+    "methodUsdt": "USDT"
   },
   "topUpUsdt": {
     "amountLabel": "Amount in USDT",
@@ -647,9 +646,12 @@
     "changeMethod": "Another method",
     "sendExactly": "Send exactly",
     "exchangeFee": "From an exchange, add its fee on top. Exactly this amount must arrive.",
+    "networkTitle": "Choose a network",
+    "networkHint": "When sending, pick the same network in your wallet or on the exchange.",
+    "networkCostly": "Higher network fee",
+    "changeAmount": "Change the amount",
     "network": "Network",
-    "networkName": "TRON (TRC20)",
-    "networkWarning": "USDT on TRON (TRC20) only. Another coin or network — the money is lost.",
+    "networkWarning": "USDT on {label} only. Another coin or network — the money is lost.",
     "address": "Address",
     "openWallet": "Open in wallet",
     "openWalletHint": "Address and amount fill in by themselves",
@@ -677,7 +679,8 @@
     "takenAccept": "Continue with {suggested}",
     "takenBack": "Change the amount",
     "errTooMany": "Too many top-ups this hour. Try again later",
-    "errRetry": "Try again"
+    "errRetry": "Try again",
+    "errNetworkOff": "This network is off right now — choose another"
   },
   "stats": {
     "title": "Statistics",

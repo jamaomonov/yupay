@@ -6,6 +6,9 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import type { CatalogSummary, P2PStatus, Profile, UsdtStatus } from "@/lib/types";
 
 import { api } from "@/lib/api";
+import { isUsdtNetwork } from "@/lib/usdt";
+
+const USDT_OFF: UsdtStatus = { enabled: false, networks: [], min_amount: null, max_amount: null };
 
 interface CabinetData {
   profile: Profile | null;
@@ -17,8 +20,10 @@ interface CabinetData {
   catalog: CatalogSummary | null;
   /** Whether self-serve top-up is on for this reseller; `null` until asked. */
   p2p: P2PStatus | null;
-  /** Whether the USDT (TRC20) top-up is on, with its bounds; `null` until asked. */
+  /** Whether the USDT top-up is on, on which chains, with its bounds; `null` until asked. */
   usdt: UsdtStatus | null;
+  /** Re-read the USDT switch — a chain can be turned off mid-flow. */
+  refreshUsdt: () => void;
   /**
    * Whether any self-serve top-up (card or USDT) is on; `null` until both
    * switches are read, so a control never flashes from support to top-up.
@@ -48,6 +53,7 @@ const Ctx = createContext<CabinetData>({
   usdt: null,
   selfServe: null,
   refreshProfile: () => undefined,
+  refreshUsdt: () => undefined,
   search: "",
   setSearch: () => undefined,
   searchPlaceholder: null,
@@ -95,6 +101,20 @@ export function CabinetProvider({ children }: { children: React.ReactNode }) {
     void api<Profile>("/me").then(setProfile, () => undefined);
   }, []);
 
+  const refreshUsdt = useCallback(() => {
+    void api<UsdtStatus>("/usdt/status").then(
+      // A chain this build does not know has no tile, link or warning to show.
+      (status) => {
+        const networks = status.networks.filter(isUsdtNetwork);
+        setUsdt({ ...status, enabled: status.enabled && networks.length > 0, networks });
+      },
+      // A failed first read means "not offered"; a failed re-read keeps what we had.
+      () => {
+        setUsdt((prev) => prev ?? USDT_OFF);
+      },
+    );
+  }, []);
+
   useEffect(() => {
     refreshProfile();
     void api<CatalogSummary>("/catalog/summary").then(setCatalog, () => {
@@ -107,10 +127,8 @@ export function CabinetProvider({ children }: { children: React.ReactNode }) {
     void api<P2PStatus>("/p2p/status").then(setP2p, () => {
       setP2p({ enabled: false, fx_rate: null });
     });
-    void api<UsdtStatus>("/usdt/status").then(setUsdt, () => {
-      setUsdt({ enabled: false, network: "TRC20", min_amount: null, max_amount: null });
-    });
-  }, [refreshProfile]);
+    refreshUsdt();
+  }, [refreshProfile, refreshUsdt]);
 
   return (
     <Ctx.Provider
@@ -121,6 +139,7 @@ export function CabinetProvider({ children }: { children: React.ReactNode }) {
         usdt,
         selfServe: p2p === null || usdt === null ? null : p2p.enabled || usdt.enabled,
         refreshProfile,
+        refreshUsdt,
         search,
         setSearch,
         searchPlaceholder,

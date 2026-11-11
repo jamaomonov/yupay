@@ -637,8 +637,7 @@
     "methodCardHint": "Kartadan o‘tkazma",
     "changeMethod": "Boshqa usul",
     "somAmount": "{amount} soʻm",
-    "methodUsdt": "USDT · TRC20",
-    "methodUsdtHint": "Hamyondan yoki birjadan"
+    "methodUsdt": "USDT"
   },
   "topUpUsdt": {
     "amountLabel": "USDT miqdori",
@@ -647,9 +646,12 @@
     "changeMethod": "Boshqa usul",
     "sendExactly": "Aynan shuncha yuboring",
     "exchangeFee": "Birjadan — uning komissiyasini ustiga qo‘shing. Aynan shu summa kelishi kerak.",
+    "networkTitle": "Tarmoqni tanlang",
+    "networkHint": "Yuborishda hamyon yoki birjada xuddi shu tarmoqni tanlang.",
+    "networkCostly": "Tarmoq komissiyasi yuqoriroq",
+    "changeAmount": "Summani o‘zgartirish",
     "network": "Tarmoq",
-    "networkName": "TRON (TRC20)",
-    "networkWarning": "Faqat TRON (TRC20) tarmog‘idagi USDT. Boshqa tanga yoki tarmoq — pul yo‘qoladi.",
+    "networkWarning": "Faqat {label} tarmog‘idagi USDT. Boshqa tanga yoki tarmoq — pul yo‘qoladi.",
     "address": "Manzil",
     "openWallet": "Hamyonda ochish",
     "openWalletHint": "Manzil va summa o‘zi qo‘yiladi",
@@ -677,7 +679,8 @@
     "takenAccept": "{suggested} bilan davom etish",
     "takenBack": "Summani o‘zgartirish",
     "errTooMany": "Bir soatda juda ko‘p to‘ldirish. Keyinroq urinib ko‘ring",
-    "errRetry": "Qayta urinib ko‘ring"
+    "errRetry": "Qayta urinib ko‘ring",
+    "errNetworkOff": "Bu tarmoq hozir o‘chirilgan — boshqasini tanlang"
   },
   "stats": {
     "title": "Statistika",
