@@ -1,10 +1,17 @@
-/** USDT reservations tab: number, reseller, exact amount, status badge and times. */
+/** USDT reservations tab: number, chain, reseller, exact amount, status badge and times. */
 
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { Button } from "@yupay/ui";
 import { Link } from "react-router-dom";
 
-import { fetchReservations, formatUsdt, T, usdtErrorMessage, type UsdtReservation } from "./api";
+import {
+  fetchReservations,
+  formatUsdt,
+  networkShort,
+  T,
+  usdtErrorMessage,
+  type UsdtReservation,
+} from "./api";
 
 import { Badge } from "@/components/Badge";
 import { DataTable, type Column } from "@/components/DataTable";
@@ -22,6 +29,11 @@ const MUTED = "bg-[var(--bg-muted)] text-[var(--text-secondary)]";
 
 const columns: Column<UsdtReservation>[] = [
   { key: "number", header: R.number, render: (r) => r.number },
+  {
+    key: "network",
+    header: R.network,
+    render: (r) => <Badge tone={MUTED}>{networkShort(r.network)}</Badge>,
+  },
   {
     key: "merchant",
     header: R.merchant,

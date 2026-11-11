@@ -778,14 +778,14 @@
   },
   "usdt": {
     "nav": "USDT",
-    "title": "USDT (TRC20)",
-    "description": "Reseller deposit top-ups in USDT: address, transfer journal and reservations.",
+    "title": "USDT",
+    "description": "Reseller deposit top-ups in USDT (TRC20, BEP20, ERC20): networks and addresses, transfer journal and reservations.",
     "loading": "Loading…",
     "loadError": "Could not load data.",
     "empty": "Nothing found.",
     "loadMore": "Load more",
     "errors": {
-      "usdt_bad_address": "Invalid TRON address: the checksum does not match. Copy it from the wallet again.",
+      "usdt_bad_address": "This address does not fit the network: wrong format or checksum. TRON starts with T; BEP20 and ERC20 take a 0x… address with capital letters, as the wallet shows it. Copy the address from the wallet again.",
       "usdt_bad_bounds": "The maximum amount cannot be less than the minimum.",
       "usdt_unknown_merchant": "The list contains unknown resellers: {ids}",
       "usdt_incoming_resolved": "This transfer has already been resolved. Refresh the journal.",
@@ -801,16 +801,45 @@
         "all": "Everyone"
       },
       "allowlist": "Allowlisted resellers (comma-separated ids)",
-      "address": "Receiving address (TRON, TRC20)",
-      "addressWarning": "Check the address: every top-up goes to it. Keep the wallet keys only with yourself.",
-      "noAddress": "No address set — USDT top-up is unavailable to everyone until one is set.",
+      "noAddress": "No network is enabled with an address — USDT top-up is unavailable to everyone.",
       "min": "Min amount, USD",
       "max": "Max amount, USD",
       "badAmount": "Amount must be a positive number with up to two decimals.",
-      "cursor": "Chain read up to",
       "save": "Save",
       "saving": "Saving…",
       "saved": "Settings saved."
+    },
+    "networks": {
+      "title": "Networks",
+      "labels": {
+        "trc20": "TRON · TRC20",
+        "bep20": "BNB Chain · BEP20",
+        "erc20": "Ethereum · ERC20"
+      },
+      "short": {
+        "trc20": "TRC20",
+        "bep20": "BEP20",
+        "erc20": "ERC20"
+      },
+      "enabled": "Enabled",
+      "address": "Receiving address",
+      "hints": {
+        "trc20": "TRON address, starts with T",
+        "evm": "0x… address exactly as the wallet shows it (with capital letters)"
+      },
+      "sameAddress": "BEP20 and ERC20 can use the same 0x… address.",
+      "addressWarning": "Check the address: every top-up on this network goes to it. Keep the wallet keys only with yourself.",
+      "noAddress": "The network is enabled but has no address — top-ups on it are unavailable.",
+      "cursor": "Reading from block {cursor}",
+      "cursorNone": "Will start from the current block",
+      "save": "Save",
+      "saving": "Saving…",
+      "saved": "Network saved.",
+      "confirmTitle": "Change the {network} address?",
+      "confirmBody": "New {network} top-ups will go to {address}. All pending reservations on this network will be closed — resellers will have to create them again.",
+      "confirmBodyCleared": "The {network} address will be removed and receiving on this network stops. All pending reservations on this network will be closed.",
+      "confirm": "Change address",
+      "cancel": "Cancel"
     },
     "tabs": {
       "aria": "Section",
@@ -830,6 +859,7 @@
       "dismissed": "Dismissed"
     },
     "journal": {
+      "network": "Network",
       "blockTime": "Block time",
       "amount": "Amount, USDT",
       "from": "Sender",
@@ -862,6 +892,7 @@
     },
     "reservations": {
       "number": "Number",
+      "network": "Network",
       "merchant": "Reseller",
       "amount": "Amount, USDT",
       "status": "Status",

@@ -778,14 +778,14 @@
   },
   "usdt": {
     "nav": "USDT",
-    "title": "USDT (TRC20)",
-    "description": "Reseller depozitini USDT bilan toʻldirish: manzil, oʻtkazmalar jurnali va rezervlar.",
+    "title": "USDT",
+    "description": "Reseller depozitini USDT bilan toʻldirish (TRC20, BEP20, ERC20): tarmoqlar va manzillar, oʻtkazmalar jurnali va rezervlar.",
     "loading": "Yuklanmoqda…",
     "loadError": "Maʼlumotlarni yuklab boʻlmadi.",
     "empty": "Hech narsa topilmadi.",
     "loadMore": "Yana yuklash",
     "errors": {
-      "usdt_bad_address": "TRON manzili notoʻgʻri: nazorat summasi mos kelmadi. Uni hamyondan qayta nusxalang.",
+      "usdt_bad_address": "Manzil bu tarmoqqa mos emas: format yoki nazorat summasi notoʻgʻri. TRON — T bilan boshlanadi; BEP20 va ERC20 — hamyon koʻrsatganidek, bosh harfli 0x… manzil. Manzilni hamyondan qayta nusxalang.",
       "usdt_bad_bounds": "Maksimal summa minimaldan kam boʻlishi mumkin emas.",
       "usdt_unknown_merchant": "Roʻyxatda mavjud boʻlmagan resellerlar bor: {ids}",
       "usdt_incoming_resolved": "Bu oʻtkazma allaqachon koʻrib chiqilgan. Jurnalni yangilang.",
@@ -801,16 +801,45 @@
         "all": "Hammaga"
       },
       "allowlist": "Roʻyxatdagi resellerlar (id vergul bilan)",
-      "address": "Qabul manzili (TRON, TRC20)",
-      "addressWarning": "Manzilni tekshiring: barcha toʻlovlar unga tushadi. Hamyon kalitlarini faqat oʻzingizda saqlang.",
-      "noAddress": "Manzil koʻrsatilmagan — u kiritilmaguncha USDT bilan toʻldirish hech kimga ochiq emas.",
+      "noAddress": "Manzili bor birorta yoqilgan tarmoq yoʻq — USDT bilan toʻldirish hech kimga ochiq emas.",
       "min": "Min. summa, USD",
       "max": "Maks. summa, USD",
       "badAmount": "Summa noldan katta, sentgacha aniqlikdagi son boʻlishi kerak.",
-      "cursor": "Tarmoq oʻqilgan vaqt",
       "save": "Saqlash",
       "saving": "Saqlanmoqda…",
       "saved": "Sozlamalar saqlandi."
+    },
+    "networks": {
+      "title": "Tarmoqlar",
+      "labels": {
+        "trc20": "TRON · TRC20",
+        "bep20": "BNB Chain · BEP20",
+        "erc20": "Ethereum · ERC20"
+      },
+      "short": {
+        "trc20": "TRC20",
+        "bep20": "BEP20",
+        "erc20": "ERC20"
+      },
+      "enabled": "Yoqilgan",
+      "address": "Qabul manzili",
+      "hints": {
+        "trc20": "TRON manzili, T bilan boshlanadi",
+        "evm": "0x… manzil, hamyon koʻrsatganidek (bosh harflar bilan)"
+      },
+      "sameAddress": "BEP20 va ERC20 bitta 0x… manzildan foydalanishi mumkin.",
+      "addressWarning": "Manzilni tekshiring: bu tarmoqdagi barcha toʻlovlar unga tushadi. Hamyon kalitlarini faqat oʻzingizda saqlang.",
+      "noAddress": "Tarmoq yoqilgan, lekin manzil koʻrsatilmagan — unda toʻldirish ishlamaydi.",
+      "cursor": "{cursor}-blokdan oʻqiymiz",
+      "cursorNone": "Joriy blokdan boshlaymiz",
+      "save": "Saqlash",
+      "saving": "Saqlanmoqda…",
+      "saved": "Tarmoq saqlandi.",
+      "confirmTitle": "{network} manzilini almashtirasizmi?",
+      "confirmBody": "{network} orqali yangi toʻlovlar {address} manziliga tushadi. Bu tarmoqdagi barcha ochiq rezervlar yopiladi — resellerlar ularni qaytadan yaratishi kerak boʻladi.",
+      "confirmBodyCleared": "{network} manzili oʻchiriladi, bu tarmoqda qabul toʻxtaydi. Bu tarmoqdagi barcha ochiq rezervlar yopiladi.",
+      "confirm": "Manzilni almashtirish",
+      "cancel": "Bekor qilish"
     },
     "tabs": {
       "aria": "Boʻlim",
@@ -830,6 +859,7 @@
       "dismissed": "Yopildi"
     },
     "journal": {
+      "network": "Tarmoq",
       "blockTime": "Blok vaqti",
       "amount": "Summa, USDT",
       "from": "Yuboruvchi",
@@ -862,6 +892,7 @@
     },
     "reservations": {
       "number": "Raqam",
+      "network": "Tarmoq",
       "merchant": "Reseller",
       "amount": "Summa, USDT",
       "status": "Holat",

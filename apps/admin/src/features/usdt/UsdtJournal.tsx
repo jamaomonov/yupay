@@ -7,11 +7,12 @@ import { Link } from "react-router-dom";
 
 import {
   fetchIncoming,
+  explorerAddress,
+  explorerTx,
   formatUsdt,
+  networkShort,
   shortHash,
   T,
-  tronscanAddress,
-  tronscanTx,
   usdtErrorMessage,
   type UsdtIncoming,
   type UsdtResult,
@@ -33,6 +34,8 @@ const TONES: Record<UsdtResult, string> = {
   ignored: "bg-[var(--bg-muted)] text-[var(--text-secondary)]",
   dismissed: "bg-[var(--bg-muted)] text-[var(--text-secondary)]",
 };
+
+const NETWORK_TONE = "bg-[var(--bg-muted)] text-[var(--text-primary)]";
 
 interface ChainLinkProps {
   href: string;
@@ -77,16 +80,23 @@ interface Resolving {
 function buildColumns(onResolve: (r: Resolving) => void): Column<UsdtIncoming>[] {
   return [
     { key: "time", header: J.blockTime, render: (r) => formatDateTime(r.block_at) },
+    {
+      key: "network",
+      header: J.network,
+      render: (r) => <Badge tone={NETWORK_TONE}>{networkShort(r.network)}</Badge>,
+    },
     { key: "amount", header: J.amount, render: (r) => formatUsdt(r.amount_usdt) },
     {
       key: "from",
       header: J.from,
-      render: (r) => <ChainLink href={tronscanAddress(r.from_address)} value={r.from_address} />,
+      render: (r) => (
+        <ChainLink href={explorerAddress(r.network, r.from_address)} value={r.from_address} />
+      ),
     },
     {
       key: "tx",
       header: J.tx,
-      render: (r) => <ChainLink href={tronscanTx(r.tx_id)} value={r.tx_id} />,
+      render: (r) => <ChainLink href={explorerTx(r.network, r.tx_id)} value={r.tx_id} />,
     },
     {
       key: "result",

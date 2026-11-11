@@ -24,6 +24,7 @@ const post = vi.mocked(apiPost);
 
 const UNMATCHED: UsdtIncoming = {
   id: "u1",
+  network: "trc20",
   tx_id: "a".repeat(64),
   from_address: "TXsenderAddressxxxxxxxxxxxxxxxxxx1",
   amount_usdt: "25.129900",
@@ -45,6 +46,15 @@ const MATCHED: UsdtIncoming = {
   merchant_title: "Acme",
 };
 
+const BEP20: UsdtIncoming = {
+  ...UNMATCHED,
+  id: "u3",
+  result: "ignored",
+  network: "bep20",
+  tx_id: `0x${"b".repeat(64)}`,
+  from_address: "0xAbCdEf0123456789aBcDeF0123456789AbCdEf01",
+};
+
 function renderJournal() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -63,7 +73,7 @@ beforeEach(() => {
     Promise.resolve(
       path.includes("/admin/merchants")
         ? { items: [{ id: "m1", title: "Acme" }] }
-        : { items: [UNMATCHED, MATCHED], next_cursor: null },
+        : { items: [UNMATCHED, MATCHED, BEP20], next_cursor: null },
     ),
   );
 });
@@ -74,6 +84,21 @@ it("links chain values to tronscan and the matched reseller to its page", async 
   expect(link).toHaveAttribute("href", "/merchants/m1");
   const tx = screen.getAllByRole("link", { name: "aaaaaa…aaaa" })[0];
   expect(tx).toHaveAttribute("href", `https://tronscan.org/#/transaction/${"a".repeat(64)}`);
+});
+
+it("labels each row's network and links a BEP20 transfer to bscscan", async () => {
+  renderJournal();
+  await screen.findByRole("link", { name: "Acme" });
+  expect(screen.getByText("BEP20")).toBeInTheDocument();
+  expect(screen.getAllByText("TRC20")).toHaveLength(2);
+  expect(screen.getByRole("link", { name: "0xbbbb…bbbb" })).toHaveAttribute(
+    "href",
+    `https://bscscan.com/tx/0x${"b".repeat(64)}`,
+  );
+  expect(screen.getByRole("link", { name: "0xAbCd…Ef01" })).toHaveAttribute(
+    "href",
+    "https://bscscan.com/address/0xAbCdEf0123456789aBcDeF0123456789AbCdEf01",
+  );
 });
 
 it("the unmatched quick filter queries result=unmatched", async () => {

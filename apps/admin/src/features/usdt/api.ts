@@ -1,9 +1,10 @@
 /**
- * USDT (TRC20) deposit admin feature — DTOs, fetch helpers and pure formatters.
+ * USDT deposit admin feature (TRC20 / BEP20 / ERC20) — DTOs, fetch helpers and
+ * pure formatters.
  *
  * Types mirror the admin block of `apps/api/src/yupay/modules/usdt/schemas.py`
  * (ADR-0104). Amounts are Decimal strings and never pass through a float: the
- * USDT journal carries six decimals, the deposit is booked in cents.
+ * USDT journal carries up to 18 decimals (BEP20), the deposit is booked in cents.
  */
 
 import adminRu from "@yupay/i18n/locales/ru/admin.json";
@@ -17,32 +18,48 @@ export const T = adminRu.usdt;
 const BASE = "/api/v1/admin/usdt";
 
 export type UsdtMode = "off" | "allowlist" | "all";
+export type UsdtNetworkCode = "trc20" | "bep20" | "erc20";
 export type UsdtResult = "matched" | "unmatched" | "ignored" | "manual" | "dismissed";
+
+/** One receiving chain: its own address and on/off switch. */
+export interface UsdtNetwork {
+  network: UsdtNetworkCode;
+  enabled: boolean;
+  address: string | null;
+  /** Read-only: where the next poll starts (TRON: block time ms; EVM: block number). */
+  cursor: number | null;
+  updated_at: string;
+}
 
 export interface UsdtSettings {
   mode: UsdtMode;
   allowlist_merchant_ids: string[];
-  address: string | null;
   min_amount_usd: string;
   max_amount_usd: string;
-  /** Read-only: block time (ms) where the next chain poll starts. */
-  cursor_block_ms: number | null;
   updated_at: string;
+  /** Always all three chains, trc20 → bep20 → erc20. */
+  networks: UsdtNetwork[];
 }
 
 export interface UsdtSettingsPatch {
   mode?: UsdtMode;
   allowlist_merchant_ids?: string[];
-  address?: string | null;
   min_amount_usd?: string;
   max_amount_usd?: string;
 }
 
+/** Partial update of one chain; absent fields are left alone. */
+export interface UsdtNetworkPatch {
+  enabled?: boolean;
+  address?: string | null;
+}
+
 export interface UsdtIncoming {
   id: string;
+  network: UsdtNetworkCode;
   tx_id: string;
   from_address: string;
-  /** Six-decimal USDT amount as a Decimal string. */
+  /** USDT amount as a Decimal string (6 decimals on TRC20/ERC20, up to 18 on BEP20). */
   amount_usdt: string;
   block_at: string;
   received_at: string;
@@ -56,6 +73,7 @@ export interface UsdtIncoming {
 
 export interface UsdtReservation {
   number: string;
+  network: UsdtNetworkCode;
   merchant_id: string;
   merchant_title: string | null;
   amount: string;
@@ -85,6 +103,8 @@ const idem = (key: string) => ({ "Idempotency-Key": key });
 export const fetchSettings = () => apiGet<UsdtSettings>(`${BASE}/settings`);
 export const saveSettings = (body: UsdtSettingsPatch, key: string) =>
   apiPatch<UsdtSettings>(`${BASE}/settings`, body, idem(key));
+export const saveNetwork = (network: UsdtNetworkCode, body: UsdtNetworkPatch, key: string) =>
+  apiPatch<UsdtSettings>(`${BASE}/networks/${network}`, body, idem(key));
 
 export const fetchIncoming = (result: string, cursor: string | null) =>
   apiGet<Page<UsdtIncoming>>(`${BASE}/incoming${qs({ result, cursor })}`);
@@ -128,10 +148,13 @@ export function floorToCents(raw: string): string {
   return `${intPart}.${(fracRaw + "00").slice(0, 2)}`;
 }
 
-/** USDT amount for display: six-decimal string trimmed to at least two decimals. */
+/**
+ * USDT amount for display: at most six decimals (cut, not rounded — BEP20
+ * carries 18), trailing zeros trimmed down to two.
+ */
 export function formatUsdt(raw: string): string {
   const [intRaw = "", fracRaw = ""] = raw.trim().split(".");
-  let frac = fracRaw.replace(/0+$/, "");
+  let frac = fracRaw.slice(0, 6).replace(/0+$/, "");
   while (frac.length < 2) frac += "0";
   const grouped = (intRaw.replace(/^0+(?=\d)/, "") || "0").replace(/\B(?=(\d{3})+(?!\d))/g, " ");
   return `${grouped}.${frac}`;
@@ -150,7 +173,22 @@ export function parseUsdBound(raw: string): string | null {
   return cleaned;
 }
 
-export const tronscanAddress = (addr: string) =>
-  `https://tronscan.org/#/address/${encodeURIComponent(addr)}`;
-export const tronscanTx = (tx: string) =>
-  `https://tronscan.org/#/transaction/${encodeURIComponent(tx)}`;
+interface Explorer {
+  tx: string;
+  address: string;
+}
+
+/** Block explorer URL prefixes per chain; the hash or address is appended. */
+const EXPLORERS: Record<UsdtNetworkCode, Explorer> = {
+  trc20: { tx: "https://tronscan.org/#/transaction/", address: "https://tronscan.org/#/address/" },
+  bep20: { tx: "https://bscscan.com/tx/", address: "https://bscscan.com/address/" },
+  erc20: { tx: "https://etherscan.io/tx/", address: "https://etherscan.io/address/" },
+};
+
+/** Short chain name for a badge: `TRC20` / `BEP20` / `ERC20`. */
+export const networkShort = (network: UsdtNetworkCode) => T.networks.short[network];
+
+export const explorerTx = (network: UsdtNetworkCode, tx: string) =>
+  `${EXPLORERS[network].tx}${encodeURIComponent(tx)}`;
+export const explorerAddress = (network: UsdtNetworkCode, addr: string) =>
+  `${EXPLORERS[network].address}${encodeURIComponent(addr)}`;

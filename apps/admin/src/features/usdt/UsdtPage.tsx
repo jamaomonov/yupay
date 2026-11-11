@@ -1,10 +1,14 @@
-/** `/payments/usdt` — USDT (TRC20) switch panel plus the journal and reservations tabs (ADR-0104). */
+/**
+ * `/payments/usdt` — USDT switch panel, one card per chain (TRC20 / BEP20 /
+ * ERC20), then the journal and reservations tabs (ADR-0104).
+ */
 
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { fetchSettings, T, usdtErrorMessage } from "./api";
 import { UsdtJournal } from "./UsdtJournal";
+import { UsdtNetworkCard } from "./UsdtNetworkCard";
 import { UsdtReservations } from "./UsdtReservations";
 import { UsdtSettingsPanel } from "./UsdtSettingsPanel";
 
@@ -29,7 +33,17 @@ export function UsdtPage() {
           onRetry={() => void settings.refetch()}
         />
       ) : null}
-      {settings.data ? <UsdtSettingsPanel settings={settings.data} /> : null}
+      {settings.data ? (
+        <>
+          <UsdtSettingsPanel settings={settings.data} />
+          <h2 className="mb-3 font-medium">{T.networks.title}</h2>
+          <div className="mb-6 grid max-w-5xl gap-4 lg:grid-cols-3">
+            {settings.data.networks.map((n) => (
+              <UsdtNetworkCard key={n.network} network={n} />
+            ))}
+          </div>
+        </>
+      ) : null}
       <Tabs<Tab>
         value={tab}
         onChange={setTab}
