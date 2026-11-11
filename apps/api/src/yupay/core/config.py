@@ -1091,6 +1091,11 @@ class Settings(BaseSettings):
     # secret_token passed to setWebhook for @depositlistenerbot; empty = webhook
     # refuses everything.
     p2p_webhook_secret: str = Field(default="")
+    # USDT (TRC20) top-up, ADR-0104: where the poller reads confirmed transfers.
+    # The key is optional — without one TronGrid rate-limits harder, and a
+    # 20-second poll still fits.
+    trongrid_base_url: str = Field(default="https://api.trongrid.io")
+    trongrid_api_key: str = Field(default="")
     # Threshold in percent (absolute) above which a supplier-price move
     # triggers a Telegram alert. Default 5% — anything smaller is noise
     # for ops.

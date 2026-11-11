@@ -35,6 +35,7 @@ from yupay.modules.push import models as _push_models  # noqa: F401
 from yupay.modules.reviews import models as _reviews_models  # noqa: F401
 from yupay.modules.sourcing import models as _sourcing_models  # noqa: F401
 from yupay.modules.users import models as _users_models  # noqa: F401
+from yupay.modules.usdt import models as _usdt_models  # noqa: F401
 from yupay.modules.wallet import models as _wallet_models  # noqa: F401
 
 config = context.config

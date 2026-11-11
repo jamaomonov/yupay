@@ -22077,6 +22077,616 @@
         "title": "UpdateMeIn",
         "type": "object"
       },
+      "UsdtCreditIn": {
+        "description": "Credit an unmatched transfer to a reseller by hand.",
+        "properties": {
+          "merchant_id": {
+            "title": "Merchant Id",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "required": [
+          "merchant_id"
+        ],
+        "title": "UsdtCreditIn",
+        "type": "object"
+      },
+      "UsdtDepositIn": {
+        "description": "Request to reserve an amount, in USDT with at most two decimals.",
+        "properties": {
+          "amount": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 1000000.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+                "type": "string"
+              }
+            ],
+            "title": "Amount"
+          }
+        },
+        "required": [
+          "amount"
+        ],
+        "title": "UsdtDepositIn",
+        "type": "object"
+      },
+      "UsdtDepositOut": {
+        "description": "One top-up reservation. ``address`` is set only while it is pending.",
+        "properties": {
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
+          "amount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Amount",
+            "type": "string"
+          },
+          "closed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "network": {
+            "default": "TRC20",
+            "title": "Network",
+            "type": "string"
+          },
+          "number": {
+            "title": "Number",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "tx_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The paying transaction, once paid.",
+            "title": "Tx Id"
+          }
+        },
+        "required": [
+          "number",
+          "status",
+          "amount",
+          "address",
+          "created_at",
+          "expires_at",
+          "closed_at",
+          "tx_id"
+        ],
+        "title": "UsdtDepositOut",
+        "type": "object"
+      },
+      "UsdtDepositsOut": {
+        "description": "A page of top-ups, newest first; items never carry the address.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/UsdtDepositOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "UsdtDepositsOut",
+        "type": "object"
+      },
+      "UsdtDismissIn": {
+        "description": "Close an unmatched transfer without crediting anyone (refunded, not ours).",
+        "properties": {
+          "note": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "note"
+        ],
+        "title": "UsdtDismissIn",
+        "type": "object"
+      },
+      "UsdtIncomingOut": {
+        "description": "One journal row: a confirmed transfer to our address.",
+        "properties": {
+          "amount_usdt": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Amount Usdt",
+            "type": "string"
+          },
+          "block_at": {
+            "format": "date-time",
+            "title": "Block At",
+            "type": "string"
+          },
+          "from_address": {
+            "title": "From Address",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "merchant_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merchant Id"
+          },
+          "merchant_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merchant Title"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "received_at": {
+            "format": "date-time",
+            "title": "Received At",
+            "type": "string"
+          },
+          "reservation_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reservation Number"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          },
+          "result": {
+            "enum": [
+              "matched",
+              "unmatched",
+              "ignored",
+              "manual",
+              "dismissed"
+            ],
+            "title": "Result",
+            "type": "string"
+          },
+          "tx_id": {
+            "title": "Tx Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tx_id",
+          "from_address",
+          "amount_usdt",
+          "block_at",
+          "received_at",
+          "result",
+          "reservation_number",
+          "merchant_id",
+          "merchant_title",
+          "note",
+          "resolved_at"
+        ],
+        "title": "UsdtIncomingOut",
+        "type": "object"
+      },
+      "UsdtIncomingPageOut": {
+        "description": "A page of the journal, newest first.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/UsdtIncomingOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "UsdtIncomingPageOut",
+        "type": "object"
+      },
+      "UsdtReservationAdminOut": {
+        "description": "A reservation as the admin sees it.",
+        "properties": {
+          "amount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Amount",
+            "type": "string"
+          },
+          "closed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "merchant_id": {
+            "title": "Merchant Id",
+            "type": "string"
+          },
+          "merchant_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merchant Title"
+          },
+          "number": {
+            "title": "Number",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "number",
+          "merchant_id",
+          "merchant_title",
+          "amount",
+          "status",
+          "created_at",
+          "expires_at",
+          "closed_at"
+        ],
+        "title": "UsdtReservationAdminOut",
+        "type": "object"
+      },
+      "UsdtReservationPageOut": {
+        "description": "A page of reservations, newest first.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/UsdtReservationAdminOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "UsdtReservationPageOut",
+        "type": "object"
+      },
+      "UsdtSettingsIn": {
+        "description": "Partial update of the switch row; absent fields are left alone.",
+        "properties": {
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
+          "allowlist_merchant_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allowlist Merchant Ids"
+          },
+          "max_amount_usd": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Amount Usd"
+          },
+          "min_amount_usd": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Amount Usd"
+          },
+          "mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "off",
+                  "allowlist",
+                  "all"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mode"
+          }
+        },
+        "title": "UsdtSettingsIn",
+        "type": "object"
+      },
+      "UsdtSettingsOut": {
+        "description": "The USDT switch row.",
+        "properties": {
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
+          "allowlist_merchant_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowlist Merchant Ids",
+            "type": "array"
+          },
+          "cursor_block_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Read-only: where the next poll starts.",
+            "title": "Cursor Block Ms"
+          },
+          "max_amount_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Max Amount Usd",
+            "type": "string"
+          },
+          "min_amount_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Min Amount Usd",
+            "type": "string"
+          },
+          "mode": {
+            "enum": [
+              "off",
+              "allowlist",
+              "all"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode",
+          "allowlist_merchant_ids",
+          "address",
+          "min_amount_usd",
+          "max_amount_usd",
+          "cursor_block_ms",
+          "updated_at"
+        ],
+        "title": "UsdtSettingsOut",
+        "type": "object"
+      },
+      "UsdtStatusOut": {
+        "description": "Whether the cabinet should offer a USDT top-up, and its bounds.",
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "max_amount": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Amount"
+          },
+          "min_amount": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Amount"
+          },
+          "network": {
+            "default": "TRC20",
+            "title": "Network",
+            "type": "string"
+          }
+        },
+        "required": [
+          "enabled",
+          "min_amount",
+          "max_amount"
+        ],
+        "title": "UsdtStatusOut",
+        "type": "object"
+      },
       "UserAdminListOut": {
         "description": "Paged list payload for ``GET /admin/users``.",
         "properties": {
@@ -37005,6 +37615,479 @@
         ]
       }
     },
+    "/api/v1/admin/usdt/incoming": {
+      "get": {
+        "description": "Newest first by block time, keyset-paged; filter by ``result``.",
+        "operationId": "list_incoming_api_v1_admin_usdt_incoming_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "result",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "matched",
+                    "unmatched",
+                    "ignored",
+                    "manual",
+                    "dismissed"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Result"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsdtIncomingPageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "USDT transfer journal",
+        "tags": [
+          "admin:usdt"
+        ]
+      }
+    },
+    "/api/v1/admin/usdt/incoming/{incoming_id}/credit": {
+      "post": {
+        "description": "Book the transfer's amount (rounded down to cents) on the reseller's deposit.\n\nIdempotent by state: a row already credited to the same reseller is returned\nas is, and the ledger key ``usdt:incoming:{id}`` makes a racing twin a replay.",
+        "operationId": "credit_incoming_api_v1_admin_usdt_incoming__incoming_id__credit_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "incoming_id",
+            "required": true,
+            "schema": {
+              "title": "Incoming Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UsdtCreditIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsdtIncomingOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Credit an unmatched transfer to a reseller",
+        "tags": [
+          "admin:usdt"
+        ]
+      }
+    },
+    "/api/v1/admin/usdt/incoming/{incoming_id}/dismiss": {
+      "post": {
+        "description": "Mark an unmatched transfer handled outside the system (refunded, not a top-up).",
+        "operationId": "dismiss_incoming_api_v1_admin_usdt_incoming__incoming_id__dismiss_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "incoming_id",
+            "required": true,
+            "schema": {
+              "title": "Incoming Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UsdtDismissIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsdtIncomingOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Close an unmatched transfer without crediting",
+        "tags": [
+          "admin:usdt"
+        ]
+      }
+    },
+    "/api/v1/admin/usdt/reservations": {
+      "get": {
+        "description": "Newest first, keyset-paged.",
+        "operationId": "list_reservations_api_v1_admin_usdt_reservations_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsdtReservationPageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "USDT top-up reservations",
+        "tags": [
+          "admin:usdt"
+        ]
+      }
+    },
+    "/api/v1/admin/usdt/settings": {
+      "get": {
+        "description": "Mode, allowlist, receiving address and amount bounds.",
+        "operationId": "get_usdt_settings_api_v1_admin_usdt_settings_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsdtSettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "USDT switches",
+        "tags": [
+          "admin:usdt"
+        ]
+      },
+      "patch": {
+        "description": "Apply the fields present in the body.\n\nA new address resets the poll cursor to now: transfers the address received\nbefore it was ours to watch are not top-ups and must not land in the journal.",
+        "operationId": "patch_usdt_settings_api_v1_admin_usdt_settings_patch",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UsdtSettingsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsdtSettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Change USDT switches",
+        "tags": [
+          "admin:usdt"
+        ]
+      }
+    },
     "/api/v1/admin/users": {
       "get": {
         "description": "Paged user listing.\n\n``search`` matches display_name / email / tg_username / tg_user_id (when\nthe term is a digit). ``sort`` is server-side because the list is paged.\n``wallet_totals`` is the global ``user_wallet`` liability \u2014 not filtered\nby the current search.",
@@ -45407,6 +46490,342 @@
           }
         },
         "summary": "The deposit statement, as CSV",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
+    "/merchant/cabinet/usdt/deposits": {
+      "get": {
+        "description": "Newest first, keyset-paged; items never carry the address.",
+        "operationId": "list_deposits_merchant_cabinet_usdt_deposits_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsdtDepositsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "My USDT top-ups",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      },
+      "post": {
+        "description": "Hold an exact amount for 60 minutes; races resolve inside the service.",
+        "operationId": "create_deposit_merchant_cabinet_usdt_deposits_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UsdtDepositIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsdtDepositOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reserve an exact USDT amount to send",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
+    "/merchant/cabinet/usdt/deposits/{number}": {
+      "get": {
+        "description": "Poll one top-up; a stale pending one is reported as expired.",
+        "operationId": "read_deposit_merchant_cabinet_usdt_deposits__number__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "number",
+            "required": true,
+            "schema": {
+              "title": "Number",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsdtDepositOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "One USDT top-up",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
+    "/merchant/cabinet/usdt/deposits/{number}/cancel": {
+      "post": {
+        "description": "Cancel a pending top-up.\n\nThe ``Idempotency-Key`` header is accepted but unused: the operation is\nidempotent by state, so cancelling a cancelled top-up returns it unchanged.\nA transfer already sent still pays it (matching is by block time).",
+        "operationId": "cancel_deposit_merchant_cabinet_usdt_deposits__number__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "number",
+            "required": true,
+            "schema": {
+              "title": "Number",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsdtDepositOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel a waiting USDT top-up",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
+    "/merchant/cabinet/usdt/status": {
+      "get": {
+        "description": "The switch for showing the USDT method, with the amount bounds.",
+        "operationId": "usdt_status_merchant_cabinet_usdt_status_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsdtStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Whether USDT top-up is on for me",
         "tags": [
           "merchant-cabinet"
         ]

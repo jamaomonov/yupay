@@ -1,0 +1,31 @@
+%% USDT (TRC20) deposit top-up — ADR-0104
+sequenceDiagram
+    autonumber
+    actor R as Reseller
+    participant C as Cabinet (reseller.yupay.uz)
+    participant API as API /merchant/cabinet/usdt
+    participant DB as Postgres
+    participant S as Scheduler usdt_poll (20 s)
+    participant TG as TronGrid
+    participant W as Owner's TRON wallet
+
+    R->>C: Top up, 100 USDT
+    C->>API: POST /deposits {amount} + Idempotency-Key
+    API->>DB: INSERT usdt_reservations (amount 100.00, bump +0.01… if held)
+    API-->>C: number, exact amount, address, expires_at (60 min)
+    R->>W: send exactly 100.00 USDT (TRC20)
+    loop every 20 s
+        S->>DB: sweep (expire, end quarantine)
+        S->>TG: GET /v1/accounts/{address}/transactions/trc20 (confirmed, USDT, from cursor − 10 min)
+        TG-->>S: transfers
+        S->>DB: INSERT usdt_incoming (unique tx_id)
+        alt amount and block time fit one reservation
+            S->>DB: credit_deposit (key usdt:{reservation}), reservation → paid
+        else no match
+            S->>DB: result = unmatched
+            S-->>S: admin alert usdt_unmatched
+        end
+        S->>DB: advance cursor
+    end
+    C->>API: GET /deposits/{number} (poll 5 s)
+    API-->>C: paid + tx_id

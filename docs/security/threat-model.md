@@ -357,6 +357,34 @@ The SSRF row above covers the connection. This is what may travel over it.
 - **Post-delivery rollback.** Steam's 7-day protection lets a trade be reverted; the hourly
   watch alerts ops and records it on the task.
 
+## USDT deposit top-up (ADR-0104, 2026-11-11)
+
+A reseller credits the deposit by sending an exact USDT (TRC20) amount to the owner's TRON
+address; the scheduler reads confirmed transfers from TronGrid every 20 s.
+
+- **No inbound surface.** Nothing posts to us: there is no webhook to forge. The trust is in
+  TronGrid's HTTPS answer.
+- **Fake token.** Anyone can mint a TRC20 token called "USDT" and send it. Only transfers whose
+  contract is Tether's (`TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t`), with 6 decimals, type `Transfer`
+  and recipient equal to our address are journaled (`usdt.tron.parse_transfer`), and the query
+  itself filters by that contract.
+- **Address poisoning / dust.** Transfers under 1 USDT are `ignored` with no alert, so spam
+  never pages anyone and never pays a reservation.
+- **Wrong receiving address.** A typo would send every reseller's money to a stranger. The
+  admin refuses anything whose base58check checksum fails; the address is public and the keys
+  never touch our systems. Changing it resets the poll cursor, so the new address's history
+  is not mistaken for top-ups.
+- **Replay and races.** The journal's unique `tx_id` makes a re-read a no-op; the credit key
+  is `usdt:{reservation.id}` (auto) or `usdt:incoming:{id}` (admin), so one transfer moves
+  money once. One open amount at a time is a partial unique index; the 60-minute quarantine
+  after a reservation closes keeps an accidental second transfer from paying the next
+  reseller, and makes two windows for one amount impossible to overlap.
+- **Late detection.** Matching uses the block time, so a TronGrid outage delays a credit but
+  never moves it to someone else; `usdt_poll_down` alerts after 15 minutes while reservations
+  wait.
+- **Logged.** Transaction ids, amounts and reservation numbers. The sender address is public
+  chain data, stored in the journal for reconciliation and shown only in the admin.
+
 ## P2P deposit top-up (ADR-0094, 2026-10-04)
 
 A reseller credits the deposit by transferring soʻm to the owner's Humo card; a Telegram
