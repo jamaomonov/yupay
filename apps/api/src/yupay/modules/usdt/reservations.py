@@ -4,8 +4,8 @@ The amount a reseller sends is the only thing that ties a chain transfer back to
 them, so two open reservations must never share an amount. That rule lives in
 the partial unique index ``uq_usdt_reservations_open_amount`` (``holds_amount``
 is true while pending and through quarantine), not in a read-then-write here:
-two requests racing for the same 1000.37 both try the insert, one wins, the
-other takes another offset. Same shape as ``p2p.reservations``, with one address instead of
+two requests racing for the same 1000.00 both try the insert, one wins, the
+other is offered 1000.xx. Same shape as ``p2p.reservations``, with one address instead of
 cards and no exchange rate (1 USDT = 1 USD).
 """
 
@@ -26,7 +26,6 @@ from yupay.core.errors import (
     ConflictError,
     NotFoundError,
     RateLimitedError,
-    UpstreamUnavailableError,
     ValidationError,
 )
 from yupay.core.ids import new_id
@@ -42,11 +41,9 @@ log = get_logger("yupay.usdt.reservations")
 RESERVATION_TTL: Final = timedelta(minutes=60)
 QUARANTINE: Final = timedelta(minutes=60)
 CENT: Final = Decimal("0.01")
-#: Random cents added to every amount, +0.01…+0.99: a reseller asked for 1000
-#: is never told to send 1001, and never told to send a round 1000.00 either.
-#: A round amount is what someone sends without reserving, or after an
-#: exchange rounded it — and whoever held it would be credited for it
-#: (security review 2026-11-11). Never ``.00``, so that cannot match.
+#: When the asked amount is held, the reseller is offered it plus random
+#: cents (+0.01…+0.99) instead, and decides: take that or change the amount.
+#: The owner's choice (2026-11-11): a free amount is reserved exactly as asked.
 MAX_BUMP_CENTS: Final = 99
 #: Reservations one merchant may open per hour. Each closed one holds its
 #: amount for an hour, so without a cap one reseller could reserve-and-cancel
@@ -70,14 +67,13 @@ def new_number() -> str:
 
 
 def _same_intent(prior: UsdtReservation, amount: Decimal) -> UsdtReservation:
-    """Return ``prior`` if a replay asks for its amount or one it was bumped from.
+    """Return ``prior`` if a replay asks for exactly its amount.
 
     Raises:
         ConflictError: ``usdt_idempotency_mismatch`` when the key was used for
             another amount.
     """
-    gap = prior.amount_usdt - amount
-    if not CENT <= gap <= CENT * MAX_BUMP_CENTS:
+    if prior.amount_usdt != amount:
         raise ConflictError(
             "this Idempotency-Key was used for another amount", code="usdt_idempotency_mismatch"
         )
@@ -153,11 +149,25 @@ async def _after_race(
     return None
 
 
-def _offsets(amount: Decimal) -> list[int]:
-    """Cent offsets 1…99 in random order, minus any that land on a whole number."""
-    pool = [k for k in range(1, MAX_BUMP_CENTS + 1) if (amount + CENT * k) % 1 != 0]
-    secrets.SystemRandom().shuffle(pool)
-    return pool
+async def suggest(db: AsyncSession, amount: Decimal, ceiling: Decimal) -> Decimal | None:
+    """A free amount near ``amount``: it plus random cents, or ``None`` if all are held.
+
+    Only a suggestion — nothing is held until the reseller accepts it and asks
+    for that exact amount, which may by then be taken too (they get another).
+    """
+    candidates = [c for k in range(1, MAX_BUMP_CENTS + 1) if (c := amount + CENT * k) <= ceiling]
+    held = set(
+        (
+            await db.execute(
+                select(UsdtReservation.amount_usdt).where(
+                    UsdtReservation.holds_amount.is_(True),
+                    UsdtReservation.amount_usdt.in_(candidates),
+                )
+            )
+        ).scalars()
+    )
+    free = [c for c in candidates if c not in held]
+    return secrets.choice(free) if free else None
 
 
 async def _guard_rate(db: AsyncSession, merchant_id: str, now_: datetime) -> None:
@@ -189,7 +199,11 @@ def _validate_amount(amount: Decimal, lo: Decimal, hi: Decimal) -> Decimal:
 async def reserve(
     db: AsyncSession, *, merchant_id: str, amount: Decimal, idempotency_key: str | None
 ) -> UsdtReservation:
-    """Hold an exact USDT amount for 60 minutes: the request plus random cents.
+    """Hold exactly ``amount`` USDT for 60 minutes.
+
+    When another reservation holds it, nothing is reserved: the 409 carries a
+    free ``suggested`` amount (the request plus random cents) for the reseller
+    to accept or replace.
 
     Raises:
         NotFoundError: ``usdt_disabled`` when the merchant is not admitted.
@@ -197,7 +211,8 @@ async def reserve(
         ConflictError: ``usdt_reservation_open`` when one is already pending, or
             ``usdt_idempotency_mismatch`` when the key was used for another amount.
         RateLimitedError: ``usdt_too_many`` past ``HOURLY_LIMIT`` an hour.
-        UpstreamUnavailableError: ``usdt_amount_busy`` when every offset is held.
+        ConflictError: ``usdt_amount_taken`` (with ``suggested``) when the amount
+            is held; ``usdt_amount_busy`` when every nearby amount is held too.
     """
     if idempotency_key is not None and (prior := await _prior(db, merchant_id, idempotency_key)):
         _same_intent(prior, amount)
@@ -212,35 +227,41 @@ async def reserve(
     if (twin := await _guard_open(db, merchant_id, idempotency_key, amount, now_)) is not None:
         return twin
     await _guard_rate(db, merchant_id, now_)
-    for bump in _offsets(amount):
-        row = UsdtReservation(
-            id=new_id(),
-            number=new_number(),
-            merchant_id=merchant_id,
-            address=s.address,
-            amount_usdt=amount + CENT * bump,
-            status="pending",
-            holds_amount=True,
-            created_at=now_,
-            expires_at=now_ + RESERVATION_TTL,
-            idempotency_key=idempotency_key,
-        )
-        try:
-            async with db.begin_nested():
-                db.add(row)
-                await db.flush()
-        except IntegrityError as exc:
-            hit = violated_constraint(exc, (_OPEN_AMOUNT_INDEX, *_RACE_INDEXES))
-            if hit == _OPEN_AMOUNT_INDEX:
-                continue
-            if hit is None:
-                raise
-            if (raced := await _after_race(db, merchant_id, idempotency_key, amount)) is None:
-                raise
-            return raced
-        log.info("usdt.reserved", number=row.number, amount_usdt=str(row.amount_usdt))
-        return row
-    raise UpstreamUnavailableError("every nearby amount is held", code="usdt_amount_busy")
+    row = UsdtReservation(
+        id=new_id(),
+        number=new_number(),
+        merchant_id=merchant_id,
+        address=s.address,
+        amount_usdt=amount,
+        status="pending",
+        holds_amount=True,
+        created_at=now_,
+        expires_at=now_ + RESERVATION_TTL,
+        idempotency_key=idempotency_key,
+    )
+    try:
+        async with db.begin_nested():
+            db.add(row)
+            await db.flush()
+    except IntegrityError as exc:
+        hit = violated_constraint(exc, (_OPEN_AMOUNT_INDEX, *_RACE_INDEXES))
+        if hit is None:
+            raise
+        if hit == _OPEN_AMOUNT_INDEX:
+            if (offer := await suggest(db, amount, s.max_amount_usd)) is None:
+                raise ConflictError(
+                    "this amount and every nearby one is held", code="usdt_amount_busy"
+                ) from exc
+            raise ConflictError(
+                "this amount is held by another top-up",
+                code="usdt_amount_taken",
+                suggested=format(offer, "f"),
+            ) from exc
+        if (raced := await _after_race(db, merchant_id, idempotency_key, amount)) is None:
+            raise
+        return raced
+    log.info("usdt.reserved", number=row.number, amount_usdt=str(row.amount_usdt))
+    return row
 
 
 async def _own(db: AsyncSession, merchant_id: str, number: str, *, lock: bool) -> UsdtReservation:

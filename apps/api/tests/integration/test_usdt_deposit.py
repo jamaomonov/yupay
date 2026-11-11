@@ -42,20 +42,33 @@ def test_address_check_accepts_real_and_refuses_typos() -> None:
 
 
 @pytest.mark.asyncio
-async def test_amounts_always_carry_random_cents_and_never_collide(
+async def test_a_free_amount_is_held_exactly_and_a_taken_one_is_offered_with_cents(
     db_session: AsyncSession,
 ) -> None:
-    """A round amount is never issued: a round transfer cannot pay anyone's hold."""
-    ids = [await _merchant(db_session) for _ in range(6)]
-    await open_usdt(db_session, ids)
-    got = [(await reserve(db_session, m, "100")).amount_usdt for m in ids]
-    assert len(set(got)) == len(got)
-    for amount in got:
-        assert Decimal("100.01") <= amount <= Decimal("100.99")
-        assert amount % 1 != 0
-    edge = await _merchant(db_session)
-    await open_usdt(db_session, [edge])
-    assert (await reserve(db_session, edge, "99.50")).amount_usdt % 1 != 0
+    """Owner's rule: 100 if free; if held, offer 100.xx and hold nothing until asked."""
+    a, b = await _merchant(db_session), await _merchant(db_session)
+    await open_usdt(db_session, [a, b])
+    assert (await reserve(db_session, a, "100")).amount_usdt == Decimal("100.00")
+    with pytest.raises(AppError) as taken:
+        await reserve(db_session, b, "100")
+    assert _code(taken.value) == "usdt_amount_taken"
+    offered = Decimal(str(taken.value.extra["suggested"]))
+    assert Decimal("100.01") <= offered <= Decimal("100.99")
+    held_by_b = await db_session.scalar(
+        select(UsdtReservation).where(UsdtReservation.merchant_id == b)
+    )
+    assert held_by_b is None
+    assert (await reserve(db_session, b, str(offered))).amount_usdt == offered
+
+
+@pytest.mark.asyncio
+async def test_no_offer_beyond_the_maximum(db_session: AsyncSession) -> None:
+    a, b = await _merchant(db_session), await _merchant(db_session)
+    await open_usdt(db_session, [a, b])
+    await reserve(db_session, a, "50000")
+    with pytest.raises(AppError) as busy:
+        await reserve(db_session, b, "50000")
+    assert _code(busy.value) == "usdt_amount_busy"
 
 
 @pytest.mark.asyncio
@@ -86,11 +99,11 @@ async def test_reserve_and_cancel_is_capped_per_hour(db_session: AsyncSession) -
     """One reseller cannot hold every cent of a popular amount to lock others out."""
     m = await _merchant(db_session)
     await open_usdt(db_session, [m])
-    for _ in range(reservations.HOURLY_LIMIT):
-        r = await reserve(db_session, m, "100")
+    for i in range(reservations.HOURLY_LIMIT):
+        r = await reserve(db_session, m, str(100 + i))
         await reservations.cancel(db_session, merchant_id=m, number=r.number)
     with pytest.raises(AppError) as capped:
-        await reserve(db_session, m, "100")
+        await reserve(db_session, m, "500")
     assert _code(capped.value) == "usdt_too_many"
 
 
@@ -161,11 +174,11 @@ async def test_repeat_of_a_paid_amount_is_unmatched_and_alerts(db_session: Async
 
 
 @pytest.mark.asyncio
-async def test_round_short_odd_and_dust_never_match(db_session: AsyncSession) -> None:
+async def test_short_other_odd_and_dust_never_match(db_session: AsyncSession) -> None:
     m = await _merchant(db_session)
     await open_usdt(db_session, [m])
     r = await reserve(db_session, m, "100")
-    for amount in ("100", "99.00", f"{r.amount_usdt}0001"):
+    for amount in ("99.00", "100.01", f"{r.amount_usdt}0001"):
         assert (await intake.ingest(db_session, transfer(amount), received_at=now())).status == (
             "unmatched"
         )
@@ -431,7 +444,7 @@ async def test_cabinet_flow(
     assert created.status_code == 201, created.text
     dep = created.json()
     assert (dep["address"], dep["status"]) == (OURS, "pending")
-    assert Decimal("150.51") <= Decimal(dep["amount"]) <= Decimal("151.49")
+    assert Decimal(dep["amount"]) == Decimal("150.50")
     listed = await integration_client.get(f"{U}/deposits", headers=h)
     assert listed.json()["items"][0]["address"] is None
 

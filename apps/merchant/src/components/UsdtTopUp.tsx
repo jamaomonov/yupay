@@ -99,19 +99,55 @@ function AmountForm({ flow, locale, onBack }: AmountFormProps) {
           {t("range", { min: formatUsdt(min, locale), max: formatUsdt(max, locale) })}
         </p>
       )}
-      <p className="text-tx-mute mt-1 text-sm">{t("centsNote")}</p>
+      {flow.offer !== null && (
+        <div
+          role="alert"
+          className="mt-4 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm leading-relaxed"
+        >
+          <p className="font-semibold">
+            {t("takenTitle", { asked: formatUsdt(flow.offer.asked, locale) })}
+          </p>
+          <p className="text-tx-mute mt-1">
+            {t("takenOffer", { suggested: flow.offer.suggested })}
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={flow.busy}
+              onClick={() => {
+                void flow.acceptOffer();
+              }}
+              className="bg-primary text-primary-foreground rounded-btn px-4 py-2 text-sm font-semibold disabled:opacity-50"
+            >
+              {t("takenAccept", { suggested: flow.offer.suggested })}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                flow.declineOffer();
+                document.getElementById("usdt-amount")?.focus();
+              }}
+              className="border-border rounded-btn border px-4 py-2 text-sm font-semibold"
+            >
+              {t("takenBack")}
+            </button>
+          </div>
+        </div>
+      )}
       {flow.error !== null && (
         <p role="alert" className="mt-3 text-sm text-red-500">
           {flow.error}
         </p>
       )}
-      <button
-        type="submit"
-        disabled={flow.busy || check !== "ok"}
-        className="bg-primary text-primary-foreground rounded-btn mt-4 px-4 py-2 text-sm font-semibold disabled:opacity-50"
-      >
-        {t("continue")}
-      </button>
+      {flow.offer === null && (
+        <button
+          type="submit"
+          disabled={flow.busy || check !== "ok"}
+          className="bg-primary text-primary-foreground rounded-btn mt-4 px-4 py-2 text-sm font-semibold disabled:opacity-50"
+        >
+          {t("continue")}
+        </button>
+      )}
     </form>
   );
 }

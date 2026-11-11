@@ -13,6 +13,13 @@ import { useCabinet } from "@/components/CabinetContext";
 
 const POLL_MS = 5000;
 
+export interface UsdtOffer {
+  /** What the reseller asked for, as sent. */
+  asked: string;
+  /** A free amount near it, e.g. "100.37". Nothing is held until accepted. */
+  suggested: string;
+}
+
 export interface UsdtFlow {
   deposit: UsdtDeposit | null;
   phase: Phase;
@@ -25,6 +32,15 @@ export interface UsdtFlow {
   disabled: boolean;
   nowMs: number;
   submit: () => Promise<void>;
+  /**
+   * The asked amount is held by another top-up: the server offers a free one
+   * near it. `null` when there is no offer on screen.
+   */
+  offer: UsdtOffer | null;
+  /** Reserve the offered amount. */
+  acceptOffer: () => Promise<void>;
+  /** Back to the amount box to change it. */
+  declineOffer: () => void;
   cancel: () => Promise<void>;
   /** Forget the outcome on screen and start over. */
   reset: () => void;
@@ -41,6 +57,7 @@ export function useUsdtDeposit(enabled: boolean): UsdtFlow {
   const [amount, setAmountState] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [offer, setOffer] = useState<UsdtOffer | null>(null);
   const [disabled, setDisabled] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const intentKey = useRef<string | null>(null);
@@ -108,11 +125,17 @@ export function useUsdtDeposit(enabled: boolean): UsdtFlow {
 
   const setAmount = useCallback((value: string) => {
     setAmountState(value);
+    setOffer(null);
     intentKey.current = null;
   }, []);
 
-  const failed = async (caught: unknown) => {
-    if (!(caught instanceof ApiError)) {
+  const failed = async (caught: unknown, asked: string) => {
+    if (caught instanceof ApiError && caught.code === "usdt_amount_taken") {
+      intentKey.current = null;
+      const suggested = caught.body.suggested;
+      if (typeof suggested === "string") setOffer({ asked, suggested });
+      else setError(t("errAmountBusy"));
+    } else if (!(caught instanceof ApiError)) {
       setError(t("errBusy"));
     } else if (caught.code === "usdt_reservation_open") {
       intentKey.current = null;
@@ -140,24 +163,39 @@ export function useUsdtDeposit(enabled: boolean): UsdtFlow {
     }
   };
 
-  const submit = async () => {
+  const reserve = async (value: string) => {
     setBusy(true);
     setError(null);
+    setOffer(null);
     intentKey.current ??= crypto.randomUUID();
     try {
       const created = await api<UsdtDeposit>("/usdt/deposits", {
         method: "POST",
-        body: { amount },
+        body: { amount: value },
         idempotencyKey: intentKey.current,
       });
       intentKey.current = null;
       setDeposit(created);
     } catch (caught) {
-      await failed(caught);
+      await failed(caught, value);
     } finally {
       setBusy(false);
     }
   };
+
+  const submit = () => reserve(amount);
+
+  const acceptOffer = async () => {
+    if (offer === null) return;
+    // A new intent: the amount changed, so the old key would be a mismatch.
+    intentKey.current = null;
+    setAmountState(offer.suggested);
+    await reserve(offer.suggested);
+  };
+
+  const declineOffer = useCallback(() => {
+    setOffer(null);
+  }, []);
 
   const cancel = async () => {
     if (number === null) return;
@@ -188,6 +226,7 @@ export function useUsdtDeposit(enabled: boolean): UsdtFlow {
     intentKey.current = null;
     setDeposit(null);
     setAmountState("");
+    setOffer(null);
     setError(null);
   }, []);
 
@@ -201,6 +240,9 @@ export function useUsdtDeposit(enabled: boolean): UsdtFlow {
     disabled,
     nowMs,
     submit,
+    offer,
+    acceptOffer,
+    declineOffer,
     cancel,
     reset,
   };

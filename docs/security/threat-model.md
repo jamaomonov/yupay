@@ -377,9 +377,10 @@ address; the scheduler reads confirmed transfers from TronGrid every 20 s.
   is not mistaken for top-ups.
 - **Claiming someone else's transfer.** The address is public and a block is visible ~1 min
   before it is confirmed. A reservation only matches transfers in blocks no more than 5 s
-  before it was created, and its amount carries random cents (never `.00`), so a round or
-  short transfer can never pay a hold. At most 10 reservations per merchant an hour, so one
-  reseller cannot hold every cent of a popular amount.
+  before it was created. At most 10 reservations per merchant an hour, so one reseller
+  cannot hold every cent of a popular amount. Residual risk, accepted by the owner: a free
+  amount is held exactly (no cents added), so a round transfer sent without reserving can
+  pay whoever reserved that round amount first.
 - **Stalling the poller.** Zero-value and dust transfers are dropped before the journal; a
   page-capped read resumes exactly where it stopped (no overlap re-read); a transfer that
   fails to ingest holds the cursor and alerts; any 15 min without a good poll alerts.

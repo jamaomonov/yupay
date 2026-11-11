@@ -671,9 +671,12 @@
     "errOpen": "You already have a pending top-up",
     "errCancel": "Could not cancel — check your connection and try again",
     "errPrecision": "No more than two digits after the point",
-    "errAmountBusy": "This amount is taken right now — try another",
+    "errAmountBusy": "This amount and the ones near it are taken — enter another",
+    "takenTitle": "{asked} USDT is held by another top-up right now",
+    "takenOffer": "We can reserve {suggested} USDT instead — then send exactly that.",
+    "takenAccept": "Continue with {suggested}",
+    "takenBack": "Change the amount",
     "errTooMany": "Too many top-ups this hour. Try again later",
-    "centsNote": "We add a few cents to the amount — that is how we recognise your transfer",
     "errRetry": "Try again"
   },
   "stats": {

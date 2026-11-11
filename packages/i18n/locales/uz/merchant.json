@@ -671,9 +671,12 @@
     "errOpen": "Sizda kutilayotgan to‘ldirish allaqachon bor",
     "errCancel": "Bekor qilib bo‘lmadi — aloqani tekshirib, qayta urinib ko‘ring",
     "errPrecision": "Nuqtadan keyin ikki raqamdan ko‘p emas",
-    "errAmountBusy": "Bu summa hozir band — boshqasini kiriting",
+    "errAmountBusy": "Bu summa va yaqinidagilar band — boshqasini kiriting",
+    "takenTitle": "{asked} USDT hozir boshqa to‘ldirish uchun band",
+    "takenOffer": "Uning o‘rniga {suggested} USDT band qilishimiz mumkin — keyin aynan shuni yuborasiz.",
+    "takenAccept": "{suggested} bilan davom etish",
+    "takenBack": "Summani o‘zgartirish",
     "errTooMany": "Bir soatda juda ko‘p to‘ldirish. Keyinroq urinib ko‘ring",
-    "centsNote": "Summaga bir necha sent qo‘shamiz — o‘tkazmangizni shu orqali taniymiz",
     "errRetry": "Qayta urinib ko‘ring"
   },
   "stats": {

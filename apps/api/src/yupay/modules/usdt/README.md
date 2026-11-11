@@ -9,8 +9,10 @@ Docs: ADR-0104, `docs/runbooks/usdt-deposit.md`,
 
 ## Responsibilities
 
-- **Reserve** (`reservations.py`): hold an exact amount for 60 minutes, bumping
-  random cents +0.01…+0.99 (never a whole amount); at most 10 reservations per merchant an hour. A closed amount (expired, cancelled **or paid**) stays
+- **Reserve** (`reservations.py`): hold exactly the asked amount for 60 minutes. When it is
+  held, answer `409 usdt_amount_taken` with a free `suggested` amount (plus random cents)
+  and hold nothing. At most 10 reservations per merchant an hour. A closed amount
+  (expired, cancelled **or paid**) stays
   held for another 60 minutes. Also cancel, read, list and sweep.
 - **Read the chain** (`tron.py`): TronGrid `GET /v1/accounts/{address}/transactions/trc20`
   with `only_to`, `only_confirmed` and the USDT contract. Every row is checked again: the
@@ -72,16 +74,18 @@ A manual credit books the amount rounded down to cents.
 
 ## Errors
 
-| Case                       | Answer                                              |
-| -------------------------- | --------------------------------------------------- |
-| Not enabled for merchant   | 404 `usdt_disabled`                                 |
-| Reservation already open   | 409 `usdt_reservation_open` (`number`)              |
-| Same key, different amount | 409 `usdt_idempotency_mismatch`                     |
-| Amount outside min/max     | 422 `usdt_amount_out_of_bounds`                     |
-| More than two decimals     | 422 `usdt_amount_precision`                         |
-| Every bumped amount held   | 502 `usdt_amount_busy` (`UpstreamUnavailableError`) |
-| Admin: bad address         | 422 `usdt_bad_address`                              |
-| Admin: row resolved        | 409 `usdt_incoming_resolved`                        |
+| Case                       | Answer                                 |
+| -------------------------- | -------------------------------------- |
+| Not enabled for merchant   | 404 `usdt_disabled`                    |
+| Reservation already open   | 409 `usdt_reservation_open` (`number`) |
+| Same key, different amount | 409 `usdt_idempotency_mismatch`        |
+| Amount outside min/max     | 422 `usdt_amount_out_of_bounds`        |
+| More than two decimals     | 422 `usdt_amount_precision`            |
+| Amount held by another     | 409 `usdt_amount_taken` (`suggested`)  |
+| It and all nearby held     | 409 `usdt_amount_busy`                 |
+| Over 10 reservations / h   | 429 `usdt_too_many`                    |
+| Admin: bad address         | 422 `usdt_bad_address`                 |
+| Admin: row resolved        | 409 `usdt_incoming_resolved`           |
 
 ## Alerts
 

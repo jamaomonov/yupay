@@ -27,14 +27,21 @@ reading a wallet by hand, and without a fee eating the 7–8 % margin.
 
 - **Wallet.** One TRON address owned by the owner, kept in `usdt_settings.address`. Only the
   public address is stored; the keys never touch our systems.
-- **Reservation.** The reseller enters a USD amount. We hold it plus **random cents**
-  (+0.01…+0.99, never a whole number) for 60 minutes:
+- **Reservation.** The reseller enters a USD amount. If it is free, we hold exactly that
+  amount for 60 minutes:
   - A partial unique index makes "one open amount" a database rule.
   - An expired, cancelled or paid amount stays held for 60 more minutes.
   - One merchant may open 10 reservations an hour.
 
-  A round amount is never issued. Otherwise whoever held 1000.00 would be credited for
-  anyone's round transfer, sent without reserving or rounded by an exchange.
+  If another reservation holds the amount, nothing is held. The answer is
+  `409 usdt_amount_taken` with a free `suggested` amount (the request plus random cents),
+  and the reseller either continues with it or changes the amount (owner's rule,
+  2026-11-11).
+
+  The trade-off was weighed against the review's proposal to always add cents. A round
+  transfer sent without reserving, or rounded by an exchange, can pay whoever holds that
+  exact round amount. The 5-second window and the hourly cap keep that to a reseller's own
+  mistake on an amount someone else reserved first.
 
 - **Intake.** A scheduler job polls TronGrid every 20 s for confirmed TRC20 transfers to the
   address. It keeps a transfer only if:
