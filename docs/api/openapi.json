@@ -4579,6 +4579,40 @@
         "title": "CabinetEmailIn",
         "type": "object"
       },
+      "CabinetGoogleIn": {
+        "additionalProperties": false,
+        "description": "A Google sign-in or sign-up (``cabinet_google``).",
+        "properties": {
+          "accept_offer": {
+            "default": false,
+            "title": "Accept Offer",
+            "type": "boolean"
+          },
+          "access_token": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "title": "Access Token",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "required": [
+          "access_token"
+        ],
+        "title": "CabinetGoogleIn",
+        "type": "object"
+      },
       "CabinetIpAllowlistIn": {
         "additionalProperties": false,
         "description": "Body of ``PUT /merchant/cabinet/api-ip-allowlist``; ``[]`` turns the filter off.\n\nSame validator as the admin surface (``allowlist.normalize_allowlist``): an\nentry we accept but ``auth.address_allowed`` cannot match would lock the\nmerchant out with a 403 nobody can explain.",
@@ -45437,6 +45471,48 @@
           }
         },
         "summary": "Mail the confirmation link again",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
+    "/merchant/cabinet/google": {
+      "post": {
+        "description": "Verify a Google access token; sign in, or register when the offer is accepted.\n\nAn unknown address without ``accept_offer`` answers ``404``\n``merchant_not_registered`` \u2014 not an enumeration oracle, because Google\nhas just proven the caller owns that mailbox (``cabinet_google``).",
+        "operationId": "google_sign_in_merchant_cabinet_google_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CabinetGoogleIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CabinetTokensOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Sign in or up with Google",
         "tags": [
           "merchant-cabinet"
         ]

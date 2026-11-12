@@ -500,6 +500,12 @@ the deposit.
   `reclaim_unconfirmed`, which also takes the new company title). Only a bare
   unverified password account qualifies: one with a Telegram or Steam sign-in
   behind it still answers 409.
+- **Google sign-in confirms, and so clears.** The merchant cabinet's Google
+  sign-in (`merchants/cabinet_google.py`) lands on an unconfirmed operator by
+  verified email, confirms it, and replaces its password with an unusable
+  hash — the same rule as the storefront's `google_login`. An unverified
+  Google email never opens a session, and a Google sign-in registers a new
+  merchant only with the offer accepted.
 - **The flood control holds.** A repeat registration inside
   `AUTH_VERIFY_EMAIL_COOLDOWN_SECONDS` replaces the password but mails no
   second link (`auth:register-mail:<mailbox hash>`).

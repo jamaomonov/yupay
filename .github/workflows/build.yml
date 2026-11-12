@@ -44,10 +44,12 @@ jobs:
               NEXT_PUBLIC_STOREFRONT_URL=https://yupay.uz
           - image: merchant
             dockerfile: infra/docker/merchant.Dockerfile
-            # The B2B cabinet. Only one NEXT_PUBLIC_*: it talks to
-            # /merchant/cabinet and links to nothing else of ours.
+            # The B2B cabinet: it talks to /merchant/cabinet only. The Google
+            # client is the storefront's own (reseller.yupay.uz is one of its
+            # JavaScript origins), so the API verifies one audience.
             build_args: |
               NEXT_PUBLIC_API_BASE_URL=https://api.yupay.uz
+              NEXT_PUBLIC_GOOGLE_CLIENT_ID=${{ vars.GOOGLE_OAUTH_CLIENT_ID }}
           - image: miniapp
             dockerfile: infra/docker/miniapp.Dockerfile
             build_args: |

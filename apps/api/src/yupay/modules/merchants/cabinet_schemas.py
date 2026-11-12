@@ -88,6 +88,21 @@ class CabinetLoginIn(BaseModel):
     password: str = Field(min_length=1, max_length=128)
 
 
+class CabinetGoogleIn(BaseModel):
+    """A Google sign-in or sign-up (``cabinet_google``)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: The access token the browser's Google OAuth popup returned.
+    access_token: str = Field(min_length=1, max_length=4096)
+    #: Sent ``True`` from the registration page only. Without it an address
+    #: with no account answers ``merchant_not_registered`` instead of
+    #: registering — the offer is not something a login button may accept.
+    accept_offer: bool = False
+    #: The shop name, when they typed one before pressing the button.
+    title: str | None = Field(default=None, max_length=128)
+
+
 class CabinetTokenIn(BaseModel):
     """A refresh or logout body. One field, named for what it carries."""
 
@@ -482,6 +497,7 @@ __all__ = [
     "CabinetDeliveriesOut",
     "CabinetDeliveryRowOut",
     "CabinetEmailIn",
+    "CabinetGoogleIn",
     "CabinetIpAllowlistIn",
     "CabinetIpAllowlistOut",
     "CabinetIssuedKeyOut",

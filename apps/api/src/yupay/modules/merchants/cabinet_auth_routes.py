@@ -22,11 +22,12 @@ from yupay.core.config import get_settings
 from yupay.core.errors import ConflictError, ValidationError
 from yupay.core.logging import get_logger
 from yupay.modules.auth.ip_guard import guard_ip
-from yupay.modules.merchants import cabinet_auth
+from yupay.modules.merchants import cabinet_auth, cabinet_google
 from yupay.modules.merchants.cabinet_deps import Db
 from yupay.modules.merchants.cabinet_schemas import (
     CabinetConfirmIn,
     CabinetEmailIn,
+    CabinetGoogleIn,
     CabinetLoginIn,
     CabinetRegisterIn,
     CabinetSetPasswordIn,
@@ -228,6 +229,22 @@ async def resend_confirmation(body: CabinetEmailIn, db: Db, request: Request) ->
 async def login(body: CabinetLoginIn, db: Db, request: Request) -> CabinetTokensOut:
     await guard_ip(request, bucket="merchant_login", subject=body.email.lower())
     return _tokens_out(await cabinet_auth.login(db, email=body.email, password=body.password))
+
+
+@router.post("/google", response_model=CabinetTokensOut, summary="Sign in or up with Google")
+async def google_sign_in(body: CabinetGoogleIn, db: Db, request: Request) -> CabinetTokensOut:
+    """Verify a Google access token; sign in, or register when the offer is accepted.
+
+    An unknown address without ``accept_offer`` answers ``404``
+    ``merchant_not_registered`` — not an enumeration oracle, because Google
+    has just proven the caller owns that mailbox (``cabinet_google``).
+    """
+    await guard_ip(request, bucket="merchant_google")
+    return _tokens_out(
+        await cabinet_google.google_sign_in(
+            db, access_token=body.access_token, accept_offer=body.accept_offer, title=body.title
+        )
+    )
 
 
 @router.post("/refresh", response_model=CabinetTokensOut, summary="Rotate a session")

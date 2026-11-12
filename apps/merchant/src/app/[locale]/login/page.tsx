@@ -2,10 +2,11 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { AuthLink, AuthShell } from "@/components/AuthShell";
 import { Field, FormError, SubmitButton } from "@/components/Field";
+import { GoogleButton } from "@/components/GoogleButton";
 import { ApiError, api, hasSession, storeTokens, type Tokens } from "@/lib/api";
 import { pathFor } from "@/lib/locale-href";
 
@@ -56,6 +57,37 @@ export default function LoginPage() {
     }
   }
 
+  // An unknown address is said out loud here: Google has just proven the
+  // mailbox is the caller's, so naming it leaks nothing (cabinet_google).
+  const google = useCallback(
+    async (accessToken: string) => {
+      setBusy(true);
+      setError(null);
+      try {
+        const tokens = await api<Tokens>("/google", {
+          method: "POST",
+          anonymous: true,
+          body: { access_token: accessToken },
+        });
+        storeTokens(tokens);
+        router.replace(pathFor(locale, "/cabinet"));
+      } catch (err) {
+        const e = err instanceof ApiError ? err : null;
+        setError(
+          e?.code === "merchant_not_registered"
+            ? t("googleNotRegistered")
+            : e?.status === 403
+              ? t("accountSuspended")
+              : e?.status === 429
+                ? t("tooManyAttempts")
+                : t("googleFailed"),
+        );
+        setBusy(false);
+      }
+    },
+    [locale, router, t],
+  );
+
   return (
     <AuthShell
       title={t("loginTitle")}
@@ -71,8 +103,9 @@ export default function LoginPage() {
         </div>
       }
     >
+      <FormError message={error} />
+      <GoogleButton onToken={(token) => void google(token)} disabled={busy} />
       <form onSubmit={submit}>
-        <FormError message={error} />
         <Field
           label={t("email")}
           type="email"

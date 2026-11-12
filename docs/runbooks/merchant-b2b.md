@@ -421,6 +421,31 @@ loses the mailbox itself, that is a support conversation and a DB edit, and it
 should stay one — an admin path that hands out a session for a merchant
 account is a much bigger key than the freeze button we already have.
 
+### Signing in with Google (2026-11-12)
+
+«Продолжить с Google» sits on `/login` and `/register`. It reuses the
+storefront's OAuth client and verifier (`auth/google.py`), so it needs one
+thing in Google Cloud Console that the storefront did not: **Authorized
+JavaScript origins → `https://reseller.yupay.uz`** on that client. Without it
+the popup errors on Google's side and the cabinet says «Не получилось войти
+через Google». The client id reaches the build as the repo variable
+`GOOGLE_OAUTH_CLIENT_ID` (`NEXT_PUBLIC_GOOGLE_CLIENT_ID`); a build without it
+simply shows no button.
+
+`POST /merchant/cabinet/google` (`cabinet_google.py`) links by **verified**
+email, like the storefront:
+
+- An existing operator signs in. One who never confirmed is confirmed now and
+  their password replaced with an unusable one (it could only have been
+  planted). They set a real one through «Забыли пароль?» if they want it.
+- An unknown address registers **only** from `/register`, which sends
+  `accept_offer` — the offer box sits above the Google button and must be
+  ticked first. From `/login` it answers `404 merchant_not_registered` and the
+  page says to sign up; that names nothing a prober could not already prove,
+  because Google has just proven the mailbox is theirs.
+- An account registered through Google has no usable password until a reset.
+- Rate limit: `guard_ip` bucket `merchant_google`.
+
 ### A frozen merchant in the cabinet
 
 `current_merchant_user` loads the company fresh on **every** request rather

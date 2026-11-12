@@ -1,17 +1,19 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
 
 import { AuthLink, AuthShell } from "@/components/AuthShell";
 import { Field, FormError, SubmitButton } from "@/components/Field";
-import { ApiError, api } from "@/lib/api";
+import { GoogleButton } from "@/components/GoogleButton";
+import { ApiError, api, storeTokens, type Tokens } from "@/lib/api";
 import { pathFor } from "@/lib/locale-href";
 
 export default function RegisterPage() {
   const t = useTranslations("merchant.auth");
   const { locale } = useParams<{ locale: string }>();
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [title, setTitle] = useState("");
@@ -48,6 +50,42 @@ export default function RegisterPage() {
     }
   }
 
+  // Google proves the address, so there is no mail to wait for: straight in.
+  // The offer box still has to be ticked — Google cannot accept it for them.
+  async function google(accessToken: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      const tokens = await api<Tokens>("/google", {
+        method: "POST",
+        anonymous: true,
+        body: {
+          access_token: accessToken,
+          accept_offer: true,
+          title: title.trim() === "" ? null : title.trim(),
+        },
+      });
+      storeTokens(tokens);
+      router.replace(pathFor(locale, "/cabinet"));
+    } catch (err) {
+      const e = err instanceof ApiError ? err : null;
+      setError(
+        e?.status === 403
+          ? t("accountSuspended")
+          : e?.status === 429
+            ? t("tooManyAttempts")
+            : t("googleFailed"),
+      );
+      setBusy(false);
+    }
+  }
+
+  function offerTicked(): boolean {
+    if (accepted) return true;
+    setError(t("offerRequired"));
+    return false;
+  }
+
   if (sent) {
     // No token, no session, no redirect into the cabinet: the address is not
     // proven until the link is opened, and registration is open to anyone.
@@ -77,8 +115,28 @@ export default function RegisterPage() {
         </>
       }
     >
+      <FormError message={error} />
+      {/* Above the Google button: it registers on the spot, and the offer
+          has to be accepted on both paths. */}
+      <label className="text-tx-mute mb-5 flex items-start gap-2.5 text-sm leading-relaxed">
+        <input
+          type="checkbox"
+          checked={accepted}
+          onChange={(event) => {
+            setAccepted(event.target.checked);
+          }}
+          className="mt-0.5"
+        />
+        <span>
+          {t("acceptOffer")} <AuthLink href={pathFor(locale, "/offer")} label={t("offerLink")} />
+        </span>
+      </label>
+      <GoogleButton
+        onToken={(token) => void google(token)}
+        beforeOpen={offerTicked}
+        disabled={busy}
+      />
       <form onSubmit={submit} noValidate={false}>
-        <FormError message={error} />
         {/* «Магазин или канал», not «компания»: the FAQ promises no company is
             needed, and a Telegram admin stalled on the old label. The API
             still wants 2–128 characters, so the browser enforces the same. */}
@@ -107,19 +165,6 @@ export default function RegisterPage() {
           autoComplete="new-password"
           minLength={10}
         />
-        <label className="text-tx-mute mb-5 flex items-start gap-2.5 text-sm leading-relaxed">
-          <input
-            type="checkbox"
-            checked={accepted}
-            onChange={(event) => {
-              setAccepted(event.target.checked);
-            }}
-            className="mt-0.5"
-          />
-          <span>
-            {t("acceptOffer")} <AuthLink href={pathFor(locale, "/offer")} label={t("offerLink")} />
-          </span>
-        </label>
         <SubmitButton label={t("submitRegister")} busy={busy} />
       </form>
     </AuthShell>
