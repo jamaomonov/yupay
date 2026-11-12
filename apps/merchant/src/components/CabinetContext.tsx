@@ -124,7 +124,7 @@ export function CabinetProvider({ children }: { children: React.ReactNode }) {
       setCatalog({ brands: [] });
     });
     // A failed read means "not offered": the support link stays.
-    void api<P2PStatus>("/p2p/status").then(setP2p, () => {
+    void api<P2PStatus>("/card-topup/status").then(setP2p, () => {
       setP2p({ enabled: false, fx_rate: null });
     });
     refreshUsdt();

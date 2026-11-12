@@ -15,7 +15,7 @@ Docs: ADR-0094, `docs/runbooks/p2p-deposit.md`, `docs/product/flows/p2p-deposit.
   `unparsed` as a whole.
 - **Intake** (`intake.py`): journal one update and credit the reservation it pays through
   `merchants.deposit.credit_deposit`. Alerts are returned and sent by the caller after commit.
-- **Routes**: `cabinet_routes.py` (`/merchant/cabinet/p2p/...`); the admin
+- **Routes**: `cabinet_routes.py` (`/merchant/cabinet/card-topup/...`; until 2026-11-12 `/merchant/cabinet/p2p/...`, still mounted out of the schema — ad blockers dropped URLs containing `p2p`); the admin
   (`/api/v1/admin/p2p/...`) is `admin_routes.py` (the router and settings), which includes
   `admin_cards.py` (cards) and `admin_journal.py` (incoming journal and reservations), with
   shared dependencies in `admin_deps.py`; and the webhook `api/webhooks/telegram_p2p.py`

@@ -190,7 +190,7 @@ export default function TransactionsList() {
   const cardTopUps = p2p?.enabled === true;
   useEffect(() => {
     if (!cardTopUps) return;
-    void api<P2PDepositsPage>("/p2p/deposits?limit=10")
+    void api<P2PDepositsPage>("/card-topup/deposits?limit=10")
       .then((page) => {
         setTopUps(page.items);
       })

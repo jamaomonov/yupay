@@ -19,7 +19,7 @@ sequenceDiagram
     participant L as Ledger
 
     R->>Cab: enters amount (soʻm)
-    Cab->>API: POST /merchant/cabinet/p2p/deposits
+    Cab->>API: POST /merchant/cabinet/card-topup/deposits
     API-->>Cab: exact amount, card number, holder, 5:00 timer, USD preview
     R->>Humo: transfers exactly that amount
     Humo->>Bot: credit

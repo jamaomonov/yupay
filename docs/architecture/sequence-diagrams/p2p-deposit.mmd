@@ -12,7 +12,7 @@ sequenceDiagram
     participant DB as Postgres
 
     R->>Cab: amount in som
-    Cab->>API: POST /merchant/cabinet/p2p/deposits + Idempotency-Key
+    Cab->>API: POST /merchant/cabinet/card-topup/deposits + Idempotency-Key
     API->>Svc: reserve(merchant, amount)
     Svc->>DB: INSERT reservation (unique open amount per card, bump +1..+99)
     API-->>Cab: number, exact amount, card, expires_at (5 min), amount_usd
@@ -28,7 +28,7 @@ sequenceDiagram
     In->>DB: reservation paid, journal matched
     WH-->>TG: 200
     loop every 3 s
-        Cab->>API: GET /merchant/cabinet/p2p/deposits/{number}
+        Cab->>API: GET /merchant/cabinet/card-topup/deposits/{number}
         API-->>Cab: status
     end
     Cab-->>R: Credited

@@ -45,7 +45,7 @@ export default function TopUp() {
 
   const load = useCallback(async (number: string) => {
     const started = epoch.current;
-    const fresh = await api<P2PDeposit>(`/p2p/deposits/${encodeURIComponent(number)}`);
+    const fresh = await api<P2PDeposit>(`/card-topup/deposits/${encodeURIComponent(number)}`);
     const cancelled = epoch.current !== started;
     setDeposit((prev) =>
       acceptPoll(prev?.number ?? null, fresh.number, cancelled) ? fresh : prev,
@@ -56,7 +56,7 @@ export default function TopUp() {
   const enabled = p2p?.enabled === true;
   useEffect(() => {
     if (!enabled) return;
-    void api<P2PDepositsPage>("/p2p/deposits?limit=1")
+    void api<P2PDepositsPage>("/card-topup/deposits?limit=1")
       .then(async (page) => {
         const first = page.items[0];
         if (first?.status === "pending") await load(first.number);
@@ -122,7 +122,7 @@ export default function TopUp() {
     setError(null);
     intentKey.current ??= crypto.randomUUID();
     try {
-      const created = await api<P2PDeposit>("/p2p/deposits", {
+      const created = await api<P2PDeposit>("/card-topup/deposits", {
         method: "POST",
         body: { amount_uzs: Number(amount) },
         idempotencyKey: intentKey.current,
@@ -159,7 +159,7 @@ export default function TopUp() {
     setBusy(true);
     setError(null);
     try {
-      await api<P2PDeposit>(`/p2p/deposits/${encodeURIComponent(number)}/cancel`, {
+      await api<P2PDeposit>(`/card-topup/deposits/${encodeURIComponent(number)}/cancel`, {
         method: "POST",
         idempotencyKey: crypto.randomUUID(),
       });

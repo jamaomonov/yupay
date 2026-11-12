@@ -121,7 +121,7 @@ Business bot) and the matching reseller reservation is credited.
 - **Rate limit:** exempt from the per-IP tier, like the other self-authenticating
   callbacks (`bootstrap._exempt_self_authenticating_routes`); the secret header is the control.
 
-Cabinet routes: `/merchant/cabinet/p2p/{status,deposits}`; admin routes:
+Cabinet routes: `/merchant/cabinet/card-topup/{status,deposits}` (renamed from `/p2p/` on 2026-11-12: browser ad blockers dropped requests whose URL carried `p2p`; the old path stays mounted, hidden from the schema, until old tabs reload); admin routes:
 `/api/v1/admin/p2p/{settings,cards,incoming,reservations}`. Errors:
 409 `p2p_reservation_open` / `p2p_no_card` / `p2p_idempotency_mismatch` (same
 `Idempotency-Key`, different amount), 404 `p2p_disabled`, 502 `p2p_amount_busy` /

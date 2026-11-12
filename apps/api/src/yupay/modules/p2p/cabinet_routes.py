@@ -24,7 +24,12 @@ from yupay.modules.p2p.schemas import (
 from yupay.modules.p2p.settings import admits, load_settings
 from yupay.modules.pricing.fx_guard import RateRejected, guarded_usd_rate
 
-router = APIRouter(prefix="/merchant/cabinet/p2p", tags=["merchant-cabinet"])
+#: The routes, mounted twice below. ``/card-topup`` is the live path since
+#: 2026-11-12: browsers' ad and privacy blockers drop requests whose URL
+#: carries ``p2p`` (a reseller's phone never sent ``/p2p/status`` and saw only
+#: USDT). ``/p2p`` stays, out of the schema, for tabs still running the old
+#: bundle; drop it once those have reloaded.
+_routes = APIRouter(tags=["merchant-cabinet"])
 
 
 def _plain(rate: Decimal) -> str:
@@ -57,7 +62,7 @@ async def _out(db: Db, r: P2PReservation, *, with_card: bool) -> P2PDepositOut:
     )
 
 
-@router.get("/status", response_model=P2PStatusOut, summary="Whether P2P top-up is on for me")
+@_routes.get("/status", response_model=P2PStatusOut, summary="Whether P2P top-up is on for me")
 async def p2p_status(user: CurrentUser, db: Db) -> P2PStatusOut:
     """The switch for showing "Top up", plus the guarded USD→UZS rate for the preview."""
     merchant = await merchant_of(db, user)
@@ -72,7 +77,7 @@ async def p2p_status(user: CurrentUser, db: Db) -> P2PStatusOut:
     return P2PStatusOut(enabled=enabled, fx_rate=rate)
 
 
-@router.post(
+@_routes.post(
     "/deposits",
     response_model=P2PDepositOut,
     status_code=status.HTTP_201_CREATED,
@@ -97,7 +102,7 @@ async def create_deposit(
     return out
 
 
-@router.get("/deposits/{number}", response_model=P2PDepositOut, summary="One top-up")
+@_routes.get("/deposits/{number}", response_model=P2PDepositOut, summary="One top-up")
 async def read_deposit(number: str, user: CurrentUser, db: Db) -> P2PDepositOut:
     """Poll one top-up; a stale pending one is reported as expired."""
     merchant = await merchant_of(db, user)
@@ -107,7 +112,7 @@ async def read_deposit(number: str, user: CurrentUser, db: Db) -> P2PDepositOut:
     return out
 
 
-@router.post(
+@_routes.post(
     "/deposits/{number}/cancel",
     response_model=P2PDepositOut,
     summary="Cancel a waiting top-up",
@@ -130,7 +135,7 @@ async def cancel_deposit(
     return out
 
 
-@router.get("/deposits", response_model=P2PDepositsOut, summary="My top-ups")
+@_routes.get("/deposits", response_model=P2PDepositsOut, summary="My top-ups")
 async def list_deposits(
     user: CurrentUser,
     db: Db,
@@ -143,3 +148,12 @@ async def list_deposits(
         db, merchant_id=merchant.id, limit=limit, cursor=cursor
     )
     return P2PDepositsOut(items=[await _out(db, r, with_card=False) for r in rows], next_cursor=nxt)
+
+
+router = APIRouter(prefix="/merchant/cabinet/card-topup")
+router.include_router(_routes)
+legacy_router = APIRouter(prefix="/merchant/cabinet/p2p", include_in_schema=False)
+legacy_router.include_router(_routes)
+
+
+__all__ = ["legacy_router", "router"]

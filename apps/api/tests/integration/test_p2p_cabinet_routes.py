@@ -21,7 +21,9 @@ from tests.integration.p2p_fixtures import RATE, _card, _fixed_rate, _open  # no
 
 pytestmark = pytest.mark.asyncio
 
-P2P = f"{BASE}/p2p"
+P2P = f"{BASE}/card-topup"
+#: The pre-2026-11-12 path, kept for tabs on the old bundle.
+LEGACY = f"{BASE}/p2p"
 
 
 @pytest.fixture(autouse=True)
@@ -55,6 +57,10 @@ async def test_status_is_off_by_default_then_on_with_a_rate(
     on = await integration_client.get(f"{P2P}/status", headers=_auth(access))
     assert on.json()["enabled"] is True
     assert Decimal(on.json()["fx_rate"]) == RATE
+    # The old path still answers, for tabs on the previous bundle.
+    legacy = await integration_client.get(f"{LEGACY}/status", headers=_auth(access))
+    assert legacy.status_code == 200, legacy.text
+    assert legacy.json()["enabled"] is True
 
 
 async def test_create_returns_the_card_and_exact_amount(

@@ -56,6 +56,7 @@ from yupay.modules.merchants.cabinet_webhook_routes import (
 # close a cycle back through the route stack.
 from yupay.modules.merchants.machine_openapi import router as merchant_openapi_router
 from yupay.modules.merchants.machine_routes import router as merchant_machine_router
+from yupay.modules.p2p.cabinet_routes import legacy_router as p2p_cabinet_legacy_router
 from yupay.modules.p2p.cabinet_routes import router as p2p_cabinet_router
 from yupay.modules.usdt.cabinet_routes import router as usdt_cabinet_router
 
@@ -418,6 +419,7 @@ def create_app() -> FastAPI:
     app.include_router(merchant_cabinet_webhook_router)
     app.include_router(merchant_cabinet_key_router)
     app.include_router(p2p_cabinet_router)
+    app.include_router(p2p_cabinet_legacy_router)
     app.include_router(usdt_cabinet_router)
 
     # Explicit buckets. The library's per-handler default is (0.1, 0.5, 1),
