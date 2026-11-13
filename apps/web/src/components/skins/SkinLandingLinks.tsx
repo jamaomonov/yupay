@@ -3,6 +3,7 @@ import { getTranslations } from "next-intl/server";
 
 import type { SkinFacets } from "@/lib/skins";
 
+import { chipStyles } from "@/lib/chip";
 import { pathFor } from "@/lib/seo";
 import { categoryPath, isSkinCategory, weaponPath } from "@/lib/skin-landing";
 
@@ -51,10 +52,7 @@ export async function SkinLandingLinks({ facets, locale }: { facets: SkinFacets;
           <ul className="flex flex-wrap gap-2">
             {g.links.map((l) => (
               <li key={l.path}>
-                <Link
-                  href={pathFor(locale, l.path)}
-                  className="border-border hover:border-border-2 text-tx-mute hover:text-foreground inline-block rounded-full border px-3 py-1.5 text-[13px]"
-                >
+                <Link href={pathFor(locale, l.path)} className={chipStyles()}>
                   {l.label}
                 </Link>
               </li>

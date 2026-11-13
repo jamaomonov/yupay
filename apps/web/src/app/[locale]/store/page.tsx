@@ -13,6 +13,7 @@ import { StoreFilter } from "@/components/store/StoreFilter";
 import { routing } from "@/i18n/routing";
 import { brandPath } from "@/lib/brand-href";
 import { getBrands, getCategories, type BrandSummary, type CategoryOut } from "@/lib/catalog";
+import { chipStyles } from "@/lib/chip";
 import { headingStyles } from "@/lib/heading";
 import { alternates, GEO_META, localeUrl, ogLocale, pathFor, ROBOTS } from "@/lib/seo";
 
@@ -250,7 +251,7 @@ export default async function StorePage({ params }: { params: Promise<{ locale: 
                 <Link
                   key={b.slug}
                   href={pathFor(locale, `/store/${b.slug}/how-to`)}
-                  className="border-border bg-card hover:border-border-2 text-tx-mute hover:text-foreground inline-flex items-center gap-1.5 rounded-full border px-4 py-2 text-[14px] font-medium transition"
+                  className={chipStyles()}
                 >
                   {t("hubGuideLink", { name: b.name })}
                   <ChevronRight size={14} />

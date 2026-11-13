@@ -8,6 +8,7 @@ import type { SkinItem } from "@/lib/skins";
 import { JsonLd } from "@/components/JsonLd";
 import { SkinCard } from "@/components/skins/SkinCard";
 import { SkinFaq } from "@/components/skins/SkinFaq";
+import { chipStyles } from "@/lib/chip";
 import { headingStyles } from "@/lib/heading";
 import { localeUrl, pathFor } from "@/lib/seo";
 
@@ -88,7 +89,7 @@ export async function SkinLanding({
               <li key={l.path}>
                 <Link
                   href={pathFor(locale, l.path)}
-                  className="border-border hover:border-border-2 inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[13px] font-semibold"
+                  className={chipStyles("text-foreground font-semibold")}
                 >
                   {l.label}
                   <span className="text-tx-dim tabular-nums">{l.count}</span>

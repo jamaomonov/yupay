@@ -1109,7 +1109,7 @@ function UnitPackTiles({
             onClick={() => {
               onPick(n);
             }}
-            className={`focus-visible:ring-primary focus-visible:ring-offset-bg relative flex flex-col items-start gap-2 rounded-lg border p-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
+            className={`focus-visible:ring-primary focus-visible:ring-offset-bg relative flex flex-col items-start gap-2 rounded-xl border p-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
               active
                 ? "border-primary bg-primary/10"
                 : "border-border bg-card hover:border-border-2"
@@ -2316,7 +2316,7 @@ export function PurchasePanel({
                               onClick={() => {
                                 if (!active) pickPack(sku, product);
                               }}
-                              className={`focus-visible:ring-primary focus-visible:ring-offset-bg relative flex w-full flex-col items-start gap-2 rounded-lg border p-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
+                              className={`focus-visible:ring-primary focus-visible:ring-offset-bg relative flex w-full flex-col items-start gap-2 rounded-xl border p-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
                                 soldOut
                                   ? "border-border bg-card cursor-not-allowed opacity-45"
                                   : active
@@ -2332,7 +2332,7 @@ export function PurchasePanel({
                               long «До 30 уровня» clear of a 48px image on a
                               two-column phone grid. */}
                               {sku.notice?.badge && !soldOut && (
-                                <span className="bg-gold text-bg absolute -right-px -top-px max-w-[calc(100%-3.25rem)] truncate rounded-bl-lg rounded-tr-lg px-1.5 py-1 text-[10px] font-bold leading-none sm:px-2 sm:text-[11px]">
+                                <span className="bg-gold text-bg absolute -right-px -top-px max-w-[calc(100%-3.25rem)] truncate rounded-bl-lg rounded-tr-xl px-1.5 py-1 text-[10px] font-bold leading-none sm:px-2 sm:text-[11px]">
                                   {sku.notice.badge}
                                 </span>
                               )}

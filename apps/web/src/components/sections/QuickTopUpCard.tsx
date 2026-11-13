@@ -107,7 +107,7 @@ export function QuickTopUpCard({ offer, locale }: { offer: TopUpOffer; locale: s
       }}
       noValidate
       aria-label={t(`${k}.title`)}
-      className={`border-border-2/80 relative h-full overflow-hidden rounded-3xl border p-5 shadow-[0_40px_100px_-40px_rgba(0,0,0,0.9)] sm:p-7 ${theme.wash}`}
+      className={`border-border-2/80 relative h-full overflow-hidden rounded-2xl border p-5 shadow-[0_40px_100px_-40px_rgba(0,0,0,0.9)] sm:p-7 ${theme.wash}`}
     >
       <Image
         src={theme.mark}

@@ -7,6 +7,7 @@ import { getTranslations } from "next-intl/server";
 import type { SkinItem } from "@/lib/skins";
 
 import { buttonStyles } from "@/lib/button";
+import { chipStyles } from "@/lib/chip";
 import { skinsEnabled } from "@/lib/features";
 import { headingStyles } from "@/lib/heading";
 import { isOptimizable } from "@/lib/image";
@@ -139,10 +140,7 @@ export async function CS2SkinsBand({ locale }: { locale: string }) {
           <ul className="mt-6 flex flex-wrap gap-2">
             {links.map((l) => (
               <li key={l.path}>
-                <Link
-                  href={pathFor(locale, l.path)}
-                  className="border-border hover:border-border-2 text-tx-mute hover:text-foreground inline-block rounded-full border px-3 py-1.5 text-[12px]"
-                >
+                <Link href={pathFor(locale, l.path)} className={chipStyles()}>
                   {l.label}
                 </Link>
               </li>
