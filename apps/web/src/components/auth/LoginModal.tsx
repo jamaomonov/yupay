@@ -18,6 +18,9 @@ import { pathFor } from "@/lib/seo";
 import { useLoginModal } from "@/store/useLoginModal";
 import { toast } from "@/store/useToast";
 
+/** Underlined, with a taller hit area than the 12px line around it. */
+const CONSENT_LINK = "hover:text-foreground inline-block py-1 underline";
+
 interface TelegramAuth {
   Login?: {
     auth: (
@@ -248,15 +251,27 @@ export function LoginModal({ locale }: { locale: string }) {
               />
             </div>
 
+            {/* One sentence per language, links inside it (2026-11-13): it read
+                «Принимаю Privacy Policy и Terms of Use» in ru and uz, and did not
+                name the user agreement at all. */}
             <p className="text-tx-dim mt-6 text-center text-xs leading-relaxed">
-              {t("agreePrefix")}{" "}
-              <Link href={pathFor(locale, "/legal/privacy")} className="hover:text-tx underline">
-                {t("privacy")}
-              </Link>{" "}
-              {t("and")}{" "}
-              <Link href={pathFor(locale, "/legal/terms")} className="hover:text-tx underline">
-                {t("terms")}
-              </Link>
+              {t.rich("consent", {
+                agreement: (chunks) => (
+                  <Link href={pathFor(locale, "/legal/agreement")} className={CONSENT_LINK}>
+                    {chunks}
+                  </Link>
+                ),
+                terms: (chunks) => (
+                  <Link href={pathFor(locale, "/legal/terms")} className={CONSENT_LINK}>
+                    {chunks}
+                  </Link>
+                ),
+                privacy: (chunks) => (
+                  <Link href={pathFor(locale, "/legal/privacy")} className={CONSENT_LINK}>
+                    {chunks}
+                  </Link>
+                ),
+              })}
             </p>
           </>
         ) : screen === "verify" ? (

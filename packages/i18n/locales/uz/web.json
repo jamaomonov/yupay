@@ -182,10 +182,7 @@
     "providerSteam": "Steam",
     "providerEmail": "Email",
     "soon": "tez orada",
-    "agreePrefix": "Oʻqidim va roziman:",
-    "privacy": "Privacy Policy",
-    "terms": "Terms of Use",
-    "and": "va",
+    "consent": "Davom etish orqali siz <agreement>foydalanuvchi shartnomasi</agreement>, <terms>ommaviy oferta</terms> va <privacy>maxfiylik siyosati</privacy>ni qabul qilasiz.",
     "back": "Orqaga",
     "close": "Yopish",
     "signedIn": "Hisobingizga kirdingiz",
@@ -605,7 +602,7 @@
     },
     "terms": {
       "title": "Ommaviy oferta",
-      "updated": "2026-yil avgust",
+      "updated": "2026-yil 13-noyabr",
       "intro": "Ushbu hujjat ommaviy oferta — quyidagi shartlar asosida raqamli tovarlarni sotish shartnomasini tuzish taklifi. Buyurtma berish orqali siz bu shartlarni toʻliq qabul qilasiz.",
       "sections": [
         {
@@ -622,7 +619,7 @@
         },
         {
           "h": "Narx va toʻlov",
-          "p": "Narxlar Oʻzbekiston soʻmida va barcha soliqlarni oʻz ichiga oladi. Kurs buyurtma rasmiylashtirilganda qayd etiladi, yakuniy summa toʻlovdan oldin koʻrinadi. Summa ustidan alohida komissiya olmaymiz — ustamamiz narxga kiritilgan. Toʻlov Uzcard va Humo kartalari bilan Click, Payme yoki Uzum orqali. Toʻlovdan soʻng fiskal chek shakllanadi."
+          "p": "Narxlar Oʻzbekiston soʻmida va barcha soliqlarni oʻz ichiga oladi. Kurs buyurtma rasmiylashtirilganda qayd etiladi, yakuniy summa toʻlovdan oldin koʻrinadi. Summa ustidan alohida komissiya olmaymiz — ustamamiz narxga kiritilgan. Toʻlov Uzcard va Humo kartalari bilan Click, Payme, Uzum yoki Paynet orqali, buyurtma rasmiylashtirilganda koʻrsatiladigan kartaga oʻtkazma yoki saytdagi akkaunt balansidan. Toʻlovdan soʻng fiskal chek shakllanadi."
         },
         {
           "h": "Firibgarlikning oldini olish",

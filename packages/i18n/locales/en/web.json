@@ -182,10 +182,7 @@
     "providerSteam": "Steam",
     "providerEmail": "Email",
     "soon": "soon",
-    "agreePrefix": "I have read and agree to the",
-    "privacy": "Privacy Policy",
-    "terms": "Terms of Use",
-    "and": "and",
+    "consent": "By continuing, you accept the <agreement>user agreement</agreement>, the <terms>public offer</terms> and the <privacy>privacy policy</privacy>.",
     "back": "Back",
     "close": "Close",
     "signedIn": "You're signed in",
@@ -605,7 +602,7 @@
     },
     "terms": {
       "title": "Public offer",
-      "updated": "August 2026",
+      "updated": "13 November 2026",
       "intro": "This document is a public offer — a proposal to enter into a contract for the sale of digital goods on the terms below. Placing an order means you accept them in full.",
       "sections": [
         {
@@ -622,7 +619,7 @@
         },
         {
           "h": "Price and payment",
-          "p": "Prices are in Uzbek som and include all taxes. The rate is fixed when the order is placed and the final amount is shown before payment. We charge no separate fee on top — our margin is already in the price. Payment by Uzcard and Humo through Click, Payme or Uzum. A fiscal receipt is issued after payment."
+          "p": "Prices are in Uzbek som and include all taxes. The rate is fixed when the order is placed and the final amount is shown before payment. We charge no separate fee on top — our margin is already in the price. Payment by Uzcard and Humo through Click, Payme, Uzum or Paynet, by transfer to the card shown at checkout, or from the account balance on the site. A fiscal receipt is issued after payment."
         },
         {
           "h": "Fraud prevention",
