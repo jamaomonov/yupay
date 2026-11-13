@@ -188,17 +188,6 @@ export async function Footer({ locale }: { locale: string }) {
                 </span>
               ))}
             </div>
-            <span className="text-tx-mute font-mono text-[12px]">
-              {t("madeBy")}{" "}
-              <a
-                href="https://t.me/jama_omonov"
-                target="_blank"
-                rel="noreferrer noopener"
-                className="text-tx-mute hover:text-foreground underline-offset-2 transition hover:underline"
-              >
-                Jam
-              </a>
-            </span>
           </div>
         </div>
       </div>
