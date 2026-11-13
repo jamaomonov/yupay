@@ -209,7 +209,7 @@ export function AccountMenu({ locale }: Props) {
               setOpen(false);
               logout();
             }}
-            className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-[#FF6B6B] transition hover:bg-[#FF6B6B]/10"
+            className="text-danger hover:bg-danger/10 flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition"
           >
             <LogOut size={16} />
             {t("logout")}

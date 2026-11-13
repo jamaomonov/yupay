@@ -89,7 +89,7 @@ export function SkinTradeCard({ trade, locale }: { trade: SkinTradeOut; locale: 
 
       {(trade.state === "accepted" || trade.state === "released") && (
         <div className="space-y-1">
-          <p className="flex items-center gap-2 text-[15px] font-semibold text-emerald-400">
+          <p className="text-success flex items-center gap-2 text-[15px] font-semibold">
             <CheckCircle2 className="h-4 w-4" aria-hidden />
             {t(trade.state)}
           </p>

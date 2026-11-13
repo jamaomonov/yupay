@@ -898,7 +898,7 @@ export function GiftPurchasePanel({
               className={inputStyles({ surface: "bg" })}
             />
             {emailInvalid && (
-              <p id={emailErrorId} className="text-[13px] text-[#FF6B6B]">
+              <p id={emailErrorId} className="text-danger text-[13px]">
                 {ta("emailInvalid")}
               </p>
             )}
@@ -1069,7 +1069,7 @@ export function GiftPurchasePanel({
             (payHint ?? t("buy"))
           )}
         </button>
-        {error && <p className="text-[13px] text-[#FF6B6B]">{error}</p>}
+        {error && <p className="text-danger text-[13px]">{error}</p>}
       </div>
 
       <ConfirmPurchaseModal

@@ -120,7 +120,7 @@ export function ReviewForm({
             className={inputStyles({ surface: "bg", multiline: true, className: "resize-none" })}
           />
         </label>
-        {showError && <p className="mt-2 text-[13px] text-red-400">{t("error")}</p>}
+        {showError && <p className="text-danger mt-2 text-[13px]">{t("error")}</p>}
         <button
           type="button"
           disabled={saving}
@@ -182,7 +182,7 @@ export function ReviewForm({
       {submitting ? t("submitting") : t("submit")}
     </button>
   );
-  const error = showError && <p className="mt-2 text-[13px] text-red-400">{t("error")}</p>;
+  const error = showError && <p className="text-danger mt-2 text-[13px]">{t("error")}</p>;
 
   // A footer row inside an order card: the card already names the brand, so
   // the question is short and the stars sit beside it rather than under it.

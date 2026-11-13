@@ -21,7 +21,7 @@ const PHASE: Record<Phase, { Icon: LucideIcon; tile: string; spin: boolean }> = 
   waiting: { Icon: Clock, tile: "bg-gold/12 text-gold ring-gold/25", spin: false },
   crediting: { Icon: Loader2, tile: "bg-blue/12 text-blue ring-blue/25", spin: true },
   credited: { Icon: CheckCircle2, tile: "bg-primary/12 text-primary ring-primary/25", spin: false },
-  failed: { Icon: XCircle, tile: "bg-[#FF6B6B]/12 text-[#FF6B6B] ring-[#FF6B6B]/25", spin: false },
+  failed: { Icon: XCircle, tile: "bg-danger/12 text-danger ring-danger/25", spin: false },
 };
 
 function phaseFor(status: string): Phase {

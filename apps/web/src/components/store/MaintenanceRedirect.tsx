@@ -27,9 +27,9 @@ interface MaintenanceRedirectProps {
 export async function MaintenanceRedirect({ target, locale, label }: MaintenanceRedirectProps) {
   const t = await getTranslations("web.store");
   return (
-    <div className="mb-5 flex flex-col gap-4 rounded-2xl border border-amber-400/50 bg-amber-400/10 p-5 sm:flex-row sm:items-center sm:justify-between">
+    <div className="border-warning/50 bg-warning/10 mb-5 flex flex-col gap-4 rounded-2xl border p-5 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex min-w-0 gap-3">
-        <AlertTriangle size={20} className="mt-0.5 shrink-0 text-amber-300" aria-hidden />
+        <AlertTriangle size={20} className="text-warning mt-0.5 shrink-0" aria-hidden />
         <div className="min-w-0">
           <p className="text-[15px] font-semibold">{t("maintenanceRedirectTitle")}</p>
           <p className="text-tx-mute mt-1 text-[14px] leading-relaxed">

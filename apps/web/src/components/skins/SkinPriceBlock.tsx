@@ -48,13 +48,13 @@ export function SkinPriceBlock({
             {price === null ? t("soldOut") : head.from ? t("fromPrice", { price }) : price}
           </span>
           {off !== null && (
-            <span className="rounded-md bg-emerald-500/15 px-2 py-0.5 text-[13px] font-bold text-emerald-400">
+            <span className="bg-success/15 text-success rounded-md px-2 py-0.5 text-[13px] font-bold">
               {t("belowSteam", { percent: off })}
             </span>
           )}
         </p>
         {price !== null && (
-          <p className="mt-1 inline-flex items-center gap-1.5 text-[13px] font-semibold text-emerald-400">
+          <p className="text-success mt-1 inline-flex items-center gap-1.5 text-[13px] font-semibold">
             <Zap className="h-3.5 w-3.5" aria-hidden />
             {t("instantDelivery")}
           </p>

@@ -233,7 +233,7 @@ export function GiftRecipientField({
           stopped reading. Mirrors `CheckablePlayerField`'s confirmation
           pill in `PurchasePanel`, plus the avatar gifts have and it
           doesn't. */
-        <div className="rounded-btn flex items-center gap-2.5 border border-emerald-500/40 bg-emerald-500/[0.06] py-1.5 pl-1.5 pr-4">
+        <div className="rounded-btn border-success/40 bg-success/[0.06] flex items-center gap-2.5 border py-1.5 pl-1.5 pr-4">
           {profileFound.avatarUrl !== null ? (
             <Image
               data-testid="gift-profile-avatar"
@@ -250,7 +250,7 @@ export function GiftRecipientField({
               className="h-12 w-12 shrink-0 rounded-full object-cover"
             />
           ) : (
-            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-400">
+            <span className="bg-success/15 text-success flex h-12 w-12 shrink-0 items-center justify-center rounded-full">
               <Check size={20} strokeWidth={3} aria-hidden="true" />
             </span>
           )}
@@ -343,7 +343,7 @@ export function GiftRecipientField({
         </div>
       )}
       {inviteInvalid && (
-        <p id={inviteErrorId} className="text-[13px] text-[#FF6B6B]">
+        <p id={inviteErrorId} className="text-danger text-[13px]">
           {t("inviteError")}
         </p>
       )}
@@ -351,7 +351,7 @@ export function GiftRecipientField({
         /* The only verdict that blocks Buy, and the only one that reads
           as an error. `role="alert"` announces on insertion, which is
           what this state needs. */
-        <p id={profileErrorId} role="alert" className="text-[13px] text-[#FF6B6B]">
+        <p id={profileErrorId} role="alert" className="text-danger text-[13px]">
           {profileAlert}
         </p>
       )}

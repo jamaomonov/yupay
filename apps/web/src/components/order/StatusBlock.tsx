@@ -27,7 +27,7 @@ const TILE: Record<Tone, string> = {
   success: "bg-primary/12 text-primary ring-primary/25",
   progress: "bg-blue/12 text-blue ring-blue/25",
   pending: "bg-gold/12 text-gold ring-gold/25",
-  danger: "bg-[#FF6B6B]/12 text-[#FF6B6B] ring-[#FF6B6B]/25",
+  danger: "bg-danger/12 text-danger ring-danger/25",
   neutral: "bg-muted text-tx-mute ring-border-2",
 };
 

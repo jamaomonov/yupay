@@ -86,7 +86,7 @@ export function AuthForm({
           className={inputStyles()}
         />
         {errors.email && (
-          <span id="auth-email-error" className="mt-1 block text-xs text-[#FF6B6B]">
+          <span id="auth-email-error" className="text-danger mt-1 block text-xs">
             {t("emailInvalid")}
           </span>
         )}
@@ -104,7 +104,7 @@ export function AuthForm({
           className={inputStyles()}
         />
         {errors.password && (
-          <span id="auth-password-error" className="mt-1 block text-xs text-[#FF6B6B]">
+          <span id="auth-password-error" className="text-danger mt-1 block text-xs">
             {t("passwordShort")}
           </span>
         )}
@@ -125,7 +125,7 @@ export function AuthForm({
             className={inputStyles()}
           />
           {errors.confirmPassword && (
-            <span id="auth-confirm-password-error" className="mt-1 block text-xs text-[#FF6B6B]">
+            <span id="auth-confirm-password-error" className="text-danger mt-1 block text-xs">
               {t("passwordMismatch")}
             </span>
           )}
@@ -136,7 +136,7 @@ export function AuthForm({
         {isSubmitting ? <Loader2 size={18} className="animate-spin" /> : t(mode)}
       </button>
       {error && (
-        <p role="alert" className="text-center text-[13px] text-[#FF6B6B]">
+        <p role="alert" className="text-danger text-center text-[13px]">
           {error}
         </p>
       )}

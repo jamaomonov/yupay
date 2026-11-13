@@ -114,7 +114,7 @@ export default function WalletPage({ params }: { params: Promise<{ locale: strin
           {t("balanceLabel")}
         </p>
         {wallet.isError ? (
-          <p className="text-sm text-red-400">{t("balanceError")}</p>
+          <p className="text-danger text-sm">{t("balanceError")}</p>
         ) : balance === null ? (
           <Skeleton className="h-10 w-40 rounded-lg" />
         ) : (
@@ -141,7 +141,7 @@ export default function WalletPage({ params }: { params: Promise<{ locale: strin
       </h2>
 
       {history.isPending && <Skeleton className="h-24 rounded-2xl" />}
-      {history.isError && <p className="text-sm text-red-400">{t("historyError")}</p>}
+      {history.isError && <p className="text-danger text-sm">{t("historyError")}</p>}
 
       {!history.isPending && !history.isError && rows.length === 0 && (
         <div className="border-border bg-card rounded-2xl border p-8 text-center">

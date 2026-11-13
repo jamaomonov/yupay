@@ -404,7 +404,7 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
               </button>
             )}
             {/* A send failure is not a missing order — say what actually went wrong. */}
-            {resend.isError && <p className="text-sm text-[#FF6B6B]">{t("accessLinkFailed")}</p>}
+            {resend.isError && <p className="text-danger text-sm">{t("accessLinkFailed")}</p>}
           </div>
         )}
 

@@ -103,7 +103,7 @@ export function RegionPurchase({ regions, locale, children }: RegionPurchaseProp
           })}
         </div>
         {isRegionUnchecked(current.products) && (
-          <p className="mt-3 rounded-lg border border-amber-400/40 bg-amber-400/[0.06] px-4 py-3 text-[13px] text-amber-200">
+          <p className="border-warning/40 bg-warning/[0.06] text-warning mt-3 rounded-lg border px-4 py-3 text-[13px]">
             {t("regionUnchecked", { region: regionName(current.code) })}
           </p>
         )}

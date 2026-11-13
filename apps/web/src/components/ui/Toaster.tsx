@@ -9,7 +9,7 @@ import { useToast, type ToastTone } from "@/store/useToast";
  *  brand palette has no dedicated red token). */
 const TONE: Record<ToastTone, { ring: string; icon: string; Icon: LucideIcon }> = {
   success: { ring: "ring-primary/30", icon: "text-primary", Icon: Check },
-  error: { ring: "ring-[#FF6B6B]/30", icon: "text-[#FF6B6B]", Icon: X },
+  error: { ring: "ring-danger/30", icon: "text-danger", Icon: X },
   info: { ring: "ring-border-2", icon: "text-tx-mute", Icon: Info },
 };
 

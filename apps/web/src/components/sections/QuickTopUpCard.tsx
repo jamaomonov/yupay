@@ -152,7 +152,7 @@ export function QuickTopUpCard({ offer, locale }: { offer: TopUpOffer; locale: s
         aria-invalid={touched && !whoOk}
         className="border-border-2 bg-bg/70 focus:border-primary focus:ring-primary/20 mt-1.5 w-full rounded-xl border px-4 py-3 text-[15px] outline-none transition focus:ring-4"
       />
-      {touched && !whoOk && <p className="mt-1.5 text-[12px] text-red-400">{t(`${k}.invalid`)}</p>}
+      {touched && !whoOk && <p className="text-danger mt-1.5 text-[12px]">{t(`${k}.invalid`)}</p>}
 
       <label htmlFor={amountId} className="text-tx-mute mt-4 block text-[13px] font-medium">
         {t(`${k}.amount`)}
@@ -175,7 +175,7 @@ export function QuickTopUpCard({ offer, locale }: { offer: TopUpOffer; locale: s
         />
       </div>
       {amountErr !== null && amount.trim() !== "" && (
-        <p className="mt-1.5 text-[12px] text-red-400">
+        <p className="text-danger mt-1.5 text-[12px]">
           {t(`${k}.range`, { min: bound(offer.min), max: bound(offer.max) })}
         </p>
       )}

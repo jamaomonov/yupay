@@ -582,7 +582,7 @@ export default async function BrandPage({
                   "0% комиссии" — this one means the buyer may reach checkout
                   and fail there. */}
               {brand.maintenance && (
-                <span className="inline-flex items-center gap-2 rounded-full border border-amber-400/50 bg-amber-400/10 px-3.5 py-2 text-[12px] font-semibold text-amber-300">
+                <span className="border-warning/50 bg-warning/10 text-warning inline-flex items-center gap-2 rounded-full border px-3.5 py-2 text-[12px] font-semibold">
                   <AlertTriangle size={13} aria-hidden />
                   {t("maintenance")}
                 </span>

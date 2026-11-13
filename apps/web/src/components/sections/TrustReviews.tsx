@@ -37,7 +37,7 @@ function Stars({ rating, label }: { rating: number; label: string }) {
           key={i}
           size={13}
           aria-hidden
-          className={i <= rating ? "fill-[#fbbf24] text-[#fbbf24]" : "text-white/15"}
+          className={i <= rating ? "fill-gold text-gold" : "text-white/15"}
         />
       ))}
     </span>

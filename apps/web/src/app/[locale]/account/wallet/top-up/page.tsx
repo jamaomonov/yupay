@@ -244,7 +244,7 @@ export default function WalletTopUpPage({ params }: { params: Promise<{ locale: 
         {limits !== undefined && (
           <p
             id={boundsId}
-            className={`mt-3 text-sm ${belowMin || aboveMax ? "text-[#FF6B6B]" : "text-tx-dim"}`}
+            className={`mt-3 text-sm ${belowMin || aboveMax ? "text-danger" : "text-tx-dim"}`}
           >
             {/* Shown from the start rather than only after they get it wrong. */}
             {t("amountRange", {
@@ -308,7 +308,7 @@ export default function WalletTopUpPage({ params }: { params: Promise<{ locale: 
       </section>
 
       {error && (
-        <p role="alert" className="mb-3 text-sm text-[#FF6B6B]">
+        <p role="alert" className="text-danger mb-3 text-sm">
           {error}
         </p>
       )}

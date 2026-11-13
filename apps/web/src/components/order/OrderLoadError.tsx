@@ -31,10 +31,10 @@ export function OrderLoadError({ locale, onRetry, denied = false }: OrderLoadErr
       className="border-border bg-card space-y-4 rounded-2xl border p-6 text-center"
     >
       <span
-        className="bg-[#FF6B6B]/12 mx-auto flex size-11 items-center justify-center rounded-xl ring-1 ring-inset ring-[#FF6B6B]/25"
+        className="bg-danger/12 ring-danger/25 mx-auto flex size-11 items-center justify-center rounded-xl ring-1 ring-inset"
         aria-hidden="true"
       >
-        <AlertCircle size={22} className="text-[#FF6B6B]" strokeWidth={2.5} />
+        <AlertCircle size={22} className="text-danger" strokeWidth={2.5} />
       </span>
 
       <div className="space-y-1.5">

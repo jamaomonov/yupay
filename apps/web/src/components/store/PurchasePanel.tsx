@@ -400,13 +400,13 @@ function CheckablePlayerField({
     return (
       <div>
         <FieldLabel label={label} required={required} />
-        <div className="rounded-btn flex items-center gap-2.5 border border-emerald-500/40 bg-emerald-500/[0.06] py-1.5 pl-1.5 pr-4">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-400">
+        <div className="rounded-btn border-success/40 bg-success/[0.06] flex items-center gap-2.5 border py-1.5 pl-1.5 pr-4">
+          <span className="bg-success/15 text-success flex h-9 w-9 shrink-0 items-center justify-center rounded-full">
             <Check size={17} strokeWidth={3} />
           </span>
           <div className="min-w-0 flex-1 leading-tight">
             <div className="truncate text-[14px] font-bold">{check.name}</div>
-            <div className="truncate font-mono text-[12px] text-emerald-400">{value}</div>
+            <div className="text-success truncate font-mono text-[12px]">{value}</div>
           </div>
           <button
             type="button"
@@ -425,8 +425,8 @@ function CheckablePlayerField({
     return (
       <div>
         <FieldLabel label={label} required={required} />
-        <div className="rounded-btn border border-amber-400/45 bg-amber-400/[0.06] px-3.5 py-3">
-          <div className="text-[13.5px] font-semibold text-amber-200">
+        <div className="rounded-btn border-warning/45 bg-warning/[0.06] border px-3.5 py-3">
+          <div className="text-warning text-[13.5px] font-semibold">
             {t("checkWrongRegion", { name: check.name ?? value, region: wrongRegion.label })}
           </div>
           <div className="mt-2.5 flex flex-wrap items-center gap-2">
@@ -457,12 +457,12 @@ function CheckablePlayerField({
     return (
       <div>
         <FieldLabel label={label} required={required} />
-        <div className="rounded-btn flex items-center gap-2.5 border border-red-500/40 bg-red-500/[0.06] py-1.5 pl-1.5 pr-4">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-500/15 text-red-400">
+        <div className="rounded-btn border-danger/40 bg-danger/[0.06] flex items-center gap-2.5 border py-1.5 pl-1.5 pr-4">
+          <span className="bg-danger/15 text-danger flex h-9 w-9 shrink-0 items-center justify-center rounded-full">
             <X size={17} strokeWidth={3} />
           </span>
           <div className="min-w-0 flex-1 leading-tight">
-            <div className="text-pretty text-[13.5px] font-semibold text-red-300">
+            <div className="text-danger text-pretty text-[13.5px] font-semibold">
               {t("checkNotFound")}
             </div>
             <div className="text-tx-dim truncate font-mono text-[12px]">{value}</div>
@@ -911,7 +911,7 @@ function VariableAmountCard({
           below the card is invisible to anyone who reached the field by
           keyboard or screen reader. */}
       {errorMessage && (
-        <p id={`${amountId}-error`} className="mt-2 text-[12px] text-[#FF6B6B]">
+        <p id={`${amountId}-error`} className="text-danger mt-2 text-[12px]">
           {errorMessage}
         </p>
       )}
@@ -1018,7 +1018,7 @@ function UnitPackCard({
         )}
       </div>
       {errorMessage && (
-        <p id={`${amountId}-error`} className="mt-2 text-[12px] text-[#FF6B6B]">
+        <p id={`${amountId}-error`} className="text-danger mt-2 text-[12px]">
           {errorMessage}
         </p>
       )}
@@ -2763,7 +2763,7 @@ export function PurchasePanel({
             )}
 
             {error && (
-              <p className="mt-3 text-center text-[13px] text-[#FF6B6B]">
+              <p className="text-danger mt-3 text-center text-[13px]">
                 {/* "напишите в поддержку" was plain text — advice with nothing
                     to act on. Link the word in place when the message contains
                     it; any other error renders unchanged. */}

@@ -79,7 +79,7 @@ export default function OrdersPage({ params }: { params: Promise<{ locale: strin
 
       {orders.isLoading && <OrderListSkeleton />}
 
-      {orders.isError && <p className="text-sm text-red-400">{t("listError")}</p>}
+      {orders.isError && <p className="text-danger text-sm">{t("listError")}</p>}
 
       {settled && items.length === 0 && (
         <div className="border-border bg-card rounded-2xl border p-10 text-center">

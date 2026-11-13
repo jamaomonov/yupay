@@ -7,12 +7,12 @@ import { isSkinItem } from "@/lib/orders-types";
 /** Tailwind classes per order status — background + text for the status chip.
  *  Shared between the logged-in and guest order-history cards. */
 export const STATUS_CLS: Record<string, string> = {
-  pending_payment: "bg-amber-500/15 text-amber-400",
-  paid: "bg-emerald-500/15 text-emerald-400",
+  pending_payment: "bg-warning/15 text-warning",
+  paid: "bg-success/15 text-success",
   fulfilling: "bg-sky-500/15 text-sky-400",
-  fulfilled: "bg-emerald-500/15 text-emerald-400",
-  delivered: "bg-emerald-500/15 text-emerald-400",
-  failed: "bg-red-500/15 text-red-400",
+  fulfilled: "bg-success/15 text-success",
+  delivered: "bg-success/15 text-success",
+  failed: "bg-danger/15 text-danger",
   cancelled: "bg-tx-dim/15 text-tx-dim",
   expired: "bg-tx-dim/15 text-tx-dim",
   refunded: "bg-tx-dim/15 text-tx-dim",

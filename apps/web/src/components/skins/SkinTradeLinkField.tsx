@@ -123,12 +123,12 @@ export function SkinTradeLinkField({
           </span>
         )}
         {verdict === "ok" && (
-          <span className="inline-flex items-center gap-1 text-emerald-400">
+          <span className="text-success inline-flex items-center gap-1">
             <Check className="h-3 w-3" aria-hidden />
             {t("verdict.ok")}
           </span>
         )}
-        {bad && <span className="text-[#FF6B6B]">{t(`verdict.${verdict}`)}</span>}
+        {bad && <span className="text-danger">{t(`verdict.${verdict}`)}</span>}
       </p>
     </div>
   );

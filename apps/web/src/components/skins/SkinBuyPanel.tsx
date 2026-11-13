@@ -151,7 +151,7 @@ export function SkinBuyPanel({
           onChange={onPay}
         />
       )}
-      {notice && <p className="text-[13px] font-semibold text-amber-400">{notice}</p>}
+      {notice && <p className="text-warning text-[13px] font-semibold">{notice}</p>}
       {signedIn ? (
         <button
           type="button"
@@ -175,7 +175,7 @@ export function SkinBuyPanel({
           {t("signIn")}
         </button>
       )}
-      {error && <p className="text-[13px] text-[#FF6B6B]">{error}</p>}
+      {error && <p className="text-danger text-[13px]">{error}</p>}
     </div>
   );
 }
