@@ -16,6 +16,7 @@ import { SkinLandingLinks } from "@/components/skins/SkinLandingLinks";
 import { SkinSearch } from "@/components/skins/SkinSearch";
 import { SkinSort } from "@/components/skins/SkinSort";
 import { routing } from "@/i18n/routing";
+import { headingStyles } from "@/lib/heading";
 import { alternates, GEO_META, localeUrl, ogLocale, pathFor, ROBOTS } from "@/lib/seo";
 import { getSkinFacets, getSkinsPage, parseSkinQuery, skinQueryString } from "@/lib/skins";
 
@@ -71,7 +72,7 @@ export default async function SkinsPage({ params, searchParams }: Props) {
         </div>
       </aside>
       <section className="min-w-0 flex-1">
-        <h1 className="font-display mb-4 text-2xl font-bold">{t("title")}</h1>
+        <h1 className={headingStyles("page", "mb-4")}>{t("title")}</h1>
         <div className="mb-3 flex flex-col gap-3 sm:flex-row">
           <SkinSearch initial={query.q ?? ""} locale={locale} query={query} />
           <div className="flex gap-2">

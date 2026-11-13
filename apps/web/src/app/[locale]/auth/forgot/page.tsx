@@ -6,6 +6,7 @@ import { useState } from "react";
 
 import { buttonStyles } from "@/lib/button";
 import { apiFetch } from "@/lib/client";
+import { headingStyles } from "@/lib/heading";
 import { inputStyles } from "@/lib/input";
 import { useLoginModal } from "@/store/useLoginModal";
 
@@ -36,9 +37,7 @@ export default function ForgotPage() {
 
   return (
     <main className="mx-auto max-w-[420px] px-4 pb-16 pt-[120px]">
-      <h1 className="font-display mb-3 text-2xl font-bold tracking-[-0.02em]">
-        {t("forgotTitle")}
-      </h1>
+      <h1 className={headingStyles("page", "mb-3")}>{t("forgotTitle")}</h1>
 
       {sent ? (
         <p className="text-[15px] leading-relaxed">{t("sent")}</p>

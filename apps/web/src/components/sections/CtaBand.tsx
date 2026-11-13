@@ -3,6 +3,7 @@ import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
 import { buttonStyles } from "@/lib/button";
+import { headingStyles } from "@/lib/heading";
 import { pathFor } from "@/lib/seo";
 
 /**
@@ -26,7 +27,7 @@ export async function CtaBand({ locale }: { locale: string }) {
           <div className="dot-band absolute inset-0" />
           <div className="relative flex flex-wrap items-center justify-between gap-8">
             <div className="max-w-[480px]">
-              <h2 className="font-display text-bg text-[clamp(2.4rem,4.5vw,3.75rem)] font-extrabold leading-[0.95] tracking-[-0.04em]">
+              <h2 className={headingStyles("display", "text-bg")}>
                 <span className="block">{t("titleLine1")}</span>
                 <span className="block">{t("titleLine2")}</span>
               </h2>

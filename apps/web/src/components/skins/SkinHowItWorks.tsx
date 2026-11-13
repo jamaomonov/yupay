@@ -1,5 +1,7 @@
 import { useTranslations } from "next-intl";
 
+import { headingStyles } from "@/lib/heading";
+
 /** In the order a purchase happens; each key is `web.skins.how.<step>.{title,body}`. */
 const STEPS = ["link", "pay", "accept", "protect", "refund"] as const;
 
@@ -13,7 +15,7 @@ export function SkinHowItWorks() {
   const t = useTranslations("web.skins.how");
   return (
     <section className="mt-8" aria-labelledby="skin-how">
-      <h2 id="skin-how" className="mb-3 text-[17px] font-bold">
+      <h2 id="skin-how" className={headingStyles("section", "mb-3")}>
         {t("title")}
       </h2>
       <ol className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">

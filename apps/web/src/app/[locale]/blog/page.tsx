@@ -6,9 +6,10 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import type { Metadata } from "next";
 
 import { BlogPostCard } from "@/components/blog/BlogPostCard";
-import { buttonStyles } from "@/lib/button";
 import { routing } from "@/i18n/routing";
 import { listPublishedPosts } from "@/lib/blog";
+import { buttonStyles } from "@/lib/button";
+import { headingStyles } from "@/lib/heading";
 import { alternates, GEO_META, localeUrl, ROBOTS, ogLocale, pathFor, truncate } from "@/lib/seo";
 
 export const revalidate = 300;
@@ -65,9 +66,7 @@ export default async function BlogIndexPage({
 
   return (
     <main id="main-content" className="mx-auto max-w-[1200px] px-6 pb-20 pt-28 sm:px-10">
-      <h1 className="font-display text-3xl font-bold tracking-[-0.03em] sm:text-4xl">
-        {t("title")}
-      </h1>
+      <h1 className={headingStyles("page")}>{t("title")}</h1>
       <p className="text-tx-mute mt-3 max-w-[640px] text-[16px] leading-relaxed">
         {t("description")}
       </p>

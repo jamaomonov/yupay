@@ -7,6 +7,7 @@ import { Suspense, use, useEffect, useRef, useState } from "react";
 
 import { useAuth } from "@/lib/auth";
 import { buttonStyles } from "@/lib/button";
+import { headingStyles } from "@/lib/heading";
 import { pathFor } from "@/lib/seo";
 import { useLoginModal } from "@/store/useLoginModal";
 
@@ -52,9 +53,7 @@ function VerifyInner({ locale }: { locale: string }) {
   if (status === "invalid") {
     return (
       <main className="mx-auto max-w-[420px] px-4 pb-16 pt-[120px] text-center">
-        <h1 className="font-display mb-4 text-2xl font-bold tracking-[-0.02em]">
-          {t("verifyRequiredTitle")}
-        </h1>
+        <h1 className={headingStyles("page", "mb-4")}>{t("verifyRequiredTitle")}</h1>
         <p className="text-danger text-[15px] leading-relaxed">{t("verifyInvalid")}</p>
         {/* The copy says to ask for a new link from the sign-in form — so open
             it, instead of leaving the reader to find it (2026-11-13 review). */}

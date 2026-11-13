@@ -13,6 +13,7 @@ import { StoreFilter } from "@/components/store/StoreFilter";
 import { routing } from "@/i18n/routing";
 import { brandPath } from "@/lib/brand-href";
 import { getBrands, getCategories, type BrandSummary, type CategoryOut } from "@/lib/catalog";
+import { headingStyles } from "@/lib/heading";
 import { alternates, GEO_META, localeUrl, ogLocale, pathFor, ROBOTS } from "@/lib/seo";
 
 export const revalidate = 300;
@@ -226,7 +227,7 @@ export default async function StorePage({ params }: { params: Promise<{ locale: 
 
         {/* How it works */}
         <section className="mt-20">
-          <h2 className="font-display text-2xl font-bold tracking-[-0.02em]">{t("hubHowTitle")}</h2>
+          <h2 className={headingStyles("section")}>{t("hubHowTitle")}</h2>
           <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
             {steps.map((s, i) => (
               <div key={i} className="border-border bg-card rounded-lg border p-6">
@@ -243,9 +244,7 @@ export default async function StorePage({ params }: { params: Promise<{ locale: 
         {/* Per-brand guide links — feeds the how-to pages internal link equity */}
         {allBrands.length > 0 && (
           <section className="mt-14">
-            <h2 className="font-display text-2xl font-bold tracking-[-0.02em]">
-              {t("hubGuidesTitle")}
-            </h2>
+            <h2 className={headingStyles("section")}>{t("hubGuidesTitle")}</h2>
             <div className="mt-6 flex flex-wrap gap-3">
               {allBrands.map((b) => (
                 <Link
@@ -263,7 +262,7 @@ export default async function StorePage({ params }: { params: Promise<{ locale: 
 
         {/* Cross-brand FAQ (matches the FAQPage schema above) */}
         <section className="mt-14">
-          <h2 className="font-display text-2xl font-bold tracking-[-0.02em]">{t("hubFaqTitle")}</h2>
+          <h2 className={headingStyles("section")}>{t("hubFaqTitle")}</h2>
           <div className="border-border/70 mt-6 max-w-[820px] border-y">
             {hubFaqs.map((f, i) => (
               <details key={i} className="border-border/70 group border-b last:border-b-0">

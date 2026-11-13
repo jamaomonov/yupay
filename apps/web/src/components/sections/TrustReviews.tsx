@@ -5,6 +5,7 @@ import { getTranslations } from "next-intl/server";
 import type { FeaturedReview } from "@/lib/reviews";
 
 import { ReviewAvatar } from "@/components/store/ReviewAvatar";
+import { headingStyles } from "@/lib/heading";
 import { isOptimizable } from "@/lib/image";
 import { getFeaturedReviews } from "@/lib/reviews";
 import { numberLocale } from "@/lib/seo";
@@ -163,9 +164,7 @@ export async function TrustReviews({ locale }: { locale: string }) {
         <div className="text-primary font-mono text-xs font-semibold uppercase tracking-[0.16em]">
           [ 03 / {t("eyebrow")} ]
         </div>
-        <h2 className="font-display mt-3 text-[clamp(1.9rem,3.5vw,3rem)] font-extrabold leading-[0.95] tracking-[-0.035em]">
-          {t("title")}
-        </h2>
+        <h2 className={headingStyles("display", "mt-3")}>{t("title")}</h2>
 
         <div className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-3">
           {rating !== null && stats && (

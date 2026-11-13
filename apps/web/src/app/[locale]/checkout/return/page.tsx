@@ -1,8 +1,10 @@
-import type { Metadata } from "next";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
+import type { Metadata } from "next";
+
 import { buttonStyles } from "@/lib/button";
+import { headingStyles } from "@/lib/heading";
 import { NOINDEX, pathFor } from "@/lib/seo";
 
 /**
@@ -42,7 +44,7 @@ export default async function CheckoutReturnPage({
 
   return (
     <main className="mx-auto max-w-[560px] px-4 pb-24 pt-[120px] text-center">
-      <h1 className="font-display mb-3 text-3xl font-bold tracking-[-0.02em]">{t("title")}</h1>
+      <h1 className={headingStyles("page", "mb-3")}>{t("title")}</h1>
       <p className="text-tx-mute mb-8 text-[15px] leading-relaxed">{t("body")}</p>
       <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
         <Link

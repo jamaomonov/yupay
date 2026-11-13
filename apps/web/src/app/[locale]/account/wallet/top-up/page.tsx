@@ -17,6 +17,7 @@ import {
 import { useAuth } from "@/lib/auth";
 import { buttonStyles } from "@/lib/button";
 import { ApiError, apiFetch } from "@/lib/client";
+import { headingStyles } from "@/lib/heading";
 import {
   methodVisibility,
   providerStatusMap,
@@ -140,9 +141,7 @@ export default function WalletTopUpPage({ params }: { params: Promise<{ locale: 
   if (!user) {
     return (
       <main className="mx-auto max-w-[640px] px-4 pb-24 pt-[120px]">
-        <h1 className="font-display mb-6 text-3xl font-bold tracking-[-0.02em]">
-          {t("topUpTitle")}
-        </h1>
+        <h1 className={headingStyles("page", "mb-6")}>{t("topUpTitle")}</h1>
         <div className="border-border bg-card rounded-2xl border p-10 text-center">
           <p className="text-tx-mute mb-5">{t("guestBody")}</p>
           {/* Signing in is the action; the catalogue is the way out. Offering
@@ -173,7 +172,7 @@ export default function WalletTopUpPage({ params }: { params: Promise<{ locale: 
       >
         ← {t("title")}
       </Link>
-      <h1 className="font-display mb-6 text-3xl font-bold tracking-[-0.02em]">{t("topUpTitle")}</h1>
+      <h1 className={headingStyles("page", "mb-6")}>{t("topUpTitle")}</h1>
 
       <section className="border-border bg-card mb-4 rounded-2xl border p-5">
         <label className="mb-2 block">

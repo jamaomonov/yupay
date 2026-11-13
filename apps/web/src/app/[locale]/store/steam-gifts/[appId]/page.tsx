@@ -13,6 +13,7 @@ import { JsonLd } from "@/components/JsonLd";
 import { routing } from "@/i18n/routing";
 import { getBrandDetail, getProductDetail } from "@/lib/catalog";
 import { getGiftDetail, type GiftAppDetail } from "@/lib/gifts";
+import { headingStyles } from "@/lib/heading";
 import { isOptimizable } from "@/lib/image";
 import { alternates, GEO_META, localeUrl, ogLocale, pathFor, ROBOTS, truncate } from "@/lib/seo";
 
@@ -208,9 +209,7 @@ export default async function GiftGamePage({
               )}
             </div>
 
-            <h1 className="font-display text-[clamp(1.9rem,3.2vw,2.75rem)] font-bold leading-tight tracking-[-0.025em]">
-              {detail.name}
-            </h1>
+            <h1 className={headingStyles("page")}>{detail.name}</h1>
 
             <DlcNote type={detail.type} />
 

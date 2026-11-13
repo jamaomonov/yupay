@@ -18,6 +18,7 @@ import { SkinOffersProvider } from "@/components/skins/SkinOffers";
 import { SkinPriceBlock } from "@/components/skins/SkinPriceBlock";
 import { SkinWearPicker } from "@/components/skins/SkinWearPicker";
 import { routing } from "@/i18n/routing";
+import { headingStyles } from "@/lib/heading";
 import { alternates, GEO_META, localeUrl, ogLocale, pathFor, ROBOTS } from "@/lib/seo";
 import { skinFaq, skinFullName, skinProductLd } from "@/lib/skin-seo";
 import { DEFAULT_SORT, displayPrice, getSkinDetail, skinQueryString } from "@/lib/skins";
@@ -104,7 +105,7 @@ export default async function SkinPage({ params }: Props) {
     <>
       {worn && item.family.length > 1 && (
         <div className="space-y-2">
-          <h2 className="text-[15px] font-bold">{t("otherWears")}</h2>
+          <h2 className={headingStyles("section")}>{t("otherWears")}</h2>
           <SkinWearPicker family={item.family} current={item} locale={locale} />
         </div>
       )}
@@ -160,7 +161,7 @@ export default async function SkinPage({ params }: Props) {
                 {item.souvenir && <span className="text-yellow-400">Souvenir </span>}
                 {item.weapon ?? category}
               </p>
-              <h1 className="font-display text-2xl font-bold md:text-3xl">
+              <h1 className={headingStyles("page")}>
                 {name}
                 {item.phase && <span className="text-tx-mute"> · {item.phase}</span>}
               </h1>
@@ -182,7 +183,7 @@ export default async function SkinPage({ params }: Props) {
 
         {worn && (
           <section className="mt-8">
-            <h2 className="mb-3 text-[17px] font-bold">
+            <h2 className={headingStyles("section", "mb-3")}>
               {t("offers")}{" "}
               <span className="text-tx-dim text-[14px] tabular-nums">{item.count}</span>
             </h2>

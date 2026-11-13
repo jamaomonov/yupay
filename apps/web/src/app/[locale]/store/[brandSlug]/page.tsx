@@ -36,6 +36,8 @@ import {
   getProductDetail,
   type ProductDetail,
 } from "@/lib/catalog";
+import { formatDate } from "@/lib/format-date";
+import { headingStyles } from "@/lib/heading";
 import { isOptimizable } from "@/lib/image";
 import { getBrandReviews, type ReviewPage } from "@/lib/reviews";
 import {
@@ -49,7 +51,6 @@ import {
   ROBOTS,
   truncate,
 } from "@/lib/seo";
-import { formatDate } from "@/lib/format-date";
 
 const CURRENCY = "UZS";
 
@@ -371,9 +372,7 @@ export default async function BrandPage({
       {brand.slug === "steam" && <SteamSkinsPromo locale={locale} />}
       {brand.instructions && (
         <section className="mt-14 scroll-mt-[88px]">
-          <h2 className="font-display text-xl font-bold tracking-[-0.02em]">
-            {t(`instructionsTitle${v}`)}
-          </h2>
+          <h2 className={headingStyles("section")}>{t(`instructionsTitle${v}`)}</h2>
           <div className="text-tx-mute mt-4 whitespace-pre-line text-[15px] leading-relaxed">
             {brand.instructions}
           </div>
@@ -388,13 +387,13 @@ export default async function BrandPage({
       )}
       {about && (
         <section className="mt-14 scroll-mt-[88px]">
-          <h2 className="font-display text-xl font-bold tracking-[-0.02em]">{t("aboutTitle")}</h2>
+          <h2 className={headingStyles("section")}>{t("aboutTitle")}</h2>
           <AboutText text={about} moreLabel={t("readMore")} lessLabel={t("readLess")} />
         </section>
       )}
       {faqs.length > 0 && (
         <section className="mt-14 scroll-mt-[88px]">
-          <h2 className="font-display text-xl font-bold tracking-[-0.02em]">{t("faqTitle")}</h2>
+          <h2 className={headingStyles("section")}>{t("faqTitle")}</h2>
           <div className="border-border/70 mt-5 border-y">
             {faqs.map((f) => (
               <details key={f.id} className="border-border/70 group border-b last:border-b-0">
@@ -624,7 +623,7 @@ export default async function BrandPage({
         <BrandBlogBlock brandSlug={brand.slug} brandName={brand.name} locale={locale} />
 
         <section id="reviews" className="mt-16 scroll-mt-[88px]">
-          <h2 className="font-display text-xl font-bold tracking-[-0.02em]">{t2("title")}</h2>
+          <h2 className={headingStyles("section")}>{t2("title")}</h2>
           <div className="mt-5 max-w-[760px]">
             <RatingSummary stats={reviews.stats} />
             {/* useSearchParams() inside WriteReviewPanel needs a Suspense

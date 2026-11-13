@@ -3,6 +3,7 @@ import Image from "next/image";
 import { getTranslations } from "next-intl/server";
 
 import { buttonStyles } from "@/lib/button";
+import { headingStyles } from "@/lib/heading";
 import { TELEGRAM_MINIAPP_URL } from "@/lib/links";
 
 const FEATURES: { key: string; Icon: typeof Zap }[] = [
@@ -44,7 +45,7 @@ export async function AppShowcase() {
               <div className="text-primary font-mono text-xs font-semibold uppercase tracking-[0.16em]">
                 [ 02 / {t("eyebrow")} ]
               </div>
-              <h2 className="font-display mt-3 text-[clamp(2rem,3.8vw,3.2rem)] font-extrabold leading-[0.98] tracking-[-0.04em]">
+              <h2 className={headingStyles("display", "mt-3")}>
                 <span className="block">{t("titleLine1")}</span>
                 <span className="text-primary block">{t("titleLine2")}</span>
               </h2>

@@ -12,6 +12,8 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { PromoCodeCard } from "@/components/wallet/PromoCodeCard";
 import { useAuth } from "@/lib/auth";
 import { buttonStyles } from "@/lib/button";
+import { formatDate } from "@/lib/format-date";
+import { headingStyles } from "@/lib/heading";
 import { formatUzs, pathFor } from "@/lib/seo";
 import {
   formatLedgerAmount,
@@ -24,7 +26,6 @@ import {
 } from "@/lib/wallet";
 import { spendableBalance } from "@/lib/wallet-balance";
 import { useLoginModal } from "@/store/useLoginModal";
-import { formatDate } from "@/lib/format-date";
 
 /** One page of history. Fifty was a silent truncation for an active customer. */
 const PAGE = 25;
@@ -66,7 +67,7 @@ export default function WalletPage({ params }: { params: Promise<{ locale: strin
   if (!user) {
     return (
       <main className="mx-auto max-w-[640px] px-4 pb-24 pt-[120px]">
-        <h1 className="font-display mb-6 text-3xl font-bold tracking-[-0.02em]">{t("title")}</h1>
+        <h1 className={headingStyles("page", "mb-6")}>{t("title")}</h1>
         <div className="border-border bg-card rounded-2xl border p-10 text-center">
           <WalletMark size={32} className="text-tx-dim mx-auto mb-4" />
           <p className="text-tx-mute mb-5">{t("guestBody")}</p>
@@ -99,7 +100,7 @@ export default function WalletPage({ params }: { params: Promise<{ locale: strin
 
   return (
     <main className="mx-auto max-w-[640px] px-4 pb-24 pt-[120px]">
-      <h1 className="font-display mb-6 text-3xl font-bold tracking-[-0.02em]">{t("title")}</h1>
+      <h1 className={headingStyles("page", "mb-6")}>{t("title")}</h1>
 
       {/* `useSearchParams` bails this page out of the static export unless it
           sits behind a boundary — every other call site in this app is wrapped

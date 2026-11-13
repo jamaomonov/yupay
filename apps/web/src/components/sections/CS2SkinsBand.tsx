@@ -8,6 +8,7 @@ import type { SkinItem } from "@/lib/skins";
 
 import { buttonStyles } from "@/lib/button";
 import { skinsEnabled } from "@/lib/features";
+import { headingStyles } from "@/lib/heading";
 import { isOptimizable } from "@/lib/image";
 import { numberLocale } from "@/lib/seo";
 import { pathFor } from "@/lib/seo";
@@ -114,9 +115,7 @@ export async function CS2SkinsBand({ locale }: { locale: string }) {
           <span className="border-primary/40 text-primary inline-block rounded-full border px-3 py-1 font-mono text-[11px] font-semibold uppercase tracking-[0.14em]">
             {t("eyebrow")}
           </span>
-          <h2 className="font-display mt-5 text-[clamp(2.2rem,5vw,3.6rem)] font-extrabold leading-[1.05] tracking-tight">
-            {t("title")}
-          </h2>
+          <h2 className={headingStyles("display", "mt-5")}>{t("title")}</h2>
           <p className="text-tx-mute mt-4 max-w-md text-[15px] leading-relaxed">{t("subtitle")}</p>
 
           <ul className="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-[13px] font-semibold">

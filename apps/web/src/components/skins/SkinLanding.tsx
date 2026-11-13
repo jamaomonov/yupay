@@ -8,6 +8,7 @@ import type { SkinItem } from "@/lib/skins";
 import { JsonLd } from "@/components/JsonLd";
 import { SkinCard } from "@/components/skins/SkinCard";
 import { SkinFaq } from "@/components/skins/SkinFaq";
+import { headingStyles } from "@/lib/heading";
 import { localeUrl, pathFor } from "@/lib/seo";
 
 interface Crumb {
@@ -76,7 +77,7 @@ export async function SkinLanding({
           ),
         )}
       </nav>
-      <h1 className="font-display text-2xl font-bold md:text-3xl">{h1}</h1>
+      <h1 className={headingStyles("page")}>{h1}</h1>
       {intro && <p className="text-tx-mute mt-2 max-w-2xl text-[14px]">{intro}</p>}
 
       {links && links.items.length > 0 && (

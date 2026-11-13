@@ -7,6 +7,7 @@ import type { GuestOrder } from "@/lib/guest-orders";
 
 import { GuestOrderCard } from "@/components/order/GuestOrderCard";
 import { buttonStyles } from "@/lib/button";
+import { headingStyles } from "@/lib/heading";
 import { pathFor } from "@/lib/seo";
 
 /**
@@ -21,9 +22,7 @@ export function GuestOrdersList({ orders, locale }: { orders: GuestOrder[]; loca
 
   return (
     <>
-      <h1 className="font-display mb-2 text-3xl font-bold tracking-[-0.02em]">
-        {t("guestListTitle")}
-      </h1>
+      <h1 className={headingStyles("page", "mb-2")}>{t("guestListTitle")}</h1>
       <p className="text-tx-dim mb-6 text-sm">{t("guestListHint")}</p>
 
       {orders.length === 0 ? (

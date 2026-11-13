@@ -13,12 +13,14 @@ import { ArticleEngagementProvider } from "@/components/blog/ArticleEngagement";
 import { ArticleStickyBuy } from "@/components/blog/ArticleStickyBuy";
 import { buyFromPrice, BuyCard } from "@/components/blog/BuyCard";
 import { RelatedPosts } from "@/components/blog/RelatedPosts";
-import { BlogLocaleBridge } from "@/components/LocaleAlternates";
 import { JsonLd } from "@/components/JsonLd";
+import { BlogLocaleBridge } from "@/components/LocaleAlternates";
 import { routing } from "@/i18n/routing";
 import { eventChip, getPublishedBlogEntries, getPublishedPost, type PostKind } from "@/lib/blog";
 import { articleJsonLd, breadcrumbJsonLd, faqJsonLd, howToJsonLd } from "@/lib/blog-jsonld";
 import { getBrandDetail } from "@/lib/catalog";
+import { formatDate } from "@/lib/format-date";
+import { headingStyles } from "@/lib/heading";
 import { isOptimizable } from "@/lib/image";
 import {
   blogAlternates,
@@ -30,7 +32,6 @@ import {
   ROBOTS,
   truncate,
 } from "@/lib/seo";
-import { formatDate } from "@/lib/format-date";
 
 export const revalidate = 300;
 
@@ -144,9 +145,7 @@ export default async function BlogArticlePage({
             {chip === "live" ? <span className="text-primary">{t("live")}</span> : null}
             {chip === "ended" ? <span className="text-tx-dim">{t("ended")}</span> : null}
           </div>
-          <h1 className="font-display mt-3 text-3xl font-bold tracking-[-0.03em] sm:text-4xl">
-            {post.title}
-          </h1>
+          <h1 className={headingStyles("page", "mt-3")}>{post.title}</h1>
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <p className="text-tx-dim font-mono text-[12px]">
               {t("published", { date: published })}
@@ -171,7 +170,7 @@ export default async function BlogArticlePage({
           </div>
           {post.faqs.length > 0 ? (
             <section className="mt-12">
-              <h2 className="font-display text-xl font-semibold tracking-[-0.02em]">{t("faqs")}</h2>
+              <h2 className={headingStyles("section")}>{t("faqs")}</h2>
               <div className="mt-4 flex flex-col">
                 {post.faqs.map((item) => (
                   <details

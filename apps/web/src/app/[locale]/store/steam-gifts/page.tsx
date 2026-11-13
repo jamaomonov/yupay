@@ -13,6 +13,7 @@ import { HighlightChips } from "@/components/store/HighlightChips";
 import { routing } from "@/i18n/routing";
 import { getBrandDetail } from "@/lib/catalog";
 import { getGiftsHot, getGiftsPage } from "@/lib/gifts";
+import { headingStyles } from "@/lib/heading";
 import {
   alternates,
   firstNonEmpty,
@@ -144,9 +145,7 @@ export default async function SteamGiftsPage({ params }: { params: Promise<{ loc
         )}
 
         <section className="mt-10">
-          <h2 className="font-display text-lg font-bold tracking-[-0.02em]">
-            {t("hero.howTitle")}
-          </h2>
+          <h2 className={headingStyles("section")}>{t("hero.howTitle")}</h2>
           <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-3">
             {steps.map((step, i) => (
               <div key={i} className="border-border bg-card rounded-lg border p-6">

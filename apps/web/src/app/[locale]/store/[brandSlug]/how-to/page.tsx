@@ -19,6 +19,7 @@ import {
   type LocaleMap,
   type ProductDetail,
 } from "@/lib/catalog";
+import { headingStyles } from "@/lib/heading";
 import { isOptimizable } from "@/lib/image";
 import {
   alternates,
@@ -256,9 +257,7 @@ export default async function HowToPage({
           <span className="text-tx-mute">{t(`breadcrumbHowTo${v}`)}</span>
         </nav>
 
-        <h1 className="font-display text-[clamp(1.8rem,4vw,2.6rem)] font-bold leading-tight tracking-[-0.02em]">
-          {title}
-        </h1>
+        <h1 className={headingStyles("page")}>{title}</h1>
         {intro && <p className="text-tx-mute mt-4 text-[15px] leading-relaxed">{intro}</p>}
 
         {/* Step-by-step */}

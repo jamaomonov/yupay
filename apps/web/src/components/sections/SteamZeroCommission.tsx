@@ -4,6 +4,7 @@ import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
 import { buttonStyles } from "@/lib/button";
+import { headingStyles } from "@/lib/heading";
 import { pathFor } from "@/lib/seo";
 
 /** Card networks (Uzcard, Humo) + the acquirer wordmarks customers actually
@@ -134,7 +135,7 @@ export async function SteamZeroCommission({ locale }: { locale: string }) {
 
         {/* Headline + subcopy — left-aligned, giant, "0%" accented in lime. */}
         <div className="mt-8 max-w-[960px] sm:mt-10">
-          <h2 className="font-display text-foreground text-balance text-[clamp(2.25rem,5.6vw,4.25rem)] font-extrabold leading-[0.96] tracking-[-0.035em]">
+          <h2 className={headingStyles("display", "text-foreground text-balance")}>
             {accentZero(t("title"))}
           </h2>
           <p className="text-tx-mute mt-5 max-w-[54ch] text-[15px] leading-relaxed sm:text-base">

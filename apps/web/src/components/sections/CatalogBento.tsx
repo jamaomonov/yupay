@@ -4,6 +4,7 @@ import { getTranslations } from "next-intl/server";
 
 import { BrandTile } from "@/components/store/BrandTile";
 import { getBrands, type BrandSummary } from "@/lib/catalog";
+import { headingStyles } from "@/lib/heading";
 import { pathFor } from "@/lib/seo";
 
 /**
@@ -45,7 +46,7 @@ export async function CatalogBento({ locale }: { locale: string }) {
             <div className="text-primary font-mono text-xs font-semibold uppercase tracking-[0.16em]">
               [ 01 / {t("eyebrow")} ]
             </div>
-            <h2 className="font-display mt-3 text-[clamp(2.2rem,4vw,3.4rem)] font-extrabold leading-[0.98] tracking-[-0.04em]">
+            <h2 className={headingStyles("display", "mt-3")}>
               <span className="block">{t("titleLine1")}</span>
               <span className="text-tx-mute block">{t("titleLine2")}</span>
             </h2>

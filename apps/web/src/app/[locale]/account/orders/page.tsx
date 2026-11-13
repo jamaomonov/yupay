@@ -16,6 +16,7 @@ import { useAuth } from "@/lib/auth";
 import { buttonStyles } from "@/lib/button";
 import { apiFetch } from "@/lib/client";
 import { listGuestOrders } from "@/lib/guest-orders";
+import { headingStyles } from "@/lib/heading";
 import { getMyReviews } from "@/lib/reviews";
 import { pathFor } from "@/lib/seo";
 
@@ -74,7 +75,7 @@ export default function OrdersPage({ params }: { params: Promise<{ locale: strin
 
   return (
     <main className="mx-auto max-w-[640px] px-4 pb-24 pt-[120px]">
-      <h1 className="font-display mb-6 text-3xl font-bold tracking-[-0.02em]">{t("title")}</h1>
+      <h1 className={headingStyles("page", "mb-6")}>{t("title")}</h1>
 
       {orders.isLoading && <OrderListSkeleton />}
 

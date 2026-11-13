@@ -48,6 +48,7 @@ import {
   saveGuestOrder,
 } from "@/lib/guest-orders";
 import { takeHandoff } from "@/lib/handoff";
+import { headingStyles } from "@/lib/heading";
 import { isOptimizable } from "@/lib/image";
 import { inputStyles } from "@/lib/input";
 import { IntentRefused, PENDING_ORDER_REUSE_MS, parseIntentFailure } from "@/lib/intent-failure";
@@ -2216,7 +2217,7 @@ export function PurchasePanel({
           {/* One heading over the whole choice, whatever shape it takes: a free
               amount and a package grid are two ways of answering the same
               question, and two competing titles made them look like two steps. */}
-          <h2 className="font-display text-xl font-bold tracking-[-0.02em]">{chooseTitle}</h2>
+          <h2 className={headingStyles("section")}>{chooseTitle}</h2>
           {products.map((product) => {
             // A variable-amount product (Steam wallet top-up) has exactly one
             // SKU with nothing to pick — the customer types the amount, so
@@ -2410,9 +2411,7 @@ export function PurchasePanel({
           className="scroll-mt-[88px] lg:sticky lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:self-start"
         >
           <div className="border-border rounded-xl border bg-[linear-gradient(135deg,hsl(var(--card)),hsl(var(--bg)))] p-6 lg:p-5">
-            <h2 className="font-display text-lg font-bold tracking-[-0.02em]">
-              {t("summaryTitle")}
-            </h2>
+            <h2 className={headingStyles("section")}>{t("summaryTitle")}</h2>
 
             <div className="border-border/70 mt-4 flex items-center justify-between gap-3 border-b pb-4 lg:mt-3 lg:pb-3">
               {isMultiCart ? (

@@ -8,6 +8,7 @@ import { Suspense, useState } from "react";
 
 import { buttonStyles } from "@/lib/button";
 import { ApiError, apiFetch } from "@/lib/client";
+import { headingStyles } from "@/lib/heading";
 import { inputStyles } from "@/lib/input";
 import { pathFor } from "@/lib/seo";
 import { useLoginModal } from "@/store/useLoginModal";
@@ -49,9 +50,7 @@ function ResetInner() {
   if (status === "ok") {
     return (
       <main className="mx-auto max-w-[420px] px-4 pb-16 pt-[120px]">
-        <h1 className="font-display mb-6 text-2xl font-bold tracking-[-0.02em]">
-          {t("doneTitle")}
-        </h1>
+        <h1 className={headingStyles("page", "mb-6")}>{t("doneTitle")}</h1>
         <p className="text-[15px] leading-relaxed">
           {t("done")}{" "}
           <button type="button" onClick={openLogin} className="text-primary hover:underline">
@@ -65,9 +64,7 @@ function ResetInner() {
   if (status === "invalid") {
     return (
       <main className="mx-auto max-w-[420px] px-4 pb-16 pt-[120px]">
-        <h1 className="font-display mb-3 text-2xl font-bold tracking-[-0.02em]">
-          {t("forgotTitle")}
-        </h1>
+        <h1 className={headingStyles("page", "mb-3")}>{t("forgotTitle")}</h1>
         <p className="text-danger text-[15px] leading-relaxed">{t("invalid")}</p>
         {/* Not a dead end: the next step is a fresh link. */}
         <Link
@@ -82,7 +79,7 @@ function ResetInner() {
 
   return (
     <main className="mx-auto max-w-[420px] px-4 pb-16 pt-[120px]">
-      <h1 className="font-display mb-6 text-2xl font-bold tracking-[-0.02em]">{t("newTitle")}</h1>
+      <h1 className={headingStyles("page", "mb-6")}>{t("newTitle")}</h1>
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <label className="block">
@@ -115,7 +112,7 @@ function ResetFallback() {
   const t = useTranslations("web.passwordReset");
   return (
     <main className="mx-auto max-w-[420px] px-4 pb-16 pt-[120px]">
-      <h1 className="font-display mb-6 text-2xl font-bold tracking-[-0.02em]">{t("newTitle")}</h1>
+      <h1 className={headingStyles("page", "mb-6")}>{t("newTitle")}</h1>
     </main>
   );
 }

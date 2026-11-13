@@ -1,7 +1,9 @@
 import { getTranslations } from "next-intl/server";
 
 import { BlogPostCard } from "./BlogPostCard";
+
 import { listBrandPosts } from "@/lib/blog";
+import { headingStyles } from "@/lib/heading";
 
 export async function RelatedPosts({
   brandSlug,
@@ -22,9 +24,7 @@ export async function RelatedPosts({
 
   return (
     <section className="mt-12">
-      <h2 className="font-display text-xl font-semibold tracking-[-0.02em]">
-        {t("moreFromBrand", { name: brandName })}
-      </h2>
+      <h2 className={headingStyles("section")}>{t("moreFromBrand", { name: brandName })}</h2>
       <div className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
         {items.map((post) => (
           <BlogPostCard key={post.id} post={post} locale={locale} />

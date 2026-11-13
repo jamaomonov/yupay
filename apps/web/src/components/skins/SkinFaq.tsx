@@ -3,6 +3,7 @@ import { ChevronDown } from "lucide-react";
 import type { FaqEntry } from "@/lib/skin-seo";
 
 import { JsonLd } from "@/components/JsonLd";
+import { headingStyles } from "@/lib/heading";
 
 /**
  * The item's questions and answers, open on the page and as FAQPage JSON-LD — the same
@@ -24,7 +25,7 @@ export function SkinFaq({ title, entries }: { title: string; entries: FaqEntry[]
   return (
     <section className="mt-8" aria-labelledby="skin-faq">
       <JsonLd data={ld} />
-      <h2 id="skin-faq" className="mb-3 text-[17px] font-bold">
+      <h2 id="skin-faq" className={headingStyles("section", "mb-3")}>
         {title}
       </h2>
       <div className="space-y-2">
