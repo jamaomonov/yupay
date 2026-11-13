@@ -9,6 +9,7 @@ import type { SkinTradeOut } from "@/lib/orders-types";
 
 import { buttonStyles } from "@/lib/button";
 import { pathFor } from "@/lib/seo";
+import { formatDate } from "@/lib/format-date";
 
 const SUPPORT_URL = "https://t.me/yupay_support";
 
@@ -31,10 +32,8 @@ function useMinuteTick(active: boolean): void {
 export function SkinTradeCard({ trade, locale }: { trade: SkinTradeOut; locale: string }) {
   const t = useTranslations("web.skins.trade");
   useMinuteTick(trade.state === "offer_sent");
-  const time = (iso: string) =>
-    new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
-  const date = (iso: string) =>
-    new Intl.DateTimeFormat(locale, { day: "numeric", month: "long" }).format(new Date(iso));
+  const time = (iso: string) => formatDate(locale, iso, "time");
+  const date = (iso: string) => formatDate(locale, iso, "dayMonth");
 
   return (
     <section className="border-border bg-card space-y-3 rounded-xl border p-4">

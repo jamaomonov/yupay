@@ -1,12 +1,17 @@
 "use client";
 
 import { Loader2 } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { useState } from "react";
 
 import { buttonStyles } from "@/lib/button";
 import { apiFetch } from "@/lib/client";
+import { useLoginModal } from "@/store/useLoginModal";
 
+/** Strings live in `web.passwordReset` (hard-coded Russian on uz/en until 2026-11-13). */
 export default function ForgotPage() {
+  const t = useTranslations("web.passwordReset");
+  const openLogin = useLoginModal((s) => s.open);
   const [email, setEmail] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [sent, setSent] = useState(false);
@@ -30,34 +35,44 @@ export default function ForgotPage() {
 
   return (
     <main className="mx-auto max-w-[420px] px-4 pb-16 pt-[120px]">
-      <h1 className="font-display mb-6 text-2xl font-bold tracking-[-0.02em]">Сброс пароля</h1>
+      <h1 className="font-display mb-3 text-2xl font-bold tracking-[-0.02em]">
+        {t("forgotTitle")}
+      </h1>
 
       {sent ? (
-        <p className="text-[15px] leading-relaxed">
-          Если адрес зарегистрирован, мы отправили письмо со ссылкой для сброса пароля.
-        </p>
+        <p className="text-[15px] leading-relaxed">{t("sent")}</p>
       ) : (
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <label className="block">
-            <span className="text-tx-mute mb-1.5 block text-[13px] font-semibold">
-              Электронная почта
-            </span>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => {
-                setEmail(e.target.value);
-              }}
-              required
-              className="border-border bg-card focus:border-primary rounded-btn h-[46px] w-full border px-3.5 text-[15px] outline-none transition"
-            />
-          </label>
+        <>
+          <p className="text-tx-mute mb-6 text-[15px] leading-relaxed">{t("forgotIntro")}</p>
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            <label className="block">
+              <span className="text-tx-mute mb-1.5 block text-[13px] font-semibold">
+                {t("emailLabel")}
+              </span>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                }}
+                required
+                className="border-border-2 bg-card focus:border-primary rounded-btn h-[46px] w-full border px-3.5 text-[15px] outline-none transition"
+              />
+            </label>
 
-          <button type="submit" disabled={submitting} className={buttonStyles({ size: "lg" })}>
-            {submitting ? <Loader2 size={18} className="animate-spin" /> : "Отправить ссылку"}
-          </button>
-        </form>
+            <button type="submit" disabled={submitting} className={buttonStyles({ size: "lg" })}>
+              {submitting ? <Loader2 size={18} className="animate-spin" /> : t("send")}
+            </button>
+          </form>
+        </>
       )}
+      <button
+        type="button"
+        onClick={openLogin}
+        className="text-tx-mute hover:text-foreground mt-6 text-[14px] font-semibold transition"
+      >
+        ← {t("backToLogin")}
+      </button>
     </main>
   );
 }

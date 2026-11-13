@@ -6,6 +6,7 @@ import { EngagementStats } from "./EngagementStats";
 import { eventChip, type BlogListItem, type PostKind } from "@/lib/blog";
 import { isOptimizable } from "@/lib/image";
 import { pathFor } from "@/lib/seo";
+import { formatDate } from "@/lib/format-date";
 
 const KIND_KEY: Record<PostKind, "kind.guide" | "kind.news" | "kind.update" | "kind.event"> = {
   guide: "kind.guide",
@@ -15,7 +16,7 @@ const KIND_KEY: Record<PostKind, "kind.guide" | "kind.news" | "kind.update" | "k
 };
 
 function formatDay(locale: string, iso: string): string {
-  return new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(new Date(iso));
+  return formatDate(locale, iso, "date");
 }
 
 export async function BlogPostCard({

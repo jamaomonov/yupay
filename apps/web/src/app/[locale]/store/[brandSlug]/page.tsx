@@ -49,6 +49,7 @@ import {
   ROBOTS,
   truncate,
 } from "@/lib/seo";
+import { formatDate } from "@/lib/format-date";
 
 const CURRENCY = "UZS";
 
@@ -654,9 +655,7 @@ export default async function BrandPage({
                       </p>
                     )}
                     <time className="text-tx-dim mt-2 block font-mono text-[11px]">
-                      {new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(
-                        new Date(r.created_at),
-                      )}
+                      {formatDate(locale, r.created_at, "date")}
                     </time>
                   </li>
                 ))}

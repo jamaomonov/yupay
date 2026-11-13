@@ -12,6 +12,7 @@ import { OrderCardSkeleton } from "@/components/order/OrderCardSkeleton";
 import { apiFetch } from "@/lib/client";
 import { mintGuestToken } from "@/lib/guest";
 import { pathFor } from "@/lib/seo";
+import { formatDate } from "@/lib/format-date";
 
 /**
  * Enriches a locally-stored `GuestOrder` stub (brand name + date only, see
@@ -75,7 +76,7 @@ export function GuestOrderCard({ entry, locale }: { entry: GuestOrder; locale: s
         <div className="min-w-0 flex-1">
           <p className="text-foreground truncate text-sm font-bold">{entry.brandName}</p>
           <p className="text-tx-dim mt-0.5 text-[11px]">
-            {new Intl.DateTimeFormat(locale).format(new Date(entry.createdAt))}
+            {formatDate(locale, entry.createdAt, "numeric")}
           </p>
         </div>
         <span className="text-primary shrink-0 text-xs font-semibold">{t("open")}</span>

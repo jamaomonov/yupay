@@ -11,7 +11,7 @@
   },
   "notFound": {
     "title": "Sahifa topilmadi",
-    "subtitle": "Bu sahifa hali yoʻq yoki ishlanmoqda. Bosh sahifaga qayting va katalogni oching.",
+    "subtitle": "Bunday sahifa yoʻq — havola eskirgan boʻlishi mumkin. Bosh sahifa yoki katalogni oching.",
     "cta": "Bosh sahifa"
   },
   "meta": {
@@ -193,6 +193,23 @@
     "steamFinishing": "Steam orqali kirilmoqda…",
     "appBounce": "Ilovaga qaytaramiz…",
     "appBounceFailed": "Kirib boʻlmadi. YuPay ilovasiga qaytib, qayta urinib koʻring."
+  },
+  "passwordReset": {
+    "forgotTitle": "Parolni tiklash",
+    "forgotIntro": "Akkaunt pochtasini kiriting — yangi parol oʻrnatish uchun havola yuboramiz.",
+    "emailLabel": "Elektron pochta",
+    "send": "Havolani yuborish",
+    "sent": "Agar manzil roʻyxatdan oʻtgan boʻlsa, parolni tiklash havolasi bilan xat yubordik.",
+    "backToLogin": "Kirishga qaytish",
+    "newTitle": "Yangi parol",
+    "newLabel": "Yangi parol",
+    "save": "Parolni saqlash",
+    "error": "Nimadir xato ketdi. Qaytadan urinib koʻring.",
+    "invalid": "Havola yaroqsiz yoki eskirgan.",
+    "requestNew": "Yangi havola soʻrash",
+    "doneTitle": "Parol oʻzgartirildi",
+    "done": "Parol oʻzgartirildi — yangisi bilan kiring.",
+    "signIn": "Kirish"
   },
   "store": {
     "meta": {
@@ -543,7 +560,10 @@
     "cta": "Telegramda ochish",
     "labelCatalog": "Katalog",
     "labelTopup": "Toʻldirish",
-    "labelSettings": "Sozlamalar"
+    "labelSettings": "Sozlamalar",
+    "altCatalog": "YuPay ilovasi katalog ekrani",
+    "altSettings": "YuPay ilovasi sozlamalar ekrani",
+    "altTopup": "YuPay ilovasida PUBG Mobile toʻldirish ekrani"
   },
   "cta": {
     "titleLine1": "Oʻyinga",
@@ -770,7 +790,8 @@
     "guestListEmpty": "Bu brauzerda buyurtmalar yoʻq. Boshqa qurilmadan buyurtma bergan boʻlsangiz, xatdagi havolani oching.",
     "guestListHint": "Shu brauzerda rasmiylashtirilgan buyurtmalar. Qolganlari — xatdagi havola orqali.",
     "open": "Ochish",
-    "notFound": "Buyurtma topilmadi.",
+    "notFound": "Buyurtma topilmadi",
+    "notFoundDenied": "Buyurtmani xatdagi havola orqali oching yoki xarid qilgan akkauntingizga kiring.",
     "backToOrders": "Buyurtmalarim",
     "codesNeedAccess": "Kodlarni ko‘rish uchun buyurtmani xatdagi havola orqali oching yoki pochtaga yangi havola so‘rang.",
     "sendAccessLink": "Havolani pochtaga yuborish",

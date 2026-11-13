@@ -24,6 +24,7 @@ import {
 } from "@/lib/wallet";
 import { spendableBalance } from "@/lib/wallet-balance";
 import { useLoginModal } from "@/store/useLoginModal";
+import { formatDate } from "@/lib/format-date";
 
 /** One page of history. Fifty was a silent truncation for an active customer. */
 const PAGE = 25;
@@ -200,10 +201,7 @@ function RowBody({
           {txKindLabelKey(row.kind) ? t(txKindLabelKey(row.kind)!) : row.kind}
         </span>
         <span className="text-tx-dim block text-xs">
-          {new Intl.DateTimeFormat(locale, {
-            dateStyle: "medium",
-            timeStyle: "short",
-          }).format(new Date(row.createdAt))}
+          {formatDate(locale, row.createdAt, "dateTime")}
         </span>
       </span>
       <span

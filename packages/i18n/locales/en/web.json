@@ -11,7 +11,7 @@
   },
   "notFound": {
     "title": "Page not found",
-    "subtitle": "This page doesn't exist yet or is still in the works. Head back home and open the catalog.",
+    "subtitle": "This page doesn't exist — the link may be out of date. Go to the home page or the catalog.",
     "cta": "Back home"
   },
   "meta": {
@@ -193,6 +193,23 @@
     "steamFinishing": "Finishing Steam sign-in…",
     "appBounce": "Taking you back to the app…",
     "appBounceFailed": "Sign-in didn't work. Go back to the YuPay app and try again."
+  },
+  "passwordReset": {
+    "forgotTitle": "Reset password",
+    "forgotIntro": "Enter your account email — we'll send a link to set a new password.",
+    "emailLabel": "Email",
+    "send": "Send link",
+    "sent": "If the address is registered, we've sent an email with a password reset link.",
+    "backToLogin": "Back to sign in",
+    "newTitle": "New password",
+    "newLabel": "New password",
+    "save": "Save password",
+    "error": "Something went wrong. Please try again.",
+    "invalid": "This link is invalid or has expired.",
+    "requestNew": "Request a new link",
+    "doneTitle": "Password changed",
+    "done": "Your password is changed — sign in with the new one.",
+    "signIn": "Sign in"
   },
   "store": {
     "meta": {
@@ -543,7 +560,10 @@
     "cta": "Open in Telegram",
     "labelCatalog": "Catalog",
     "labelTopup": "Top-up",
-    "labelSettings": "Settings"
+    "labelSettings": "Settings",
+    "altCatalog": "YuPay app catalogue screen",
+    "altSettings": "YuPay app settings screen",
+    "altTopup": "PUBG Mobile top-up screen in the YuPay app"
   },
   "cta": {
     "titleLine1": "Ready to get",
@@ -770,7 +790,8 @@
     "guestListEmpty": "No orders in this browser. If you ordered from another device, open the link from your email.",
     "guestListHint": "Orders placed in this browser. The rest are in your email link.",
     "open": "Open",
-    "notFound": "Order not found.",
+    "notFound": "Order not found",
+    "notFoundDenied": "Open the order from the link in your email, or sign in to the account you bought with.",
     "backToOrders": "My orders",
     "codesNeedAccess": "To view your codes, open the order from the email link or request a fresh link by email.",
     "sendAccessLink": "Email me the access link",

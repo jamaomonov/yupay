@@ -30,6 +30,7 @@ import {
   ROBOTS,
   truncate,
 } from "@/lib/seo";
+import { formatDate } from "@/lib/format-date";
 
 export const revalidate = 300;
 
@@ -89,9 +90,7 @@ export default async function BlogArticlePage({
   const t = await getTranslations("web.blog");
   const tn = await getTranslations("web.nav");
   const chip = eventChip(post);
-  const published = new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(
-    new Date(post.published_at ?? post.updated_at),
-  );
+  const published = formatDate(locale, post.published_at ?? post.updated_at, "date");
   const howTo = howToJsonLd(post, locale);
   const faq = faqJsonLd(post);
   const brand = post.show_buy_card

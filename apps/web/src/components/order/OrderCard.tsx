@@ -11,6 +11,7 @@ import type { ReactNode } from "react";
 
 import { isOptimizable } from "@/lib/image";
 import { isTopUpOrder, orderSubtitle, orderTitle, STATUS_CLS } from "@/lib/order-display";
+import { formatDate } from "@/lib/format-date";
 
 /**
  * Order-history card shared by the logged-in list (`account/orders`) and the
@@ -47,7 +48,7 @@ export function OrderCard({
         // not met is described, not printed.
         t("status.unknown");
 
-  const dateText = new Intl.DateTimeFormat(locale).format(new Date(order.created_at));
+  const dateText = formatDate(locale, order.created_at, "numeric");
   const subtitleText = orderSubtitle(order);
   const subtitle = subtitleText ? `${dateText} · ${subtitleText}` : dateText;
 

@@ -25,7 +25,7 @@ import type { OrderOut } from "@/lib/orders-types";
 import { ReviewAsk } from "@/components/store/ReviewAsk";
 import { useAuth } from "@/lib/auth";
 import { buttonStyles } from "@/lib/button";
-import { apiFetch } from "@/lib/client";
+import { apiFetch, ApiError } from "@/lib/client";
 import { mintGuestToken, requestCodeAccess } from "@/lib/guest";
 import { getOrderAccess } from "@/lib/order-access";
 import { supportProduct } from "@/lib/order-display";
@@ -87,6 +87,11 @@ interface DeliveryOut {
 
 interface DeliveryListOut {
   items: DeliveryOut[];
+}
+
+/** The API said the order is not this visitor's (or not there): final, no retry. */
+function isDenied(err: unknown): boolean {
+  return err instanceof ApiError && [401, 403, 404].includes(err.status);
 }
 
 export function OrderStatus({ orderId, email }: { orderId: string; email?: string }) {
@@ -165,6 +170,9 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
     queryKey: ["order", orderId],
     queryFn: () => apiFetch<OrderOut>(`/orders/${orderId}`, guestAuth),
     enabled: authReady,
+    // «Not yours / not there» is an answer, not an outage: retrying it kept a
+    // guest on the skeleton for ~10 s through eight 401s (2026-11-13 review).
+    retry: (count, err) => !isDenied(err) && count < 3,
     // Jittered 8s and up, widening on consecutive failures, so a hundred
     // waiting customers stop being the load. The connected/status split
     // (why the delivery window polls even with a live socket) lives in
@@ -235,6 +243,7 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
     return (
       <OrderLoadError
         locale={locale}
+        denied={isDenied(order.error) || isDenied(guestToken.error)}
         onRetry={() => {
           // Re-mint the guest token too: an expired/rejected one is a common
           // cause here, and refetching only the order would fail the same way.

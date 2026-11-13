@@ -31,7 +31,12 @@ export function uzsWord(locale: string): string {
  * - USDT is not a real ISO 4217 code, so Intl currency style throws; render
  *   it as a plain grouped number with the "USDT" ticker appended.
  */
-export function formatMoney(amount: string, currency: string, locale = "ru-RU"): string {
+export function formatMoney(amount: string, currency: string, rawLocale = "ru-RU"): string {
+  // Chrome ships no Uzbek number data and falls back to English («32,040»),
+  // while Node formats it properly — wrong on screen and a hydration mismatch
+  // (2026-11-13 review). Uzbek groups like Russian, so numbers borrow ru-RU;
+  // the currency word still comes from the caller's locale.
+  const locale = rawLocale.slice(0, 2).toLowerCase() === "uz" ? "ru-RU" : rawLocale;
   const num = Number.parseFloat(amount);
   const safe = Number.isFinite(num) ? num : 0;
   const fractionDigits = ZERO_DECIMAL_CURRENCIES.has(currency) ? 0 : 2;
@@ -45,7 +50,7 @@ export function formatMoney(amount: string, currency: string, locale = "ru-RU"):
       minimumFractionDigits: fractionDigits,
       maximumFractionDigits: fractionDigits,
     }).format(safe);
-    return `${number} ${uzsWord(locale)}`;
+    return `${number} ${uzsWord(rawLocale)}`;
   }
 
   if (currency === "USDT") {

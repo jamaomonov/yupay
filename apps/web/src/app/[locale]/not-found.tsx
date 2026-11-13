@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { getTranslations } from "next-intl/server";
+import { getLocale, getTranslations } from "next-intl/server";
 
 import { Wordmark } from "@/components/Wordmark";
+import { pathFor } from "@/lib/seo";
 
 /**
  * Localised 404 inside the [locale] segment — renders between the shared
@@ -10,6 +11,8 @@ import { Wordmark } from "@/components/Wordmark";
  */
 export default async function NotFound() {
   const t = await getTranslations("web.notFound");
+  // Home in the visitor's own language: a bare "/" sent uz and en to Russian.
+  const home = pathFor(await getLocale(), "/");
 
   return (
     <main className="relative flex min-h-[70vh] flex-col items-center justify-center px-6 py-32 text-center">
@@ -23,7 +26,7 @@ export default async function NotFound() {
       </h1>
       <p className="text-tx-mute mt-4 max-w-[420px] text-base leading-relaxed">{t("subtitle")}</p>
       <Link
-        href="/"
+        href={home}
         className="bg-primary text-primary-foreground rounded-btn mt-8 inline-flex h-[52px] items-center px-6 text-[15px] font-bold shadow-[0_12px_30px_-10px_hsl(var(--primary)/0.45)] transition hover:-translate-y-0.5"
       >
         {t("cta")}

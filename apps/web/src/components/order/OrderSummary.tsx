@@ -7,11 +7,10 @@ import { PaymentProviderBadge } from "./PaymentProviderBadge";
 
 import type { OrderOut } from "@/lib/orders-types";
 import type { ReactNode } from "react";
+import { formatDate } from "@/lib/format-date";
 
 function fmtDate(iso: string, locale: string): string {
-  return new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(
-    new Date(iso),
-  );
+  return formatDate(locale, iso, "dateTime");
 }
 
 /** One right-aligned spec row inside the summary card. */
