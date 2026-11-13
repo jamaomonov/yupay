@@ -553,3 +553,17 @@ where o.created_at > now() - interval '30 days' and o.paid_at is not null
 group by 1, 2 having count(*) >= 10 and count(distinct kv.value)::float / count(*) < 0.5
 order by 1, 3 desc;
 ```
+
+## Shared mobile IP, 2026-11-13
+
+A $8 MLBB order from the Mini App was held for `identity_shared_across_buyers`:
+6 distinct buyers had paid from its IPv4 in 8 days (8 orders, all delivered),
+the device was unique. A UZ mobile carrier puts many subscribers behind one
+public IPv4, so 5 buyers per IP per week is ordinary traffic, not a ring.
+`RISK_DISTINCT_BUYERS_7D` 5 → 15 in prod `secrets/api.env` (owner's call);
+rollback `secrets/api.env.bak-2026-11-13`.
+
+The admin banner used to say «сумма не ниже порога» for every rule, which sent
+the owner looking at the amount. It now names the recorded reason
+(`apps/admin/src/features/orders/holdReason.ts`, the same codes as
+`HOLD_ALERT_TEXT`).

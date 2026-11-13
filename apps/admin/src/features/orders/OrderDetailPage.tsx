@@ -29,6 +29,7 @@ import { MerchantDepositCard } from "./MerchantDepositCard";
 import { OrderActorRef } from "./OrderActorRef";
 import { OrderStateBadge } from "./OrderStateBadge";
 import { SkinTradeLine } from "./SkinTradeLine";
+import { holdReasonText } from "./holdReason";
 import {
   type EvidencePackOut,
   type OrderAdminOut,
@@ -482,7 +483,7 @@ export function OrderDetailPage() {
                   : "Пополнение оплачено после того, как заказ закрыли. Баланс НЕ зачислен. Зачислите вручную через «Кошелёк → корректировка» — или верните деньги в блоке платежей."
                 : isTopUp
                   ? "Пополнение превысило лимит кассы без проверки, поэтому баланс автоматически не зачислен. Проверьте плательщика, затем зачислите — или верните деньги в блоке платежей."
-                  : "Оплата прошла, но сумма не ниже порога ручной проверки, поэтому товар автоматически не выдан. Проверьте плательщика, затем выдайте товар — или верните деньги в блоке платежей."}
+                  : `${holdReasonText(holdReason)} Оплата прошла, товар автоматически не выдан. Проверьте плательщика, затем выдайте товар — или верните деньги в блоке платежей.`}
             </p>
           </div>
           {canRelease ? (
