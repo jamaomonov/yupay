@@ -1,7 +1,7 @@
 "use client";
 
-import { useLocale, useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
+import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useRef, useState } from "react";
 
 import { useAuth } from "@/lib/auth";

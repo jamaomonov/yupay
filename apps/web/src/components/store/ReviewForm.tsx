@@ -4,6 +4,9 @@ import { Star } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
 
+import { buttonStyles } from "@/lib/button";
+import { inputStyles } from "@/lib/input";
+
 export interface ReviewFormProps {
   /** Called with the chosen rating (1–5) from the Submit button under the stars. */
   onSubmit: (rating: number) => void;
@@ -90,7 +93,7 @@ export function ReviewForm({
           <button
             type="button"
             onClick={onFinished}
-            className="bg-primary text-primary-foreground mt-3 w-full rounded-xl py-2 text-sm font-semibold"
+            className={buttonStyles({ className: "mt-3 w-full" })}
           >
             {t("done")}
           </button>
@@ -114,7 +117,7 @@ export function ReviewForm({
             }}
             placeholder={t("commentLabel")}
             rows={2}
-            className="border-border bg-background focus-visible:border-primary w-full resize-none rounded-xl border px-3 py-2 text-sm outline-none"
+            className={inputStyles({ surface: "bg", multiline: true, className: "resize-none" })}
           />
         </label>
         {showError && <p className="mt-2 text-[13px] text-red-400">{t("error")}</p>}
@@ -124,7 +127,7 @@ export function ReviewForm({
           onClick={() => {
             void submitComment();
           }}
-          className="bg-primary text-primary-foreground mt-3 w-full rounded-xl py-2 text-sm font-semibold disabled:opacity-50"
+          className={buttonStyles({ className: "mt-3 w-full" })}
         >
           {saving ? t("submitting") : t("submit")}
         </button>
@@ -174,7 +177,7 @@ export function ReviewForm({
       onClick={() => {
         onSubmit(tapped);
       }}
-      className="bg-primary text-primary-foreground mt-2 w-full rounded-xl py-2 text-sm font-semibold disabled:opacity-50"
+      className={buttonStyles({ className: "mt-2 w-full" })}
     >
       {submitting ? t("submitting") : t("submit")}
     </button>

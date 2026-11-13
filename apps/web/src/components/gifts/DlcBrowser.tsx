@@ -9,6 +9,7 @@ import { GiftCard } from "./GiftCard";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { buttonStyles } from "@/lib/button";
 import { fetchGiftDlc, type GiftApp } from "@/lib/gifts";
+import { inputStyles } from "@/lib/input";
 
 /**
  * "Requires the base game" note for a DLC's own product page. `DlcBrowser`
@@ -163,7 +164,7 @@ export function DlcBrowser({
         }}
         placeholder={t("dlc.searchPlaceholder")}
         aria-label={t("dlc.searchPlaceholder")}
-        className="border-border bg-card rounded-btn h-10 w-full max-w-[360px] border px-3 text-sm"
+        className={inputStyles({ className: "max-w-[360px]" })}
       />
 
       {phase === "error" ? (

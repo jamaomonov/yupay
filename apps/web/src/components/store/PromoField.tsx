@@ -4,6 +4,7 @@ import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ApiError, apiFetch } from "@/lib/client";
+import { inputStyles } from "@/lib/input";
 import { formatUzs } from "@/lib/seo";
 
 /**
@@ -312,7 +313,7 @@ export function PromoField({ locale, items, currency, isLoggedIn, onChange }: Pr
           maxLength={32}
           autoCapitalize="characters"
           autoComplete="off"
-          className="border-border bg-card rounded-btn h-11 flex-1 border px-3 text-sm"
+          className={inputStyles({ className: "flex-1" })}
         />
         <button
           type="button"

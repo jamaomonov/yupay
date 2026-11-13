@@ -6,6 +6,7 @@ import { useEffect, useId, useState } from "react";
 
 import type { TradeLinkReason } from "@/lib/skins";
 
+import { inputStyles } from "@/lib/input";
 import { checkTradeLink, getTradeLink } from "@/lib/skins";
 
 /** Steam's own page with the «Trade URL» box. */
@@ -107,12 +108,12 @@ export function SkinTradeLinkField({
         spellCheck={false}
         value={url}
         placeholder={t("tradeLinkPlaceholder")}
-        onChange={(e) => setUrl(e.target.value)}
+        onChange={(e) => {
+          setUrl(e.target.value);
+        }}
         aria-invalid={bad}
         aria-describedby={`${id}-verdict`}
-        className={`bg-bg rounded-btn h-11 w-full border px-3 text-[13px] ${
-          bad ? "border-[#FF6B6B]" : "border-border"
-        }`}
+        className={inputStyles({ surface: "bg", invalid: bad, className: "text-[14px]" })}
       />
       <p id={`${id}-verdict`} className="min-h-[18px] text-[12px]" aria-live="polite">
         {verdict === "checking" && (

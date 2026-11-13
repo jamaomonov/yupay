@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 
 import type { SkinQuery } from "@/lib/skins";
 
+import { inputStyles } from "@/lib/input";
 import { pathFor } from "@/lib/seo";
 import { DEFAULT_SORT, skinQueryString } from "@/lib/skins";
 
@@ -61,7 +62,7 @@ export function SkinPriceFilter({ query, locale }: { query: SkinQuery; locale: s
         typed.current = true;
         set(e.target.value);
       }}
-      className="border-border-2 bg-background w-full rounded-lg border px-2 py-1.5 text-[13px]"
+      className={inputStyles({ surface: "bg" })}
     />
   );
 

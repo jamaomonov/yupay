@@ -9,6 +9,7 @@ import { GiftCard } from "./GiftCard";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { buttonStyles } from "@/lib/button";
 import { searchGifts, type GiftApp, type GiftsList } from "@/lib/gifts";
+import { inputStyles } from "@/lib/input";
 
 /** How still the query has to be before it's sent — mirrors `PromoField.tsx`'s
  *  `REPRICE_DEBOUNCE_MS`: firing one request per keystroke would spend the
@@ -139,7 +140,7 @@ export function GiftsBrowser({
           }}
           placeholder={t("search.placeholder")}
           aria-label={t("search.placeholder")}
-          className="border-border bg-card rounded-btn h-11 w-full border pl-9 pr-3 text-sm"
+          className={inputStyles({ icon: true })}
         />
       </div>
 

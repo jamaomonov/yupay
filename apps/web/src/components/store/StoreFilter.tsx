@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { pushAnalyticsEvent, viewItemListEvent } from "@/lib/analytics-events";
+import { inputStyles } from "@/lib/input";
 import { pathFor } from "@/lib/seo";
 
 export interface StoreChip {
@@ -123,7 +124,7 @@ export function StoreFilter({
           }}
           placeholder={searchLabel}
           aria-label={searchLabel}
-          className="border-border-2 bg-card focus:border-primary rounded-btn h-12 w-full border px-4 text-[16px] outline-none transition sm:max-w-[420px]"
+          className={inputStyles({ className: "sm:max-w-[420px]" })}
         />
       </div>
 

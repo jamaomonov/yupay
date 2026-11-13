@@ -6,6 +6,8 @@ import { useEffect, useRef, useState } from "react";
 
 import type { ReactNode } from "react";
 
+import { buttonStyles } from "@/lib/button";
+
 /**
  * The phone's filter panel: a button beside sort that opens the (server-rendered)
  * filters in a bottom drawer, instead of a `<details>` that pushed the grid a
@@ -61,7 +63,9 @@ export function SkinFilterDrawer({ count, children }: { count: number; children:
       <button
         ref={trigger}
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          setOpen(true);
+        }}
         className="border-border bg-card flex shrink-0 items-center gap-2 rounded-xl border px-4 py-2.5 text-[14px] font-semibold lg:hidden"
         aria-label={count > 0 ? `${t("filters")}: ${String(count)}` : t("filters")}
       >
@@ -84,7 +88,9 @@ export function SkinFilterDrawer({ count, children }: { count: number; children:
           <div
             aria-hidden
             className="absolute inset-0 bg-black/60"
-            onClick={() => setOpen(false)}
+            onClick={() => {
+              setOpen(false);
+            }}
           />
           <div
             ref={panel}
@@ -95,7 +101,9 @@ export function SkinFilterDrawer({ count, children }: { count: number; children:
               <button
                 ref={closeButton}
                 type="button"
-                onClick={() => setOpen(false)}
+                onClick={() => {
+                  setOpen(false);
+                }}
                 aria-label={t("close")}
                 className="text-tx-mute hover:text-foreground rounded-lg p-1"
               >
@@ -106,8 +114,10 @@ export function SkinFilterDrawer({ count, children }: { count: number; children:
             <div className="border-border border-t p-4">
               <button
                 type="button"
-                onClick={() => setOpen(false)}
-                className="bg-primary text-primary-foreground w-full rounded-xl py-3 text-[15px] font-bold"
+                onClick={() => {
+                  setOpen(false);
+                }}
+                className={buttonStyles({ size: "lg", className: "w-full" })}
               >
                 {t("done")}
               </button>

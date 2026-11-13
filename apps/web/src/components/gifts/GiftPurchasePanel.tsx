@@ -30,6 +30,7 @@ import {
 } from "@/lib/gift-checkout";
 import { currentVerdict, isValidInviteUrl, type RecipientVerdict } from "@/lib/gift-invite";
 import { profileCheckBlocks, profileCheckFound } from "@/lib/gifts";
+import { inputStyles } from "@/lib/input";
 import { methodVisibility, providerStatusMap, selectActiveMethodId } from "@/lib/payment-providers";
 import { withAutoOpen } from "@/lib/payment-return";
 import { usePreferBalance } from "@/lib/prefer-balance";
@@ -894,7 +895,7 @@ export function GiftPurchasePanel({
               placeholder={ts("emailPlaceholder")}
               aria-invalid={emailInvalid ? true : undefined}
               aria-describedby={emailInvalid ? emailErrorId : undefined}
-              className="border-border bg-bg rounded-btn h-11 w-full border px-3 text-sm"
+              className={inputStyles({ surface: "bg" })}
             />
             {emailInvalid && (
               <p id={emailErrorId} className="text-[13px] text-[#FF6B6B]">

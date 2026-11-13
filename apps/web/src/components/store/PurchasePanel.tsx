@@ -49,6 +49,7 @@ import {
 } from "@/lib/guest-orders";
 import { takeHandoff } from "@/lib/handoff";
 import { isOptimizable } from "@/lib/image";
+import { inputStyles } from "@/lib/input";
 import { IntentRefused, PENDING_ORDER_REUSE_MS, parseIntentFailure } from "@/lib/intent-failure";
 import { saveOrderAccess } from "@/lib/order-access";
 import {
@@ -632,7 +633,7 @@ function PlainField({
           onChange={(e) => {
             onChange(e.target.value);
           }}
-          className="border-border-2 bg-card focus:border-primary rounded-btn h-[46px] w-full border px-3.5 text-[15px] outline-none transition"
+          className={inputStyles()}
         >
           <option value="">—</option>
           {options.map((o) => (
@@ -653,7 +654,7 @@ function PlainField({
           onChange={(e) => {
             onChange(e.target.value);
           }}
-          className="border-border-2 bg-card focus:border-primary rounded-btn h-[46px] w-full border px-3.5 text-[15px] outline-none transition"
+          className={inputStyles()}
         />
       )}
       {hasHelp && (
@@ -2697,7 +2698,7 @@ export function PurchasePanel({
                   setEmailTouched(true);
                   setEmail(e.target.value);
                 }}
-                className="border-border-2 bg-card focus:border-primary rounded-btn h-[46px] w-full border px-3.5 text-[15px] outline-none transition lg:h-[42px]"
+                className={inputStyles()}
               />
             </label>
 

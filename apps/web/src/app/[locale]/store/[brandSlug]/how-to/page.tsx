@@ -9,6 +9,8 @@ import type { Metadata } from "next";
 
 import { JsonLd } from "@/components/JsonLd";
 import { routing } from "@/i18n/routing";
+import { isVoucherBrand } from "@/lib/brand-kind";
+import { buttonStyles } from "@/lib/button";
 import {
   getBrandDetail,
   getBrandSlugs,
@@ -17,7 +19,6 @@ import {
   type LocaleMap,
   type ProductDetail,
 } from "@/lib/catalog";
-import { isVoucherBrand } from "@/lib/brand-kind";
 import { isOptimizable } from "@/lib/image";
 import {
   alternates,
@@ -414,7 +415,7 @@ export default async function HowToPage({
           </div>
           <Link
             href={pathFor(locale, moneyPath)}
-            className="bg-primary text-primary-foreground rounded-btn inline-flex shrink-0 items-center gap-2 px-6 py-3 text-[15px] font-bold transition hover:brightness-110"
+            className={buttonStyles({ size: "lg", className: "shrink-0" })}
           >
             {t(`guideCtaButton${v}`, { name: brand.name })}
             <ChevronRight size={18} />

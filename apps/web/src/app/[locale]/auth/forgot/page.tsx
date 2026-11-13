@@ -6,6 +6,7 @@ import { useState } from "react";
 
 import { buttonStyles } from "@/lib/button";
 import { apiFetch } from "@/lib/client";
+import { inputStyles } from "@/lib/input";
 import { useLoginModal } from "@/store/useLoginModal";
 
 /** Strings live in `web.passwordReset` (hard-coded Russian on uz/en until 2026-11-13). */
@@ -56,7 +57,7 @@ export default function ForgotPage() {
                   setEmail(e.target.value);
                 }}
                 required
-                className="border-border-2 bg-card focus:border-primary rounded-btn h-[46px] w-full border px-3.5 text-[15px] outline-none transition"
+                className={inputStyles()}
               />
             </label>
 

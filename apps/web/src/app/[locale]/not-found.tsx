@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
 
 import { Wordmark } from "@/components/Wordmark";
+import { buttonStyles } from "@/lib/button";
 import { pathFor } from "@/lib/seo";
 
 /**
@@ -25,10 +26,7 @@ export default async function NotFound() {
         {t("title")}
       </h1>
       <p className="text-tx-mute mt-4 max-w-[420px] text-base leading-relaxed">{t("subtitle")}</p>
-      <Link
-        href={home}
-        className="bg-primary text-primary-foreground rounded-btn mt-8 inline-flex h-[52px] items-center px-6 text-[15px] font-bold shadow-[0_12px_30px_-10px_hsl(var(--primary)/0.45)] transition hover:-translate-y-0.5"
-      >
+      <Link href={home} className={buttonStyles({ size: "lg", className: "mt-8" })}>
         {t("cta")}
       </Link>
     </main>

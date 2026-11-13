@@ -8,6 +8,7 @@ import { Suspense, useState } from "react";
 
 import { buttonStyles } from "@/lib/button";
 import { ApiError, apiFetch } from "@/lib/client";
+import { inputStyles } from "@/lib/input";
 import { pathFor } from "@/lib/seo";
 import { useLoginModal } from "@/store/useLoginModal";
 
@@ -96,7 +97,7 @@ function ResetInner() {
             }}
             minLength={8}
             required
-            className="border-border-2 bg-card focus:border-primary rounded-btn h-[46px] w-full border px-3.5 text-[15px] outline-none transition"
+            className={inputStyles()}
           />
         </label>
 

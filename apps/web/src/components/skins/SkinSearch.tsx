@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from "react";
 import type { SkinItem, SkinQuery } from "@/lib/skins";
 
 import { apiFetch } from "@/lib/client";
+import { inputStyles } from "@/lib/input";
 import { pathFor } from "@/lib/seo";
 import { displayPrice, skinQueryString } from "@/lib/skins";
 
@@ -88,7 +89,7 @@ export function SkinSearch({
         }}
         placeholder={t("searchPlaceholder")}
         aria-label={t("searchPlaceholder")}
-        className="border-border bg-card w-full rounded-xl border py-2.5 pl-9 pr-3 text-[14px]"
+        className={inputStyles({ icon: true })}
       />
       {open && items.length > 0 && (
         <ul className="border-border bg-card absolute inset-x-0 top-full z-20 mt-1 max-h-96 overflow-y-auto rounded-xl border shadow-xl">

@@ -12,8 +12,8 @@ import type { ProviderStatus, ProvidersOut } from "@/lib/payment-providers";
 import { WalletMark } from "@/components/icons/WalletMark";
 import { apiFetch } from "@/lib/client";
 import { methodVisibility, providerStatusMap, selectActiveMethodId } from "@/lib/payment-providers";
-import { formatUzs, pathFor } from "@/lib/seo";
 import { usePreferBalance } from "@/lib/prefer-balance";
+import { formatUzs, pathFor } from "@/lib/seo";
 import { getWallet, WALLET_CURRENCY } from "@/lib/wallet";
 import { canPayFromBalance, spendableBalance, walletTile } from "@/lib/wallet-balance";
 
