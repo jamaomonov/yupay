@@ -61,7 +61,7 @@ _HOT_KEY = "gifts:hot"
 _HOT_TTL_SECONDS = 3600
 #: Curated app ids shown first in :func:`hot_offers`, ahead of the
 #: discount scan. Empty in v1 — spec §4.2 wants this admin-editable later.
-_PINNED_APP_IDS: tuple[int, ...] = ()
+PINNED_APP_IDS: tuple[int, ...] = ()
 #: How many pages (of ``MAX_PAGE`` each) of the default listing to scan for
 #: discounted apps once the pinned list is exhausted.
 _HOT_SCAN_PAGES = 5
@@ -329,7 +329,7 @@ async def hot_offers() -> list[dict[str, Any]]:
     async def _fetch() -> list[dict[str, Any]]:
         pinned: list[dict[str, Any]] = []
         seen_ids: set[int] = set()
-        for app_id in _PINNED_APP_IDS:
+        for app_id in PINNED_APP_IDS:
             try:
                 app = await get_app(app_id)
             except NotFoundError:
@@ -359,6 +359,7 @@ async def hot_offers() -> list[dict[str, Any]]:
 
 
 __all__ = [
+    "PINNED_APP_IDS",
     "ZONE_COUNTRIES",
     "countries_for_zone",
     "get_app",

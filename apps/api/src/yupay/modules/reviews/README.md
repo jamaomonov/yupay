@@ -60,7 +60,8 @@ text); aggregates feed the storefront and Google rich snippets.
 ## Endpoints
 
 Public: `GET /reviews/brands/{slug}` (list + aggregate), `GET /reviews/featured`
-(the home page's wall — newest written reviews across brands with their brand, and stats
+(the home page's wall — newest 4★+ reviews with a body of 15+ characters, one per
+author (2026-11-13), across brands with their brand, and stats
 summed from `brand_rating_stats`; `featured.py`, kept out of `service.py`), `POST /reviews`
 (buyer — Bearer **or** `Guest <jwt>` + `X-Guest-Email` — Idempotency-Key;
 rating-only is enough — `body` is optional), `PATCH /reviews/{id}` (same

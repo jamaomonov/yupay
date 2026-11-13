@@ -227,3 +227,54 @@ async def test_seo_slugs_404_while_disabled(
     monkeypatch.setenv("CS2_SKINS_ENABLED", "false")
     cfg.get_settings.cache_clear()
     assert (await integration_client.get("/api/v1/skins/seo/slugs")).status_code == 404
+
+
+async def test_an_incredible_steam_reference_is_not_shown(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """2026-11-13 review: «−74% к Steam» on a $7.6k Ruby. A phase, a Steam
+    price above the market's $2,000 listing cap, or a discount past 50% drops
+    the reference and the badge — the item itself still sells."""
+    db_session.add_all(
+        [
+            _item(
+                "★ StatTrak™ M9 Bayonet | Doppler Ruby (Minimal Wear)",
+                category="knives",
+                units=7_638_060,
+                count=1,
+                steam_price_units=29_832_934,
+            ),
+            _item(
+                "AWP | Dragon Lore (Field-Tested)",
+                category="rifles",
+                units=2_100_000,
+                count=1,
+                steam_price_units=2_500_000,
+            ),
+            _item(
+                "M4A4 | Howl (Field-Tested)",
+                category="rifles",
+                units=300_000,
+                count=1,
+                steam_price_units=1_000_000,
+            ),
+        ]
+    )
+    await db_session.commit()
+    await reprice_rows(db_session, DEFAULT_RULES)
+    await db_session.commit()
+
+    by_name: dict[str, Any] = {}
+    for category in ("knives", "rifles"):
+        r = await integration_client.get(f"/api/v1/skins/catalog?category={category}")
+        assert r.status_code == 200, r.text
+        by_name |= {i["name"]: i for i in r.json()["items"]}
+    for name in (
+        "★ StatTrak™ M9 Bayonet | Doppler (Minimal Wear)",
+        "AWP | Dragon Lore (Field-Tested)",
+        "M4A4 | Howl (Field-Tested)",
+    ):
+        item = by_name[name]
+        assert item["steam_price_usd"] is None, name
+        assert item["discount_percent"] is None, name
+        assert item["price_usd"] is not None, name

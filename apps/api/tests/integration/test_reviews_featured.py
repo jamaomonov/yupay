@@ -38,7 +38,7 @@ async def _review(
     *,
     slug: str,
     rating: int = 5,
-    body: str | None = "Быстро пришло",
+    body: str | None = "Быстро пришло, спасибо",
     status: str = "published",
     name: str | None = "Aziz",
     age_min: int = 0,
@@ -66,8 +66,8 @@ async def _review(
 async def test_newest_written_reviews_with_their_brand_and_overall_stats(
     integration_client: AsyncClient, db_session: AsyncSession
 ) -> None:
-    await _review(db_session, slug="steam", body="Old one", age_min=10)
-    await _review(db_session, slug="mlbb", body="Newest", name="<b>Kamila</b>")
+    await _review(db_session, slug="steam", body="Old one, all good", age_min=10)
+    await _review(db_session, slug="mlbb", body="Newest, came fast", name="<b>Kamila</b>")
     await _review(db_session, slug="ff", body=None, rating=4)  # stars only: not on the wall
     await _review(db_session, slug="ff", body="   ", rating=4)  # blank: not on the wall
     await _review(db_session, slug="pubg", body="Hidden", status="hidden")
@@ -77,7 +77,7 @@ async def test_newest_written_reviews_with_their_brand_and_overall_stats(
     r = await integration_client.get("/api/v1/reviews/featured")
     assert r.status_code == 200, r.text
     body = r.json()
-    assert [i["body"] for i in body["items"]] == ["Newest", "Old one"]
+    assert [i["body"] for i in body["items"]] == ["Newest, came fast", "Old one, all good"]
     first = body["items"][0]
     assert first["author_name"] == "Kamila"  # markup stripped on the way out
     assert first["brand_slug"].startswith("mlbb-")
@@ -87,6 +87,23 @@ async def test_newest_written_reviews_with_their_brand_and_overall_stats(
     # Stats count every published review, star-only ones included.
     assert body["stats"]["count"] == 4
     assert body["stats"]["avg"] == pytest.approx(4.5)
+
+
+async def test_the_wall_skips_low_ratings_one_liners_and_repeat_authors(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """2026-11-13 review: a 1★ review, «Wow» and one author twice were on it."""
+    await _review(db_session, slug="low", rating=1, body="Deyarli 1 yarim soatda utqardi")
+    await _review(db_session, slug="short", body="Wow")
+    kept = await _review(db_session, slug="twice", body="Second review by the same person")
+    again = await _review(
+        db_session, slug="twice2", body="First review by the same person", age_min=5
+    )
+    again.user_id = kept.user_id
+    await db_session.commit()
+
+    items = (await integration_client.get("/api/v1/reviews/featured")).json()["items"]
+    assert [i["body"] for i in items] == ["Second review by the same person"]
 
 
 async def test_a_guest_review_says_so(

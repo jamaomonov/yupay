@@ -189,6 +189,13 @@ renders — it just has nothing to show under the "≈ N UZS" line). The UZS
 rate is fetched once per request (`FxService.convert("1", base="USD",
 quote="UZS")`) and multiplied per row, never re-fetched per item.
 
+An app's `price_usd` is its **«от» price**: the cheapest package in an offered
+zone whenever the payload carries `packages[]`, the flat upstream `price` only as
+a fallback. Upstream's flat price and `discount_percent` lag ended sales —
+Borderlands 2 listed «−90% · от 9 988 сум» while every edition cost 102 677
+(2026-11-13) — so a discount is dropped when the cheapest package is more than
+20% above the flat price, and `/catalog/hot` leaves such apps out.
+
 ## Config
 
 | Env var                      | Default        | Meaning                                                                                                                               |
@@ -233,5 +240,5 @@ quote="UZS")`) and multiplied per row, never re-fetched per item.
 
 - Checkout routes — Task 7.
 - Fulfilment wiring — a later task.
-- `_PINNED_APP_IDS` (curated hot-offer apps) is an empty tuple: spec §4.2
+- `PINNED_APP_IDS` (curated hot-offer apps) is an empty tuple: spec §4.2
   wants it admin-editable, not yet built.

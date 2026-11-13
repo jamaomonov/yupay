@@ -88,6 +88,30 @@ def _units_to_usd(units: int | None) -> str | None:
     return None if units is None else str(Decimal(units) / Decimal(1000))
 
 
+#: The Steam Community Market refuses listings above $2,000, so a reference
+#: above it is an extrapolation, not a price anybody can see on Steam.
+_STEAM_MARKET_CAP_USD = Decimal(2000)
+#: Steam's own cut is ~13%; real resale gaps run 10-35%. Past half, the
+#: reference is stale or wrong more often than we are that cheap.
+_MAX_CREDIBLE_DISCOUNT = 50
+
+
+def _steam_reference_credible(item: SkinItem, discount: int | None) -> bool:
+    """Whether «−N% к Steam» may be shown for this item (2026-11-13 review).
+
+    False for a Doppler/Gamma phase (Steam lists the finish, not the phase,
+    so the reference is the finish's price), above the market's listing cap,
+    or for a discount too deep to be a real Steam price gap.
+    """
+    if item.phase:
+        return False
+    if item.steam_price_units is not None and (
+        Decimal(item.steam_price_units) / Decimal(1000) > _STEAM_MARKET_CAP_USD
+    ):
+        return False
+    return discount is None or discount <= _MAX_CREDIBLE_DISCOUNT
+
+
 def _item_out(item: SkinItem, rules: PricingRules, rate: Decimal | None) -> SkinItemOut:
     # Stored by ``repricing.reprice_rows`` from the same ``quote()``: the card
     # shows the number every filter and sort reads.
@@ -95,6 +119,11 @@ def _item_out(item: SkinItem, rules: PricingRules, rate: Decimal | None) -> Skin
     discount = (
         item.discount_percent if item.discount_percent and item.discount_percent > 0 else None
     )
+    steam_usd = _units_to_usd(item.steam_price_units)
+    if not _steam_reference_credible(item, discount):
+        # «−74% к Steam» on a $7.6k Ruby is a claim nobody can check: no
+        # Steam listing exists at that price. Drop the reference, not the item.
+        steam_usd, discount = None, None
     return SkinItemOut(
         slug=item.slug,
         name=item.market_hash_name,
@@ -110,7 +139,7 @@ def _item_out(item: SkinItem, rules: PricingRules, rate: Decimal | None) -> Skin
         image_url=steam_image(item.image_url, host=get_settings().cs2_skins_image_host),
         price_usd=None if price is None else str(price),
         price_uzs=_to_uzs(price, rate, rules),
-        steam_price_usd=_units_to_usd(item.steam_price_units),
+        steam_price_usd=steam_usd,
         discount_percent=discount,
         count=item.count_auto,
         min_float=None if item.min_float is None else str(item.min_float),

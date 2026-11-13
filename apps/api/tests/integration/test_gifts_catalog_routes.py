@@ -139,6 +139,69 @@ async def test_enabled_listing_maps_fields_and_applies_margin(
 
 
 @respx.mock
+async def test_listing_prices_from_packages_and_drops_an_ended_sale(
+    integration_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Borderlands 2, 2026-11-13: flat «$0.79, −90%» while every edition cost
+    $8.43. The row prices from the cheapest offered package and shows no
+    discount; a row whose packages agree with its flat price keeps it."""
+    _enable(monkeypatch)
+    respx.get(f"{BASE}/gifts/apps").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "total": 2,
+                "items": [
+                    {
+                        "id": 49520,
+                        "name": "Borderlands 2",
+                        "type": "game",
+                        "price": 0.79,
+                        "discount_percent": 90,
+                        "package_ids": [1],
+                        "packages": [
+                            {
+                                "id": 1,
+                                "discount_percent": 90,
+                                "prices": [{"price": 8.43, "zone": "RU"}],
+                            }
+                        ],
+                    },
+                    {
+                        "id": 588650,
+                        "name": "Dead Cells",
+                        "type": "game",
+                        "price": 0.97,
+                        "discount_percent": 20,
+                        "package_ids": [2],
+                        "packages": [
+                            {
+                                "id": 2,
+                                "prices": [
+                                    {"price": 1.10, "zone": "CIS"},
+                                    {"price": 1.00, "zone": "RU"},
+                                ],
+                            }
+                        ],
+                    },
+                ],
+            },
+        )
+    )
+
+    r = await integration_client.get("/api/v1/gifts/catalog")
+
+    assert r.status_code == 200, r.text
+    rows = {i["app_id"]: i for i in r.json()["items"]}
+    # 8.43 * 1.10 = 9.273 -> 9.27
+    assert rows[49520]["price_usd"] == "9.27"
+    assert rows[49520]["discount_percent"] is None
+    # cheapest offered package 1.00 * 1.10 = 1.10; within 20% of 0.97 -> sale stands
+    assert rows[588650]["price_usd"] == "1.10"
+    assert rows[588650]["discount_percent"] == 20
+
+
+@respx.mock
 async def test_listing_row_with_no_reference_price_shows_no_price(
     integration_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -367,6 +367,7 @@
     "howToMetaDescription": "{name} ni Oʻzbekistonda soʻmda qanday toʻldirish: nima kerak, uni qayerdan topish va narxi — bosqichma-bosqich.",
     "howToStepsTitle": "Bosqichma-bosqich",
     "pricesTitle": "Narxlar va nominallar",
+    "pricePerDollar": "$1 uchun {price}",
     "guideCtaButton": "{name} ni toʻldirish",
     "breadcrumbHowTo": "Qanday toʻldirish",
     "howToLink": "Qanday toʻldirish va ID ni qayerdan topish",

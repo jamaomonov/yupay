@@ -164,7 +164,15 @@ export default async function HowToPage({
   // nothing under a "Цены" heading. Drop those, then drop products left empty.
   const priced = products
     .filter((p): p is ProductDetail => p !== null)
-    .map((p) => ({ ...p, skus: p.skus.filter((s) => s.display_price) }))
+    // A Steam gift's variable SKU is the checkout's plumbing, priced per game
+    // on its own page — listed here it read «$0.1–$1000 — 12 180 сум», i.e.
+    // any game for 12 180.
+    .map((p) => ({
+      ...p,
+      skus: p.skus.filter(
+        (s) => s.display_price && !(s.variable_amount && brand.slug === "steam-gifts"),
+      ),
+    }))
     .filter((p) => p.skus.length > 0);
   const moneyPath = `/store/${brand.slug}`;
 
@@ -350,9 +358,14 @@ export default async function HowToPage({
                       const name = s.variable_amount
                         ? `${s.min_amount_usd ? `$${String(Number(s.min_amount_usd))}` : "$1"}–${s.max_amount_usd ? `$${String(Number(s.max_amount_usd))}` : "$500"}`
                         : (s.denomination ?? s.sku_code);
-                      const price = s.display_price
+                      const amount = s.display_price
                         ? formatUzs(locale, Math.round(Number(s.display_price.amount)))
                         : null;
+                      // A free-amount SKU's price is the rate per dollar, not a total.
+                      const price =
+                        amount && s.variable_amount
+                          ? t("pricePerDollar", { price: amount })
+                          : amount;
                       return (
                         <div
                           key={s.id}

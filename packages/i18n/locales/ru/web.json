@@ -367,6 +367,7 @@
     "howToMetaDescription": "Пошаговая инструкция, как пополнить {name} в Узбекистане за сумы: что нужно, где это найти и сколько это стоит.",
     "howToStepsTitle": "Пошаговая инструкция",
     "pricesTitle": "Цены и номиналы",
+    "pricePerDollar": "{price} за $1",
     "guideCtaButton": "Пополнить {name}",
     "breadcrumbHowTo": "Как пополнить",
     "howToLink": "Как пополнить и где найти ID",

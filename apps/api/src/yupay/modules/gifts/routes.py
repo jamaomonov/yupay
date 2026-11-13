@@ -39,6 +39,7 @@ from yupay.modules.gifts.schemas import (
     GiftZonePriceOut,
 )
 from yupay.modules.gifts.service import (
+    PINNED_APP_IDS,
     countries_for_zone,
     get_app,
     hot_offers,
@@ -90,18 +91,51 @@ def _count(item: dict[str, Any], full_key: str, ids_key: str) -> int:
     return len(item.get(ids_key) or [])
 
 
-def _app_out(item: dict[str, Any], *, margin: Decimal, rate: Decimal | None) -> GiftAppOut:
+#: A flat price this far under the cheapest purchasable package is a sale
+#: that ended upstream: G-Engine kept Borderlands 2 at «−90%, $0.8» while
+#: every package cost $8.43 (2026-11-13 review).
+_STALE_SALE_FACTOR = Decimal("1.2")
+
+
+def _cheapest_package_usd(item: dict[str, Any], zones: list[str] | None) -> Decimal | None:
+    """The lowest wholesale price over the item's packages in the offered
+    zones, or ``None`` when the payload carries no priced package."""
+    if not zones:
+        return None
+    prices = [
+        price
+        for package in item.get("packages") or []
+        for zone in zones
+        if (price := zone_price_usd(package, zone)) is not None
+    ]
+    return min(prices) if prices else None
+
+
+def _app_out(
+    item: dict[str, Any],
+    *,
+    margin: Decimal,
+    rate: Decimal | None,
+    zones: list[str] | None = None,
+) -> GiftAppOut:
     """Map one raw upstream item to :class:`GiftAppOut`.
 
-    ``price_usd``/``price_uzs`` here are the *default-zone display* price,
-    derived from the item's flat reference ``price`` field — listing items,
-    DLC entries, and a detail payload's top level all carry that one field,
-    never a per-zone breakdown (that only exists on ``packages[]``).
+    ``price_usd``/``price_uzs`` are the «от» price: the cheapest package in
+    an offered zone when the payload carries ``packages[]`` (listings do since
+    2026-09-20), else the item's flat reference ``price``. The flat price is
+    a display hint upstream and lagged behind ended sales — the list said
+    «от 9 988 сум» for a game whose every edition cost 102 677 — so it is
+    only the fallback, and a discount that the packages do not bear out is
+    dropped rather than shown.
     """
-    supplier_price = item.get("price")
-    price_usd = (
-        sell_price_usd(Decimal(str(supplier_price)), margin) if supplier_price is not None else None
-    )
+    flat = item.get("price")
+    flat_usd = Decimal(str(flat)) if flat is not None else None
+    cheapest = _cheapest_package_usd(item, zones)
+    wholesale = cheapest if cheapest is not None else flat_usd
+    discount = item.get("discount_percent")
+    if cheapest is not None and flat_usd is not None and cheapest > flat_usd * _STALE_SALE_FACTOR:
+        discount = None
+    price_usd = sell_price_usd(wholesale, margin) if wholesale is not None else None
     return GiftAppOut(
         app_id=int(item["id"]),
         name=str(item.get("name") or ""),
@@ -109,7 +143,7 @@ def _app_out(item: dict[str, Any], *, margin: Decimal, rate: Decimal | None) -> 
         type=str(item.get("type") or ""),
         price_usd=str(price_usd) if price_usd is not None else None,
         price_uzs=_to_uzs(price_usd, rate),
-        discount_percent=item.get("discount_percent"),
+        discount_percent=discount,
         packages_count=_count(item, "packages", "package_ids"),
         dlc_count=_count(item, "dlc", "dlc_ids"),
     )
@@ -213,8 +247,10 @@ async def get_catalog(
     fx = build_default_service()
     rate = await _uzs_rate(fx)
     items, total = await list_apps(search=search, limit=limit, offset=offset)
+    zones = offered_zones(get_settings())
     return GiftsListOut(
-        items=[_app_out(item, margin=margin, rate=rate) for item in items], total=total
+        items=[_app_out(item, margin=margin, rate=rate, zones=zones) for item in items],
+        total=total,
     )
 
 
@@ -231,7 +267,11 @@ async def get_hot(
     fx = build_default_service()
     rate = await _uzs_rate(fx)
     items = await hot_offers()
-    apps = [_app_out(item, margin=margin, rate=rate) for item in items]
+    zones = offered_zones(get_settings())
+    apps = [_app_out(item, margin=margin, rate=rate, zones=zones) for item in items]
+    # The scan picked these for their discount; one the packages do not bear
+    # out is a stale sale, not a hot offer.
+    apps = [a for a in apps if a.discount_percent or a.app_id in PINNED_APP_IDS]
     return GiftsListOut(items=apps, total=len(apps))
 
 
@@ -255,7 +295,7 @@ async def get_catalog_app(
     rate = await _uzs_rate(fx)
 
     detail = await get_app(app_id)
-    base = _app_out(detail, margin=margin, rate=rate)
+    base = _app_out(detail, margin=margin, rate=rate, zones=zones)
     raw_packages = list(detail.get("packages") or [])
     packages = [_package_out(pkg, margin=margin, zones=zones, rate=rate) for pkg in raw_packages]
     priced_zones = {price.zone for pkg in packages for price in pkg.prices}

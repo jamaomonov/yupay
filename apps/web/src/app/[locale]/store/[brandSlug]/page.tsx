@@ -196,9 +196,17 @@ export default async function BrandPage({
   }));
 
   // Starting price chip + JSON-LD offers from real SKU prices.
-  const skus = products.flatMap((p) => p.skus);
+  // Only what can be bought: a sold-out pack's price is not a starting
+  // price (Roblox read «от 20 950» with 50 Robux out of stock), and a unit
+  // SKU (Stars) is priced per unit but sold from `min_qty` — «от 209» was one
+  // star of a 50-star minimum. Both also feed Google's `lowPrice`.
+  const skus = products.flatMap((p) => p.skus).filter((s) => s.in_stock !== false);
   const uzs = skus
-    .map((s) => (s.display_price ? Math.round(Number(s.display_price.amount)) : null))
+    .map((s) =>
+      s.display_price
+        ? Math.round(Number(s.display_price.amount) * Math.max(s.min_qty ?? 1, 1))
+        : null,
+    )
     .filter((n): n is number => n !== null);
   const startingChip = uzs.length ? formatUzs(locale, Math.min(...uzs)) : null;
 

@@ -114,6 +114,12 @@ from yupay.modules.skins.api import (
 
 ## Stored prices
 
+The public DTO hides the Steam reference (`steam_price_usd` and the
+«−N% к Steam» `discount_percent`) when it cannot be a real Steam price: a
+Doppler/Gamma phase (Steam lists the finish), a reference above the market's
+$2,000 listing cap, or a discount over 50% (`routes._steam_reference_credible`,
+2026-11-13 — «−74%» on a $7.6k Ruby). The stored columns are unchanged.
+
 `sell_price_usd` and `discount_percent` are derived by `repricing.reprice_rows` after
 every price tick, rules `PUT` and item `PATCH`. Each of those three writers takes
 `repricing.lock_pricing` (a transaction-scoped advisory lock) first and reads the

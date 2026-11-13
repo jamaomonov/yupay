@@ -367,6 +367,7 @@
     "howToMetaDescription": "Step by step, how to top up {name} in Uzbekistan in sum: what you need, where to find it and what it costs.",
     "howToStepsTitle": "Step by step",
     "pricesTitle": "Prices and denominations",
+    "pricePerDollar": "{price} per $1",
     "guideCtaButton": "Top up {name}",
     "breadcrumbHowTo": "How to top up",
     "howToLink": "How to top up and where to find your ID",

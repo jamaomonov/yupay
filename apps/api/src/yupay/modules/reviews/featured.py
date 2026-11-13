@@ -21,8 +21,18 @@ from yupay.modules.users.models import User
 _FALLBACK_LOCALE = "ru"
 
 
+#: The wall sells trust, so it shows reviews that say something good: four
+#: stars and up, and a body longer than «Wow» or one emoji. The headline rating
+#: next to it still counts every review (``overall_stats``).
+_MIN_RATING = 4
+_MIN_BODY_CHARS = 15
+
+
 async def list_featured(db: AsyncSession, *, locale: str, limit: int) -> list[FeaturedReviewOut]:
-    """The newest published reviews with a non-blank body, newest first.
+    """The newest published 4★+ reviews with a real body, one per author.
+
+    Since 2026-11-13: the wall had carried a 1★ «delivered in an hour and a
+    half», emoji-only bodies and one author twice in a row.
 
     Args:
         db: Session.
@@ -49,11 +59,25 @@ async def list_featured(db: AsyncSession, *, locale: str, limit: int) -> list[Fe
         .outerjoin(
             fallback, (fallback.brand_id == Brand.id) & (fallback.locale == _FALLBACK_LOCALE)
         )
-        .where(Review.status == "published", func.length(func.trim(Review.body)) > 0)
+        .where(
+            Review.status == "published",
+            Review.rating >= _MIN_RATING,
+            func.length(func.trim(Review.body)) >= _MIN_BODY_CHARS,
+        )
         .order_by(Review.created_at.desc(), Review.id.desc())
-        .limit(limit)
+        # Headroom for the one-per-author pass below.
+        .limit(limit * 3)
     )
-    rows = (await db.execute(stmt)).all()
+    seen: set[str] = set()
+    rows = []
+    for r in (await db.execute(stmt)).all():
+        author = r.Review.user_id or f"guest:{r.Review.guest_email or r.Review.id}"
+        if author in seen:
+            continue
+        seen.add(author)
+        rows.append(r)
+        if len(rows) == limit:
+            break
     return [
         FeaturedReviewOut(
             id=r.Review.id,
