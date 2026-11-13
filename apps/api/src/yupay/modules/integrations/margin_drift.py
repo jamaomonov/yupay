@@ -1,10 +1,10 @@
 """Daily digest of SKUs whose shelf margin has drifted off its target.
 
-The hourly cost refresh moves ``price_usd`` only **up** (``allow_price_drop=False``
-in ``refresh_all_mappings``): when a supplier gets cheaper the margin widens and
-the shelf price stays — a decision, not an accident («оставить цену, забрать
-экономию», ADR-0081's sourcing-by-brand), so nothing here lowers a price. What
-was missing was anyone being told. Measured on prod 2026-10-05, 130 active SKUs
+Until 2026-11-13 the hourly cost refresh moved ``price_usd`` only **up**
+(«оставить цену, забрать экономию»); since then it banks a cost drop only within
+``price_drop_tolerance_pp`` and lets a bigger one through, so a row above target
+now means a SKU the refresh is not reaching. Nothing here lowers a price. What
+was missing when this was written was anyone being told. Measured on prod 2026-10-05, 130 active SKUs
 sat more than 3 pp above their target margin, some for weeks, and no screen
 listed them. This module lists them, once a day, to the admin alert chat.
 

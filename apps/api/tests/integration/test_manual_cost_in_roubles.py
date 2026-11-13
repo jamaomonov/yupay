@@ -120,7 +120,7 @@ async def test_a_rouble_price_becomes_the_dollar_cost(db_session: AsyncSession, 
     assert outcome.source == "manual:RUB@80"
 
 
-async def test_a_weaker_rouble_lowers_the_cost_but_not_the_shelf_price(
+async def test_a_weaker_rouble_brings_the_shelf_price_down_with_the_cost(
     db_session: AsyncSession, fx: _Fx
 ) -> None:
     mapping = await _seed(db_session, "rub-2", extra={"cost": "119", "cost_currency": "RUB"})
@@ -140,7 +140,10 @@ async def test_a_weaker_rouble_lowers_the_cost_but_not_the_shelf_price(
 
     assert outcome.updated
     assert sku.cost_usdt == Decimal("1.190000")
-    assert sku.price_usd == price_before, "the hourly pass never lowers a price"
+    # A 20% cost drop is far past ``price_drop_tolerance_pp``: since
+    # 2026-11-13 the hourly pass lets the price follow it (no overpricing).
+    assert sku.price_usd < price_before
+    assert sku.price_usd >= Decimal("1.190000") * Decimal("1.09")
 
 
 async def test_a_manual_mapping_without_a_price_writes_nothing(

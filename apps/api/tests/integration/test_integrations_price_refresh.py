@@ -808,7 +808,7 @@ async def test_refresh_leaves_price_alone_without_a_saved_margin(
 
 
 @respx.mock
-async def test_refresh_all_leaves_price_alone_on_a_cost_drop(
+async def test_refresh_all_leaves_price_alone_on_a_small_cost_drop(
     integration_client: AsyncClient,
     db_session: AsyncSession,
 ) -> None:
@@ -816,21 +816,25 @@ async def test_refresh_all_leaves_price_alone_on_a_cost_drop(
     scheduler and the on-demand "refresh all" button both funnel through
     here — passes ``allow_price_drop=False``: a cost drop still updates
     ``cost_usdt`` (the margin report should tell the truth) but must not
-    touch ``price_usd``, asserted byte-identical against the seeded price.
-    Free Fire's switch to NOVA is exactly this shape."""
+    touch ``price_usd`` while the margin stays within
+    ``price_drop_tolerance_pp`` of the target (12.00 over 9.40 is 27.7%
+    against 26%), asserted byte-identical against the seeded price. A drop
+    past the tolerance moves the price — ``test_sku_cost_margin.py``."""
     sku_id = await _seed_sku(
         db_session,
         slug_suffix="hourly-drop",
         initial_cost="10.00",
         price_usd="12.00",
-        margin_percent="20",
+        # 26%, so a drop big enough to alert on (>5%) still lands within
+        # the 2 pp tolerance: 12.00 over 9.40 is 27.7%.
+        margin_percent="26",
     )
     await _seed_mapping(db_session, sku_id=sku_id, game_code="pubgm", denom="60")
 
     respx.get(f"{G2B_BASE}/games/pubgm/catalogue").mock(
         return_value=httpx.Response(
             200,
-            json={"catalogues": [{"id": 1, "name": "60", "amount": 8.00}]},
+            json={"catalogues": [{"id": 1, "name": "60", "amount": 9.40}]},
         )
     )
     tg_route = respx.post(f"https://api.telegram.org/bot{ALERT_BOT_TOKEN}/sendMessage").mock(
@@ -844,7 +848,7 @@ async def test_refresh_all_leaves_price_alone_on_a_cost_drop(
     assert report.alerts_sent == 1
 
     sku = (await db_session.execute(select(Sku).where(Sku.id == sku_id))).scalar_one()
-    assert sku.cost_usdt == Decimal("8.00"), "cost must still move — the margin report must widen"
+    assert sku.cost_usdt == Decimal("9.40"), "cost must still move — the margin report must widen"
     assert sku.price_usd == Decimal("12.00"), "price must be byte-identical to the seeded value"
 
     sent = json.loads(tg_route.calls.last.request.content)

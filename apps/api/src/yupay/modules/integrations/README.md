@@ -107,17 +107,17 @@ health probes, and supplier-cost refresh. Supplier adapter code itself lives in
   (`catalog.admin_service.set_sku_cost_usdt`) so a SKU nobody is actively
   re-pricing never starts selling below cost — see
   [ADR-0050](../../../../../../docs/decisions/0050-sku-margin-percent.md).
-  **The price only ratchets up on the automatic path.** `set_sku_cost_usdt`
-  takes `allow_price_drop` (default `True`); the hourly/on-demand
-  refresh-all path (`price_refresh.refresh_all_mappings`) is the one caller
-  that passes `False`, so a supplier cost drop widens the margin instead of
-  quietly handing the saving to the customer. A cost rise still raises the
-  price either way. The mapping-save route (an operator's own action)
-  keeps the default and can still lower a price on purpose. Note that the
-  admin's on-demand "Обновить все цены" button also runs through
-  `refresh_all_mappings`, so it inherits the same `allow_price_drop=False`
-  — it can raise or hold a price, never lower one; a downward correction is
-  a per-SKU action only. See
+  **On the automatic path a price drop needs a real drop** (2026-11-13; it
+  was a strict ratchet before). `set_sku_cost_usdt` takes `allow_price_drop`
+  (default `True`); the hourly/on-demand refresh-all path and a route switch
+  pass `False`, which banks a cost drop as margin only while the price stays
+  within `price_drop_tolerance_pp` (2) of the target margin. Past that the
+  price follows the cost down to cost + margin — the owner's rule: never
+  below cost, never overpriced — unless the cut is deeper than
+  `price_drop_max_auto_pct` (25), which usually means a wrong cost and waits
+  for a person. A cost rise always raises the price; a
+  negative tolerance restores the old ratchet. The mapping-save route keeps
+  the default and lowers a price whenever the operator's number says so. See
   [ADR-0083](../../../../../../docs/decisions/0083-routed-supplier-cost-and-price-ratchet.md)
   and [the sourcing-by-brand design, §5](../../../../../../docs/superpowers/specs/2026-09-18-sourcing-by-brand-design.md).
 - Probe supplier connectivity (`GET /{slug}/health`).
@@ -140,9 +140,9 @@ health probes, and supplier-cost refresh. Supplier adapter code itself lives in
   `supplier_balance_low`, `cost_stale`, `margin_drift`) are already one-per-event or
   deduped.
 - **Margin-drift digest** (`margin_drift.py`, once a day from the hourly refresh).
-  The refresh only ever _raises_ `price_usd` (`allow_price_drop=False`): a cheaper
-  supplier widens the margin and the shelf price stays, by decision. The digest is
-  the missing other half — it lists SKUs more than `margin_drift_alert_pp` (5) pp
+  The refresh banks drops within `price_drop_tolerance_pp` and passes larger ones
+  on (2026-11-13), so a row here is a SKU the refresh is not reaching (no mapping
+  with a price, a hand-set price, a cost that has not moved since). The digest it lists SKUs more than `margin_drift_alert_pp` (5) pp
   **above** target and every SKU more than 1 pp **below** it to the admin chat, and
   changes nothing. Runbook: [`margin-drift.md`](../../../../../../docs/runbooks/margin-drift.md).
 - **Cost-staleness alert** (`cost_staleness.py`, every 6 h while it lasts).

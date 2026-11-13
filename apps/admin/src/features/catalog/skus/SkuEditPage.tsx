@@ -16,7 +16,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { SkuPriceHistoryCard } from "@/features/integrations/SkuPriceHistoryCard";
 import { type ApiError, apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
 import { extractApiMessage } from "@/lib/apiError";
-import { marginFromCostAndPrice } from "@/lib/margin";
+import { actualMarginNote, marginFromCostAndPrice } from "@/lib/margin";
 import { qk } from "@/lib/queryKeys";
 
 const LOCALES = ["ru", "en", "uz"] as const;
@@ -469,6 +469,11 @@ export function SkuEditPage() {
   const priceReg = form.register("price_usd");
   const costReg = form.register("cost_usdt");
   const marginReg = form.register("margin_percent");
+  const marginNote = actualMarginNote(
+    form.watch("margin_percent"),
+    watchedCostUsdt,
+    watchedPriceUsd,
+  );
 
   const onPriceUsdChange = (e: ChangeEvent<HTMLInputElement>) => {
     void priceReg.onChange(e);
@@ -820,6 +825,9 @@ export function SkuEditPage() {
                   />
                   <span className="text-sm text-[var(--text-secondary)]">%</span>
                 </div>
+                {marginNote && (
+                  <p className="mt-1 text-xs font-medium text-[var(--warning-fg)]">{marginNote}</p>
+                )}
               </Field>
             )}
           </div>

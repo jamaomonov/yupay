@@ -1108,10 +1108,22 @@ class Settings(BaseSettings):
     # How often the scheduler re-prices every active mapping.
     price_refresh_interval_minutes: int = Field(default=60)
     # Once a day the refresh lists SKUs whose actual retail margin sits more
-    # than this many percentage points ABOVE the target (the refresh never
-    # lowers a price, so widened margins otherwise go unnoticed), and every
+    # than this many percentage points ABOVE the target (the refresh banks
+    # drops within `price_drop_tolerance_pp`; a margin wider than that means
+    # a SKU the refresh is not reaching), and every
     # SKU more than 1 pp below it. 0 disables the digest.
     margin_drift_alert_pp: float = Field(default=5.0)
+    # The automatic cost refresh lets a price follow a cost DROP once the
+    # SKU's actual margin beats its target by more than this many percentage
+    # points (owner, 2026-11-13); within it, the drop is banked as margin so
+    # cent-level wobble does not move shelf prices hourly. Rises always pass
+    # through. Negative = never lower a price automatically (the old ratchet).
+    price_drop_tolerance_pp: float = Field(default=2.0)
+    # ...but never by more than this percent in one automatic write: a deeper
+    # cut usually means a wrong cost (a mis-mapped variant), and following it
+    # would sell below the real one. Those are left for the margin-drift
+    # digest and a person.
+    price_drop_max_auto_pct: float = Field(default=25.0)
     # A SKU whose cost the routed supplier has not confirmed for this many
     # hours is "stale": the refresh runs hourly, so 6 means five misses in a
     # row. Alerted every 6 h while it lasts. 0 disables.

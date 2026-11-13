@@ -36,3 +36,22 @@ export function marginFromCostAndPrice(
   const margin = Math.round(((price - cost) / cost) * 100 * 100) / 100;
   return margin.toString();
 }
+
+/**
+ * «По факту 23,7%» when the saved price sits off the target margin by half a
+ * point or more, else null. The field shows the target, and until 2026-11-13
+ * the hourly refresh never lowered a price, so a SKU could read «10%» while
+ * selling at 23.7% — the owner found one by eye.
+ */
+export function actualMarginNote(
+  targetStr: string | null | undefined,
+  costStr: string | null | undefined,
+  priceStr: string | null | undefined,
+): string | null {
+  const target = Number.parseFloat(targetStr ?? "");
+  const actual = Number.parseFloat(marginFromCostAndPrice(costStr, priceStr));
+  if (Number.isNaN(target) || Number.isNaN(actual)) return null;
+  if (Math.abs(actual - target) < 0.5) return null;
+  const pct = actual.toLocaleString("ru-RU", { maximumFractionDigits: 1 });
+  return `По факту ${pct}% — цена ${actual > target ? "выше" : "ниже"} цели.`;
+}

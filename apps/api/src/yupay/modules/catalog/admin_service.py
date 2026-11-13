@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import lazyload, selectinload
 
 from yupay.core.clock import now
+from yupay.core.config import get_settings
 from yupay.core.errors import ConflictError, NotFoundError, ValidationError
 from yupay.core.ids import new_id
 from yupay.modules.catalog.admin_schemas import require_qty_bounds, require_variable_amount_fields
@@ -600,6 +601,32 @@ class CostUpdateResult:
     price_drop_blocked: bool = False
 
 
+def _overpriced(price: Decimal, cost: Decimal, margin_percent: Decimal) -> bool:
+    """Whether ``price`` over ``cost`` beats the target margin by more than
+    ``price_drop_tolerance_pp`` — the point where the automatic path stops
+    banking a cost drop and lets the price follow it down (owner, 2026-11-13).
+
+    The ratchet this loosens kept every drop: a G2B MLBB rung whose cost went
+    $131 → $117 sat at $144 with «наценка 10%» on screen, 23.7% in fact, and
+    3,308 SKUs were over target by more than 2 pp. The tolerance keeps cent-
+    level wobble from moving shelf prices every hour; a real drop goes through.
+    A negative setting disables it (drops banked forever, the old rule).
+    """
+    cfg = get_settings()
+    tolerance = Decimal(str(cfg.price_drop_tolerance_pp))
+    if tolerance < 0:
+        return False
+    actual = (price / cost - 1) * 100
+    if actual <= margin_percent + tolerance:
+        return False
+    # A cut this deep is more often a wrong cost than a cheaper supplier — on
+    # prod a $78.76 pack mapped to a $0.68 variant, Roblox 100 at $3.43 over a
+    # $1.77 cost. Selling at a wrong cost is selling below the real one, so
+    # those wait for a person (the margin-drift digest lists them).
+    cut = (1 - _price_from_margin(cost, margin_percent) / price) * 100
+    return cut <= Decimal(str(cfg.price_drop_max_auto_pct))
+
+
 async def set_sku_cost_usdt(
     db: AsyncSession,
     *,
@@ -625,8 +652,10 @@ async def set_sku_cost_usdt(
         sku_id: The SKU to update.
         new_cost: The new ``cost_usdt`` value.
         allow_price_drop: Whether a margin-derived price that comes out
-            *lower* than the SKU's current ``price_usd`` may actually be
-            written. Defaults to ``True`` so every existing and future
+            *lower* than the SKU's current ``price_usd`` may always be
+            written. With ``False`` a drop is still written once the price
+            would sit more than ``price_drop_tolerance_pp`` above its target
+            margin (:func:`_overpriced`, 2026-11-13) — only wobble is banked. Defaults to ``True`` so every existing and future
             caller keeps today's behaviour unless it explicitly opts out —
             this function has callers beyond the hourly refresh, and a
             default that silently flipped would move prices across the
@@ -665,10 +694,25 @@ async def set_sku_cost_usdt(
     new_price: Decimal | None = None
     margin: Decimal | None = None
     price_drop_blocked = False
-    if sku.margin_percent is not None and previous_cost != new_cost:
+    # A cost that did not move still re-prices a SKU sitting past the
+    # tolerance: that is how the backlog parked by the old ratchet comes down
+    # on the first hourly pass after 2026-11-13, and how a hand-typed price
+    # far above the margin does too.
+    if sku.margin_percent is not None and (
+        previous_cost != new_cost
+        or (
+            not allow_price_drop
+            and sku.price_usd is not None
+            and _overpriced(sku.price_usd, new_cost, sku.margin_percent)
+        )
+    ):
         candidate = _price_from_margin(new_cost, sku.margin_percent)
         if candidate > 0:
-            if allow_price_drop or candidate > sku.price_usd:
+            if (
+                allow_price_drop
+                or candidate > sku.price_usd
+                or _overpriced(sku.price_usd, new_cost, sku.margin_percent)
+            ):
                 previous_price = sku.price_usd
                 sku.price_usd = candidate
                 new_price = candidate

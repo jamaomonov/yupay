@@ -170,14 +170,13 @@ async def _switch(
     return body
 
 
-async def test_a_cheaper_supplier_widens_the_margin_and_leaves_the_price(
+async def test_a_much_cheaper_supplier_brings_the_price_down(
     integration_client: AsyncClient, db_session: AsyncSession
 ) -> None:
-    """«Оставить цену, забрать экономию» — the point of most switches.
-
-    ``allow_price_drop=False`` is what makes this different from saving a
-    mapping by hand, where the operator is correcting the mapping itself and
-    a lower price follows the lower cost.
+    """Until 2026-11-13 a switch kept the price («оставить цену, забрать
+    экономию»). The owner's rule now: no overpricing — once the margin beats
+    the target by more than ``price_drop_tolerance_pp`` the price follows the
+    cost down. 2.40 over 1.50 is 60% against 20%, so it lands on 1.80.
     """
     headers = await _admin_headers(integration_client, db_session, tg_id=9301)
     sku_id = await _seed_sku(db_session, slug="cheaper", cost="2.00", price="2.40")
@@ -189,12 +188,12 @@ async def test_a_cheaper_supplier_widens_the_margin_and_leaves_the_price(
     assert isinstance(cost_sync, dict)
     assert cost_sync["updated"] is True
     assert cost_sync["new_cost"] == "1.500000"
-    assert cost_sync["price_drop_blocked"] is True
+    assert cost_sync["price_drop_blocked"] is False
 
     db_session.expire_all()
     sku = (await db_session.execute(select(Sku).where(Sku.id == sku_id))).scalar_one()
     assert sku.cost_usdt == Decimal("1.50")
-    assert sku.price_usd == Decimal("2.40"), "the shelf price must not follow the cost down"
+    assert sku.price_usd == Decimal("1.80"), "the shelf price follows a real drop"
 
 
 async def test_a_dearer_supplier_raises_the_price_off_the_new_cost(

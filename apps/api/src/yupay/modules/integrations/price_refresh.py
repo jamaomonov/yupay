@@ -9,9 +9,10 @@ Invoked from two places:
 Both are the *automatic* path: nobody typed a number, the run just re-pulls
 whatever the supplier is quoting today. So every call into
 ``svc.refresh_sku_cost_for_mapping`` below passes ``allow_price_drop=False``
-— a cost drop still updates ``Sku.cost_usdt``, but the margin-derived price
-is left alone rather than quietly handed to the customer as a lower shelf
-price. A cost rise still raises it. See ``catalog.admin_service.
+— a cost drop still updates ``Sku.cost_usdt``; the margin-derived price
+follows it down only once the SKU would otherwise sit more than
+``price_drop_tolerance_pp`` above its target margin (2026-11-13; before
+that a drop never moved the price). A cost rise always raises it. See ``catalog.admin_service.
 set_sku_cost_usdt`` for the rule and why an operator editing a mapping by
 hand (``integrations.routes._refresh_sku_cost``) keeps the opposite default.
 

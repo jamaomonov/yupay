@@ -15,6 +15,7 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from yupay.core.config import get_settings
 from yupay.core.ids import new_id
 from yupay.modules.catalog import admin_service as catalog_svc
 from yupay.modules.catalog.models import (
@@ -179,13 +180,12 @@ async def test_allow_price_drop_true_lowers_price_on_a_cost_drop(
     assert sku.price_usd == Decimal("9.60")
 
 
-async def test_allow_price_drop_false_leaves_price_byte_identical_on_a_cost_drop(
+async def test_allow_price_drop_false_banks_a_drop_within_the_tolerance(
     db_session: AsyncSession,
 ) -> None:
-    """The hourly/automatic path: a cost drop updates ``cost_usdt`` (the
-    margin report should tell the truth) but must not touch ``price_usd``
-    at all — asserted byte-identical against the Decimal the SKU was
-    seeded with, not merely "not the new candidate"."""
+    """The hourly/automatic path: a small cost drop updates ``cost_usdt``
+    but leaves ``price_usd`` byte-identical — 12.00 over 9.90 is 21.2%,
+    within 2 pp of the 20% target, so it is wobble, not a drop to pass on."""
     sku_id = await _seed_sku(
         db_session, "false-drop", cost_usdt="10.00", price_usd="12.00", margin_percent="20"
     )
@@ -194,7 +194,7 @@ async def test_allow_price_drop_false_leaves_price_byte_identical_on_a_cost_drop
     ).scalar_one()
 
     result = await catalog_svc.set_sku_cost_usdt(
-        db_session, sku_id=sku_id, new_cost=Decimal("8"), allow_price_drop=False
+        db_session, sku_id=sku_id, new_cost=Decimal("9.90"), allow_price_drop=False
     )
     await db_session.commit()
 
@@ -204,8 +204,99 @@ async def test_allow_price_drop_false_leaves_price_byte_identical_on_a_cost_drop
     assert result.price_drop_blocked is True
 
     sku = (await db_session.execute(select(Sku).where(Sku.id == sku_id))).scalar_one()
-    assert sku.cost_usdt == Decimal("8"), "cost must still move — the margin report must widen"
+    assert sku.cost_usdt == Decimal("9.90"), "cost must still move — the margin report must widen"
     assert sku.price_usd == seeded_price
+    assert sku.price_usd == Decimal("12.00")
+
+
+async def test_allow_price_drop_false_follows_a_drop_past_the_tolerance(
+    db_session: AsyncSession,
+) -> None:
+    """Owner, 2026-11-13: no overpricing. 12.00 over 8.00 is 50% against a
+    20% target — the price comes down to cost + margin exactly."""
+    sku_id = await _seed_sku(
+        db_session, "false-big-drop", cost_usdt="10.00", price_usd="12.00", margin_percent="20"
+    )
+
+    result = await catalog_svc.set_sku_cost_usdt(
+        db_session, sku_id=sku_id, new_cost=Decimal("8"), allow_price_drop=False
+    )
+    await db_session.commit()
+
+    assert result.price_drop_blocked is False
+    assert result.previous_price == Decimal("12.00")
+    assert result.new_price == Decimal("9.60")
+    sku = (await db_session.execute(select(Sku).where(Sku.id == sku_id))).scalar_one()
+    assert sku.price_usd == Decimal("9.60")
+
+
+async def test_an_unmoved_cost_still_brings_an_overpriced_sku_down(
+    db_session: AsyncSession,
+) -> None:
+    """The backlog the old ratchet parked: cost unchanged at 116.576, price
+    144.22, target 10% — the next hourly pass sets it to 128.24."""
+    sku_id = await _seed_sku(
+        db_session, "parked", cost_usdt="116.576", price_usd="144.22", margin_percent="10"
+    )
+    result = await catalog_svc.set_sku_cost_usdt(
+        db_session, sku_id=sku_id, new_cost=Decimal("116.576"), allow_price_drop=False
+    )
+    await db_session.commit()
+
+    assert result.new_price == Decimal("128.24")
+    sku = (await db_session.execute(select(Sku).where(Sku.id == sku_id))).scalar_one()
+    assert sku.price_usd == Decimal("128.24")
+
+
+async def test_an_unmoved_cost_within_tolerance_changes_nothing(
+    db_session: AsyncSession,
+) -> None:
+    sku_id = await _seed_sku(
+        db_session, "steady", cost_usdt="10.00", price_usd="12.10", margin_percent="20"
+    )
+    result = await catalog_svc.set_sku_cost_usdt(
+        db_session, sku_id=sku_id, new_cost=Decimal("10.00"), allow_price_drop=False
+    )
+    await db_session.commit()
+
+    assert result.new_price is None
+    sku = (await db_session.execute(select(Sku).where(Sku.id == sku_id))).scalar_one()
+    assert sku.price_usd == Decimal("12.10")
+
+
+async def test_a_cut_deeper_than_the_cap_waits_for_a_person(
+    db_session: AsyncSession,
+) -> None:
+    """$78.76 over a $0.683 cost is a mis-mapped variant, not a bargain: the
+    automatic path leaves the price and reports the drop as blocked."""
+    sku_id = await _seed_sku(
+        db_session, "wrong-cost", cost_usdt="0.683", price_usd="78.76", margin_percent="13"
+    )
+    result = await catalog_svc.set_sku_cost_usdt(
+        db_session, sku_id=sku_id, new_cost=Decimal("0.683"), allow_price_drop=False
+    )
+    await db_session.commit()
+
+    assert result.new_price is None
+    sku = (await db_session.execute(select(Sku).where(Sku.id == sku_id))).scalar_one()
+    assert sku.price_usd == Decimal("78.76")
+
+
+async def test_a_negative_tolerance_restores_the_ratchet(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``PRICE_DROP_TOLERANCE_PP=-1`` is the way back to "never lower"."""
+    monkeypatch.setattr(get_settings(), "price_drop_tolerance_pp", -1.0)
+    sku_id = await _seed_sku(
+        db_session, "ratchet", cost_usdt="10.00", price_usd="12.00", margin_percent="20"
+    )
+    result = await catalog_svc.set_sku_cost_usdt(
+        db_session, sku_id=sku_id, new_cost=Decimal("8"), allow_price_drop=False
+    )
+    await db_session.commit()
+
+    assert result.price_drop_blocked is True
+    sku = (await db_session.execute(select(Sku).where(Sku.id == sku_id))).scalar_one()
     assert sku.price_usd == Decimal("12.00")
 
 
