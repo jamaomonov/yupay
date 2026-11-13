@@ -2322,6 +2322,18 @@ export function PurchasePanel({
                                     : "border-border bg-card hover:border-border-2"
                               }`}
                             >
+                              {/* A corner tab (owner, 2026-11-13), like «0% fee» on
+                              the Steam button: it no longer takes a row in the
+                              tile, so a pack with a notice is as tall as one
+                              without. The top-right is free — the image sits
+                              left and the name below it; the max width keeps a
+                              long «До 30 уровня» clear of a 48px image on a
+                              two-column phone grid. */}
+                              {sku.notice?.badge && !soldOut && (
+                                <span className="bg-gold text-bg absolute -right-px -top-px max-w-[calc(100%-3.25rem)] truncate rounded-bl-lg rounded-tr-lg px-1.5 py-1 text-[10px] font-bold leading-none sm:px-2 sm:text-[11px]">
+                                  {sku.notice.badge}
+                                </span>
+                              )}
                               <span className="rounded-btn relative h-12 w-12 overflow-hidden">
                                 {img && (
                                   <Image
@@ -2353,14 +2365,6 @@ export function PurchasePanel({
                               <span className="text-foreground text-[16px] font-bold tabular-nums">
                                 {soldOut ? t("outOfStock") : skuPrice(locale, sku)}
                               </span>
-                              {/* At the tile's foot, not in a corner: a two-column
-                              phone tile has no room beside the image for «До 30
-                              уровня», and here it cannot push the price. */}
-                              {sku.notice?.badge && !soldOut && (
-                                <span className="bg-gold/12 text-gold rounded-full px-2 py-0.5 text-[12px] font-semibold leading-tight">
-                                  {sku.notice.badge}
-                                </span>
-                              )}
                               {!soldOut && (
                                 <span aria-hidden className={PACK_FOOT}>
                                   {!active && (
