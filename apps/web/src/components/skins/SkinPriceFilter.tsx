@@ -53,12 +53,15 @@ export function SkinPriceFilter({ query, locale }: { query: SkinQuery; locale: s
       min={0}
       inputMode="numeric"
       placeholder={placeholder}
+      // The placeholder («От»/«До») vanishes once typed into; screen readers
+      // need a name that does not (2026-11-13 review).
+      aria-label={`${t("price")}: ${placeholder}`}
       value={value}
       onChange={(e) => {
         typed.current = true;
         set(e.target.value);
       }}
-      className="border-border bg-background w-full rounded-lg border px-2 py-1.5 text-[13px]"
+      className="border-border-2 bg-background w-full rounded-lg border px-2 py-1.5 text-[13px]"
     />
   );
 

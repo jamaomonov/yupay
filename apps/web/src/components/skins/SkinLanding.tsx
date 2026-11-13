@@ -59,14 +59,22 @@ export async function SkinLanding({
     <main className="mx-auto min-h-screen max-w-[1320px] px-4 pb-28 pt-[104px] sm:px-6">
       <JsonLd data={breadcrumbLd} />
       <nav className="text-tx-dim mb-4 flex flex-wrap items-center gap-1 text-[13px]">
-        {crumbs.slice(0, -1).map((c) => (
-          <span key={c.path} className="flex items-center gap-1">
-            <Link href={pathFor(locale, c.path)} className="hover:text-foreground">
+        {/* The current page closes the trail as text: linking only the parents
+            left a chevron pointing at nothing («Маркет ›», 2026-11-13). */}
+        {crumbs.map((c, i) =>
+          i < crumbs.length - 1 ? (
+            <span key={c.path} className="flex items-center gap-1">
+              <Link href={pathFor(locale, c.path)} className="hover:text-foreground">
+                {c.name}
+              </Link>
+              <ChevronRight className="h-3.5 w-3.5" />
+            </span>
+          ) : (
+            <span key={c.path} aria-current="page" className="text-tx-mute">
               {c.name}
-            </Link>
-            <ChevronRight className="h-3.5 w-3.5" />
-          </span>
-        ))}
+            </span>
+          ),
+        )}
       </nav>
       <h1 className="font-display text-2xl font-bold md:text-3xl">{h1}</h1>
       {intro && <p className="text-tx-mute mt-2 max-w-2xl text-[14px]">{intro}</p>}

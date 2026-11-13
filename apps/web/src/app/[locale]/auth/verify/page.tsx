@@ -6,7 +6,9 @@ import { useTranslations } from "next-intl";
 import { Suspense, use, useEffect, useRef, useState } from "react";
 
 import { useAuth } from "@/lib/auth";
+import { buttonStyles } from "@/lib/button";
 import { pathFor } from "@/lib/seo";
+import { useLoginModal } from "@/store/useLoginModal";
 
 /**
  * Landing page for the link in the verify-email message
@@ -25,6 +27,8 @@ function VerifyInner({ locale }: { locale: string }) {
   const { verifyEmail } = useAuth();
   const router = useRouter();
   const t = useTranslations("web.auth");
+  const tNav = useTranslations("web.nav");
+  const openLogin = useLoginModal((st) => st.open);
   const [status, setStatus] = useState<"pending" | "invalid">(token ? "pending" : "invalid");
   // Effects can re-run (StrictMode, fast refresh); the token is single-use.
   const startedRef = useRef(false);
@@ -51,7 +55,16 @@ function VerifyInner({ locale }: { locale: string }) {
         <h1 className="font-display mb-4 text-2xl font-bold tracking-[-0.02em]">
           {t("verifyRequiredTitle")}
         </h1>
-        <p className="text-[15px] leading-relaxed text-[#FF6B6B]">{t("verifyInvalid")}</p>
+        <p className="text-danger text-[15px] leading-relaxed">{t("verifyInvalid")}</p>
+        {/* The copy says to ask for a new link from the sign-in form — so open
+            it, instead of leaving the reader to find it (2026-11-13 review). */}
+        <button
+          type="button"
+          onClick={openLogin}
+          className={`${buttonStyles({ size: "lg" })} mt-6 w-full`}
+        >
+          {tNav("login")}
+        </button>
       </main>
     );
   }

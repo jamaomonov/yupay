@@ -20,7 +20,17 @@ import { NOINDEX, pathFor } from "@/lib/seo";
  * visitor who certainly did not pay must not be told to go wait for an order.
  * The copy covers both, and both destinations are one tap away.
  */
-export const metadata: Metadata = { title: "YuPay", robots: NOINDEX };
+// The page's own heading, not "YuPay": the layout template appends the
+// brand, so a bare "YuPay" shipped as «YuPay — YuPay» (2026-11-13 review).
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await getTranslations({ locale, namespace: "web.checkoutReturn" });
+  return { title: t("title"), robots: NOINDEX };
+}
 
 export default async function CheckoutReturnPage({
   params,

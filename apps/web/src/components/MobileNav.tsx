@@ -131,6 +131,17 @@ export function MobileNav({ skins = false }: { skins?: boolean }) {
                   {t("wallet")}
                 </Link>
               )}
+              {/* SupportFab is desktop-only and says support «lives in the
+                  menu» below lg — it did not, until 2026-11-13. */}
+              <a
+                href="https://t.me/yupay_support"
+                target="_blank"
+                rel="noreferrer noopener"
+                onClick={close}
+                className={sheetLinkClass}
+              >
+                {t("support")}
+              </a>
             </nav>
 
             <a

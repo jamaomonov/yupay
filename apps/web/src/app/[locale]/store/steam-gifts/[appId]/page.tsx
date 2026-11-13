@@ -229,7 +229,10 @@ export default async function GiftGamePage({
               cap, push its own Buy button below the fold — clipped by the
               viewport but not scrollable within itself (2026-09-04
               review). */}
-          <aside className="lg:sticky lg:top-[120px] lg:max-h-[calc(100vh-140px)] lg:self-start lg:overflow-y-auto">
+          {/* Not sticky with its own scroll any more: the panel (~1020px) is
+              taller than a 900px laptop window, so «Оплатить» sat below the
+              fold of an inner scrollbar nobody saw (2026-11-13 review). */}
+          <aside className="lg:self-start">
             {skuId ? (
               <GiftPurchasePanel detail={detail} skuId={skuId} locale={locale} />
             ) : (
