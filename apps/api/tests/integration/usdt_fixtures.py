@@ -67,10 +67,18 @@ async def open_usdt(
 async def reserve(
     db: AsyncSession, merchant_id: str, amount: str, network: str = "trc20"
 ) -> UsdtReservation:
-    """A reservation for exactly ``amount`` on ``network``."""
-    return await reservations.reserve(
+    """A reservation for exactly ``amount`` on ``network``, made two minutes ago.
+
+    Backdated so a transfer "now" reads as an honest payer's, past intake's
+    60-second front-running guard; the guard has its own test.
+    """
+    r = await reservations.reserve(
         db, merchant_id=merchant_id, network=network, amount=Decimal(amount), idempotency_key=None
     )
+    r.created_at = r.created_at - timedelta(minutes=2)
+    r.expires_at = r.expires_at - timedelta(minutes=2)
+    await db.flush()
+    return r
 
 
 def transfer(

@@ -35,6 +35,15 @@ Status = Literal["duplicate", "matched", "unmatched", "ignored"]
 #: response carrying the amount reached them, which is after this row exists.
 _SKEW: Final = timedelta(seconds=5)
 _TX_KEY: Final = "uq_usdt_incoming_event"
+#: A transfer mined sooner than this after its reservation was created is not
+#: credited automatically (audit 2026-11-14). A pending transfer is public
+#: before it is mined (~12 s on Ethereum, longer when gas is low), so anyone
+#: watching our address could reserve the exact amount of somebody else's
+#: mistyped or unreserved transfer and have it land on their own reservation.
+#: An honest reseller needs longer than this to read the amount, open a wallet
+#: and send; a front-runner reserves seconds before the block. Too-early
+#: matches go to the operator as unmatched — the admin credits them by hand.
+_MIN_LEAD: Final = timedelta(seconds=60)
 
 
 @dataclass
@@ -113,6 +122,28 @@ async def ingest(db: AsyncSession, t: Transfer, *, received_at: datetime) -> Int
         return IntakeResult("ignored")
 
     reservation = await _payable(db, t) if t.amount == t.amount.quantize(CENT) else None
+    if reservation is not None and t.block_at < reservation.created_at + _MIN_LEAD:
+        row.result = "unmatched"
+        await db.flush()
+        log.warning(
+            "usdt.too_early",
+            number=reservation.number,
+            amount=str(t.amount),
+            tx_id=t.tx_id,
+            lead_s=int((t.block_at - reservation.created_at).total_seconds()),
+        )
+        return IntakeResult(
+            "unmatched",
+            alerts=[
+                (
+                    "usdt_unmatched",
+                    f"USDT ({t.network.upper()}): перевод {t.amount.normalize():f} USDT пришёл "
+                    f"меньше чем через минуту после заявки {reservation.number} — не зачислен "
+                    "автоматически (возможен перехват чужого перевода). Проверьте отправителя "
+                    "и зачислите вручную в админке (USDT → журнал)",
+                )
+            ],
+        )
     if reservation is None:
         row.result = "unmatched"
         await db.flush()

@@ -43,6 +43,13 @@ Usual causes:
 - an exchange deducted its fee, so 99.00 arrived instead of 100.00;
 - the reseller sent after the 30 minutes ran out;
 - the reseller sent without opening a top-up.
+- **it landed less than a minute after a top-up was opened** (alert text «меньше чем через
+  минуту после заявки …»). Since 2026-11-14 such a match is not credited automatically: a
+  pending transfer is public before it is mined, so somebody watching our address can open a
+  top-up for the exact amount of a stranger's transfer and have it land on theirs. Credit it
+  by hand only if the sender's address and the reseller's story agree (their own wallet, or
+  they can show the transaction); if a stranger's transfer and a fresh top-up for the same
+  amount by a new reseller meet here, it is the front-running case — credit the sender.
 
 What to do:
 

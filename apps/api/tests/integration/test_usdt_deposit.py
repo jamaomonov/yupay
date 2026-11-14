@@ -229,10 +229,31 @@ async def test_a_transfer_already_on_chain_cannot_be_claimed_by_reserving_after_
     thief = await _merchant(db_session)
     await open_usdt(db_session, [thief])
     r = await reserve(db_session, thief, "100")
-    # Someone else's transfer of that exact amount, in a block 30 s before the hold.
-    stolen = transfer(r.amount_usdt, at_offset=timedelta(seconds=-30))
+    # Someone else's transfer of that exact amount, in a block 30 s before the
+    # hold (the fixture made the hold two minutes ago).
+    stolen = transfer(r.amount_usdt, at_offset=-timedelta(minutes=2, seconds=30))
     res = await intake.ingest(db_session, stolen, received_at=now())
     assert res.status == "unmatched"
+    await db_session.refresh(r)
+    assert r.status == "pending"
+
+
+@pytest.mark.asyncio
+async def test_a_transfer_mined_seconds_after_the_hold_is_not_credited(
+    db_session: AsyncSession,
+) -> None:
+    """Audit 2026-11-14: a pending transfer is visible before it is mined, so a
+    front-runner reserves its exact amount seconds before the block. A match
+    under a minute after the hold goes to the operator, not to the balance."""
+    thief = await _merchant(db_session)
+    await open_usdt(db_session, [thief])
+    r = await reserve(db_session, thief, "250")  # created two minutes ago
+    # Mined 10 s after the hold was created.
+    front_run = transfer(r.amount_usdt, at_offset=-timedelta(minutes=1, seconds=50))
+    res = await intake.ingest(db_session, front_run, received_at=now())
+    assert res.status == "unmatched"
+    assert [k for k, _ in res.alerts] == ["usdt_unmatched"]
+    assert "меньше чем через минуту" in res.alerts[0][1]
     await db_session.refresh(r)
     assert r.status == "pending"
 
@@ -543,7 +564,10 @@ async def test_cabinet_flow(
     listed = await integration_client.get(f"{U}/deposits", headers=h)
     assert listed.json()["items"][0]["address"] is None
 
-    await intake.ingest(db_session, transfer(dep["amount"]), received_at=now())
+    # Mined well after the hold, as an honest payer's would be.
+    await intake.ingest(
+        db_session, transfer(dep["amount"], at_offset=timedelta(seconds=90)), received_at=now()
+    )
     await db_session.commit()
     paid = await integration_client.get(f"{U}/deposits/{dep['number']}", headers=h)
     assert (paid.json()["status"], paid.json()["address"]) == ("paid", None)
