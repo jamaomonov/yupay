@@ -76,7 +76,9 @@ async def _register(client: AsyncClient, email: str, **over: Any) -> Any:
 async def _confirmed(client: AsyncClient, mails: list[dict[str, str]], email: str) -> str:
     """Register, confirm, and return the access token."""
     assert (await _register(client, email)).status_code == 201
-    r = await client.post(f"{BASE}/confirm", json={"token": _token_from(mails[-1])})
+    r = await client.post(
+        f"{BASE}/confirm", json={"token": _token_from(mails[-1]), "password": PASSWORD}
+    )
     assert r.status_code == 200, r.text
     return str(r.json()["access_token"])
 
@@ -149,9 +151,13 @@ async def test_a_confirmation_link_works_once(
     token = _token_from(sent[-1])
 
     assert (
-        await integration_client.post(f"{BASE}/confirm", json={"token": token})
+        await integration_client.post(
+            f"{BASE}/confirm", json={"token": token, "password": PASSWORD}
+        )
     ).status_code == 200
-    second = await integration_client.post(f"{BASE}/confirm", json={"token": token})
+    second = await integration_client.post(
+        f"{BASE}/confirm", json={"token": token, "password": PASSWORD}
+    )
 
     assert second.status_code == 401
 
@@ -206,9 +212,45 @@ async def test_registering_an_unconfirmed_address_again_mails_the_link(
     assert again.status_code == 201
     assert len(sent) == 1
     confirmed = await integration_client.post(
-        f"{BASE}/confirm", json={"token": _token_from(sent[0])}
+        f"{BASE}/confirm", json={"token": _token_from(sent[0]), "password": PASSWORD}
     )
     assert confirmed.status_code == 200, confirmed.text
+
+
+async def test_reregistering_after_the_owner_cannot_take_the_account(
+    integration_client: AsyncClient, sent: list[dict[str, str]]
+) -> None:
+    """Audit 2026-11-14: the owner registers, the attacker re-registers the same
+    unconfirmed address with their own password, then the owner clicks. The
+    password is set by whoever holds the link, so the attacker's never works."""
+    assert (await _register(integration_client, "late@acme.example.com")).status_code == 201
+    owners_link = _token_from(sent[-1])
+    planted = "attacker-chose-this"
+    assert (
+        await _register(integration_client, "late@acme.example.com", password=planted)
+    ).status_code == 201
+
+    confirmed = await integration_client.post(
+        f"{BASE}/confirm", json={"token": owners_link, "password": PASSWORD}
+    )
+    assert confirmed.status_code == 200, confirmed.text
+
+    as_attacker = await integration_client.post(
+        f"{BASE}/login", json={"email": "late@acme.example.com", "password": planted}
+    )
+    assert as_attacker.status_code == 401
+    as_owner = await integration_client.post(
+        f"{BASE}/login", json={"email": "late@acme.example.com", "password": PASSWORD}
+    )
+    assert as_owner.status_code == 200, as_owner.text
+
+
+async def test_confirm_without_a_password_is_refused(
+    integration_client: AsyncClient, sent: list[dict[str, str]]
+) -> None:
+    assert (await _register(integration_client, "nopw@acme.example.com")).status_code == 201
+    r = await integration_client.post(f"{BASE}/confirm", json={"token": _token_from(sent[-1])})
+    assert r.status_code == 422, r.text
 
 
 async def test_a_planted_password_does_not_survive_the_owners_registration(
@@ -226,7 +268,7 @@ async def test_a_planted_password_does_not_survive_the_owners_registration(
     owner = await _register(integration_client, "victim@acme.example.com", title="Real Co")
     assert owner.status_code == 201
     confirmed = await integration_client.post(
-        f"{BASE}/confirm", json={"token": _token_from(sent[-1])}
+        f"{BASE}/confirm", json={"token": _token_from(sent[-1]), "password": PASSWORD}
     )
     assert confirmed.status_code == 200, confirmed.text
 
@@ -254,7 +296,9 @@ async def test_a_rotated_refresh_token_is_dead(
 ) -> None:
     """Rotation is what makes a stolen token usable once and then noisy."""
     assert (await _register(integration_client, "rot@acme.example.com")).status_code == 201
-    first = await integration_client.post(f"{BASE}/confirm", json={"token": _token_from(sent[-1])})
+    first = await integration_client.post(
+        f"{BASE}/confirm", json={"token": _token_from(sent[-1]), "password": PASSWORD}
+    )
     old_refresh = first.json()["refresh_token"]
 
     rotated = await integration_client.post(f"{BASE}/refresh", json={"refresh_token": old_refresh})
@@ -272,7 +316,9 @@ async def test_signing_out_kills_that_session_and_its_access_token(
     working the moment its session is revoked, not when it expires."""
     assert (await _register(integration_client, "out@acme.example.com")).status_code == 201
     tokens = (
-        await integration_client.post(f"{BASE}/confirm", json={"token": _token_from(sent[-1])})
+        await integration_client.post(
+            f"{BASE}/confirm", json={"token": _token_from(sent[-1]), "password": PASSWORD}
+        )
     ).json()
     assert (
         await integration_client.get(f"{BASE}/me", headers=_auth(tokens["access_token"]))
@@ -473,7 +519,7 @@ async def test_a_resent_confirmation_link_actually_confirms(
         )
     ).status_code == 204
     confirmed = await integration_client.post(
-        f"{BASE}/confirm", json={"token": _token_from(sent[-1])}
+        f"{BASE}/confirm", json={"token": _token_from(sent[-1]), "password": PASSWORD}
     )
 
     assert confirmed.status_code == 200, confirmed.text

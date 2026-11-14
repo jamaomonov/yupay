@@ -98,7 +98,7 @@ async def signed_up(
     link = re.search(r'href="([^"]+/confirm\?token=[^"]+)"', mails[-1]["html"])
     assert link is not None
     token = parse_qs(urlparse(link.group(1)).query)["token"][0]
-    tokens = await client.post(f"{BASE}/confirm", json={"token": token})
+    tokens = await client.post(f"{BASE}/confirm", json={"token": token, "password": PASSWORD})
     assert tokens.status_code == 200, tokens.text
     access = str(tokens.json()["access_token"])
     me = await client.get(f"{BASE}/me", headers=auth(access))

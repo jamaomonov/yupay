@@ -4427,7 +4427,14 @@
       },
       "CabinetConfirmIn": {
         "additionalProperties": false,
+        "description": "The confirmation link plus the password the mailbox owner sets.\n\nThe password is set **here**, not trusted from registration: anybody can\nregister an unconfirmed address, so a password typed before the mailbox\nis proven may be an attacker's (2026-11-14 audit).",
         "properties": {
+          "password": {
+            "maxLength": 128,
+            "minLength": 10,
+            "title": "Password",
+            "type": "string"
+          },
           "token": {
             "maxLength": 4096,
             "minLength": 1,
@@ -4436,7 +4443,8 @@
           }
         },
         "required": [
-          "token"
+          "token",
+          "password"
         ],
         "title": "CabinetConfirmIn",
         "type": "object"
@@ -23248,8 +23256,14 @@
         "type": "object"
       },
       "VerifyEmailIn": {
-        "description": "Body of ``POST /auth/verify-email``.",
+        "description": "Body of ``POST /auth/verify-email``: the link and the password to keep.\n\nThe password is set at verification, not taken from registration \u2014 an\nunverified address can be re-registered by anybody (2026-11-14 audit).",
         "properties": {
+          "password": {
+            "maxLength": 200,
+            "minLength": 8,
+            "title": "Password",
+            "type": "string"
+          },
           "token": {
             "maxLength": 2048,
             "minLength": 10,
@@ -23258,7 +23272,8 @@
           }
         },
         "required": [
-          "token"
+          "token",
+          "password"
         ],
         "title": "VerifyEmailIn",
         "type": "object"
@@ -45737,7 +45752,7 @@
     },
     "/merchant/cabinet/confirm": {
       "post": {
-        "description": "Consume the link and sign the operator in.\n\nSigning them in here rather than redirecting to a login form is safe for\nthe reason the link exists: holding it *is* proof of the mailbox, which is\nthe same proof the password form is trying to establish.",
+        "description": "Consume the link, set the password the operator types, sign them in.\n\nSigning them in here rather than redirecting to a login form is safe for\nthe reason the link exists: holding it *is* proof of the mailbox, which is\nthe same proof the password form is trying to establish.",
         "operationId": "confirm_merchant_cabinet_confirm_post",
         "requestBody": {
           "content": {

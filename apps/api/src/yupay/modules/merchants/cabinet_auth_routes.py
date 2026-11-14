@@ -135,13 +135,13 @@ async def register(body: CabinetRegisterIn, db: Db, request: Request) -> Respons
 
 @router.post("/confirm", response_model=CabinetTokensOut, summary="Confirm an address")
 async def confirm(body: CabinetConfirmIn, db: Db) -> CabinetTokensOut:
-    """Consume the link and sign the operator in.
+    """Consume the link, set the password the operator types, sign them in.
 
     Signing them in here rather than redirecting to a login form is safe for
     the reason the link exists: holding it *is* proof of the mailbox, which is
     the same proof the password form is trying to establish.
     """
-    user = await cabinet_auth.confirm_email(db, token=body.token)
+    user = await cabinet_auth.confirm_email(db, token=body.token, password=body.password)
     return _tokens_out(await cabinet_auth.open_session(db, user=user, settings=get_settings()))
 
 

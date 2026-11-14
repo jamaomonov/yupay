@@ -189,7 +189,10 @@
     "signInFailed": "Kirib boʻlmadi. Qayta urinib koʻring",
     "steamFinishing": "Steam orqali kirilmoqda…",
     "appBounce": "Ilovaga qaytaramiz…",
-    "appBounceFailed": "Kirib boʻlmadi. YuPay ilovasiga qaytib, qayta urinib koʻring."
+    "appBounceFailed": "Kirib boʻlmadi. YuPay ilovasiga qaytib, qayta urinib koʻring.",
+    "verifyTitle": "Pochtani tasdiqlang",
+    "verifyIntro": "Kirish uchun parol oʻrnating — roʻyxatdan oʻtishdagi parol ham boʻladi.",
+    "verifySubmit": "Tasdiqlash va kirish"
   },
   "passwordReset": {
     "forgotTitle": "Parolni tiklash",

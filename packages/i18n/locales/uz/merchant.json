@@ -221,7 +221,10 @@
     "resendLink": "Xatni qayta yuborish",
     "resendSentBody": "Agar {email} tasdiqlanishini kutayotgan boʻlsa, havolani qayta yubordik.",
     "backToLogin": "Kirishga qaytish",
-    "registerFailed": "Hisob yaratib boʻlmadi. Qayta urinib koʻring yoki qoʻllab-quvvatlashga yozing."
+    "registerFailed": "Hisob yaratib boʻlmadi. Qayta urinib koʻring yoki qoʻllab-quvvatlashga yozing.",
+    "confirmTitle": "Pochtani tasdiqlang",
+    "confirmSubtitle": "Kirish uchun parol oʻrnating — roʻyxatdan oʻtishdagi parol ham boʻladi.",
+    "confirmSubmit": "Tasdiqlash va kirish"
   },
   "cabinet": {
     "navDashboard": "Umumiy",

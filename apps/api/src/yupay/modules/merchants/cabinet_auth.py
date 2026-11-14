@@ -164,9 +164,17 @@ async def register(
 
 
 async def confirm_email(
-    db: AsyncSession, *, token: str, settings: Settings | None = None
+    db: AsyncSession, *, token: str, password: str, settings: Settings | None = None
 ) -> MerchantUser:
-    """Mark an operator's address confirmed. Single-use.
+    """Mark an operator's address confirmed and set its password. Single-use.
+
+    The password comes from the person holding the link, never from whoever
+    registered last: until 2026-11-14 the click armed the password on file,
+    and since registering an unconfirmed address replaces that password, an
+    attacker re-registering a victim's address shortly before the victim
+    clicked got the account (audit 2026-11-14). Now the mailbox owner chooses
+    the password at the moment they prove the mailbox, so a planted one never
+    survives confirmation.
 
     The single-use marker is a Redis ``SET NX`` on the token's ``jti``, the
     same device ``affiliate.partners.set_password`` uses: the JWT alone is
@@ -186,9 +194,12 @@ async def confirm_email(
     user = await db.get(MerchantUser, claims.sub)
     if user is None:
         raise UnauthorizedError("link is no longer valid")
+    user.password_hash = await hash_password(password)
     if user.email_confirmed_at is None:
         user.email_confirmed_at = now()
-        await db.flush()
+    await db.flush()
+    # Anything opened with the old password (it may have been planted) ends.
+    await _revoke_all_sessions(db, user_id=user.id)
     log.info("merchant.cabinet.email_confirmed", user_id=user.id)
     return user
 

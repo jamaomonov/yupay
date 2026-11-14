@@ -518,7 +518,7 @@ async def verify_email_route(
     db: Annotated[AsyncSession, Depends(db_session)],
 ) -> TokensOut:
     """Mark the user's email as verified using a signed ``email_verify`` JWT, then log in."""
-    tokens = await verify_email(db, token=body.token)
+    tokens = await verify_email(db, token=body.token, password=body.password)
     return _session_response(response, tokens)
 
 

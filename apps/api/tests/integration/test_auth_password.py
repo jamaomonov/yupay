@@ -22,7 +22,10 @@ async def _get_user_by_email(db_session: AsyncSession, email: str) -> User:
 
 
 async def _verify_registered_user(
-    client: AsyncClient, db_session: AsyncSession, reg: Response
+    client: AsyncClient,
+    db_session: AsyncSession,
+    reg: Response,
+    password: str = "hunter2hunter2",
 ) -> Response:
     """Verify a just-registered account's email via the real endpoint.
 
@@ -41,7 +44,7 @@ async def _verify_registered_user(
     email = reg.json()["email"]
     user = await _get_user_by_email(db_session, email)
     token = authjwt.mint_email_verify(sub=user.id)
-    r = await client.post("/api/v1/auth/verify-email", json={"token": token})
+    r = await client.post("/api/v1/auth/verify-email", json={"token": token, "password": password})
     assert r.status_code == 200, r.text
     return r
 
@@ -110,7 +113,9 @@ async def test_a_planted_password_does_not_survive_the_owners_registration(
         json={"email": "victim@example.com", "password": "owners-own-password"},
     )
     assert owner.status_code == 201, owner.text
-    await _verify_registered_user(integration_client, db_session, owner)
+    await _verify_registered_user(
+        integration_client, db_session, owner, password="owners-own-password"
+    )
 
     as_attacker = await integration_client.post(
         "/api/v1/auth/login", json={"email": "victim@example.com", "password": planted}
@@ -128,6 +133,45 @@ async def test_a_planted_password_does_not_survive_the_owners_registration(
 
 
 @pytest.mark.asyncio
+async def test_reregistering_after_the_owner_cannot_take_the_account(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Audit 2026-11-14: owner registers, attacker re-registers the unverified
+    address, owner clicks the link — the password set is the one typed at the
+    link, so the attacker's planted password never opens the account."""
+    from yupay.modules.auth import jwt as authjwt
+
+    assert (
+        await integration_client.post(
+            "/api/v1/auth/register",
+            json={"email": "late@example.com", "password": "owners-own-password"},
+        )
+    ).status_code == 201
+    user = await _get_user_by_email(db_session, "late@example.com")
+    owners_link = authjwt.mint_email_verify(sub=user.id)
+    planted = "attacker-chose-this"
+    assert (
+        await integration_client.post(
+            "/api/v1/auth/register", json={"email": "late@example.com", "password": planted}
+        )
+    ).status_code == 201
+
+    verified = await integration_client.post(
+        "/api/v1/auth/verify-email",
+        json={"token": owners_link, "password": "owners-own-password"},
+    )
+    assert verified.status_code == 200, verified.text
+    as_attacker = await integration_client.post(
+        "/api/v1/auth/login", json={"email": "late@example.com", "password": planted}
+    )
+    assert as_attacker.status_code == 401
+    as_owner = await integration_client.post(
+        "/api/v1/auth/login",
+        json={"email": "late@example.com", "password": "owners-own-password"},
+    )
+    assert as_owner.status_code == 200, as_owner.text
+
+
 async def test_login_succeeds_with_correct_password(
     integration_client: AsyncClient, db_session
 ) -> None:
@@ -175,7 +219,9 @@ async def test_verify_email_marks_verified(integration_client, db_session) -> No
     user = await _get_user_by_email(db_session, "verify@example.com")
     token = authjwt.mint_email_verify(sub=user.id)
 
-    r = await integration_client.post("/api/v1/auth/verify-email", json={"token": token})
+    r = await integration_client.post(
+        "/api/v1/auth/verify-email", json={"token": token, "password": "hunter2hunter2"}
+    )
     # Verify-email now opens a session (Task 2), not a bare 204.
     assert r.status_code == 200, r.text
     assert r.json()["access_token"]
@@ -209,7 +255,7 @@ async def test_reset_changes_password_and_revokes_sessions(integration_client, d
     # reset revokes it.
     verify_token = authjwt.mint_email_verify(sub=user.id)
     verify = await integration_client.post(
-        "/api/v1/auth/verify-email", json={"token": verify_token}
+        "/api/v1/auth/verify-email", json={"token": verify_token, "password": "oldpassword1"}
     )
     assert verify.status_code == 200, verify.text
     old_refresh = verify.cookies["refresh_token"]

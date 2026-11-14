@@ -25,7 +25,8 @@ async def _verified_account(client: AsyncClient, db_session: AsyncSession) -> No
     assert reg.status_code == 201, reg.text
     user = (await db_session.execute(select(User).where(User.email == CREDS["email"]))).scalar_one()
     verify = await client.post(
-        "/api/v1/auth/verify-email", json={"token": authjwt.mint_email_verify(sub=user.id)}
+        "/api/v1/auth/verify-email",
+        json={"token": authjwt.mint_email_verify(sub=user.id), "password": CREDS["password"]},
     )
     assert verify.status_code == 200, verify.text
     client.cookies.clear()

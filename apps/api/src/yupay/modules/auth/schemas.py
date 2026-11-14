@@ -69,9 +69,14 @@ class LoginIn(BaseModel):
 
 
 class VerifyEmailIn(BaseModel):
-    """Body of ``POST /auth/verify-email``."""
+    """Body of ``POST /auth/verify-email``: the link and the password to keep.
+
+    The password is set at verification, not taken from registration — an
+    unverified address can be re-registered by anybody (2026-11-14 audit).
+    """
 
     token: str = Field(min_length=10, max_length=2048)
+    password: str = Field(min_length=8, max_length=200)
 
 
 class ResendVerificationIn(BaseModel):

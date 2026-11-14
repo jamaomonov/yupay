@@ -48,7 +48,9 @@ async def test_login_blocked_until_verified(integration_client: AsyncClient, db_
     user = (await db_session.execute(select(User).where(User.email == email))).scalar_one()
     token = authjwt.mint_email_verify(sub=user.id)
 
-    verify = await integration_client.post("/api/v1/auth/verify-email", json={"token": token})
+    verify = await integration_client.post(
+        "/api/v1/auth/verify-email", json={"token": token, "password": "s3cret-passw0rd"}
+    )
     # Verify-email now auto-logs-in: a session is opened (Task 2).
     assert verify.status_code == 200, verify.text
     verify_body = verify.json()
@@ -110,7 +112,9 @@ async def test_resend_verification_for_already_verified_email_is_still_204(
 
     user = (await db_session.execute(select(User).where(User.email == email))).scalar_one()
     token = authjwt.mint_email_verify(sub=user.id)
-    verify = await integration_client.post("/api/v1/auth/verify-email", json={"token": token})
+    verify = await integration_client.post(
+        "/api/v1/auth/verify-email", json={"token": token, "password": "s3cret-passw0rd"}
+    )
     assert verify.status_code == 200, verify.text
 
     # Already verified: still 204, and — per the non-enumeration contract —
@@ -197,11 +201,15 @@ async def test_verify_email_token_is_single_use(
     user = (await db_session.execute(select(User).where(User.email == email))).scalar_one()
     token = authjwt.mint_email_verify(sub=user.id)
 
-    first = await integration_client.post("/api/v1/auth/verify-email", json={"token": token})
+    first = await integration_client.post(
+        "/api/v1/auth/verify-email", json={"token": token, "password": "s3cret-passw0rd"}
+    )
     assert first.status_code == 200, first.text
     assert first.json()["access_token"]
 
     # Replay of the SAME token must be rejected — no second session opened.
-    second = await integration_client.post("/api/v1/auth/verify-email", json={"token": token})
+    second = await integration_client.post(
+        "/api/v1/auth/verify-email", json={"token": token, "password": "s3cret-passw0rd"}
+    )
     assert second.status_code == 401, second.text
     assert "access_token" not in second.json()

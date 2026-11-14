@@ -99,7 +99,9 @@ async def _register_verify_login(
     user = (await db_session.execute(select(User).where(User.email == email))).scalar_one()
     token = authjwt.mint_email_verify(sub=user.id)
 
-    verify = await client.post("/api/v1/auth/verify-email", json={"token": token})
+    verify = await client.post(
+        "/api/v1/auth/verify-email", json={"token": token, "password": "s3cret-passw0rd"}
+    )
     assert verify.status_code == 200, verify.text
     access_token: str = verify.json()["access_token"]
     return access_token

@@ -136,9 +136,17 @@ class CabinetSetPasswordIn(BaseModel):
 
 
 class CabinetConfirmIn(BaseModel):
+    """The confirmation link plus the password the mailbox owner sets.
+
+    The password is set **here**, not trusted from registration: anybody can
+    register an unconfirmed address, so a password typed before the mailbox
+    is proven may be an attacker's (2026-11-14 audit).
+    """
+
     model_config = ConfigDict(extra="forbid")
 
     token: str = Field(min_length=1, max_length=4096)
+    password: str = Field(min_length=_MIN_PASSWORD, max_length=128)
 
 
 class CabinetTokensOut(BaseModel):

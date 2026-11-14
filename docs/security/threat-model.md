@@ -500,6 +500,16 @@ the deposit.
   `reclaim_unconfirmed`, which also takes the new company title). Only a bare
   unverified password account qualifies: one with a Telegram or Steam sign-in
   behind it still answers 409.
+- **The confirmation link sets the password (2026-11-14 audit).** Registering
+  an unconfirmed address replaces its password ("last writer wins", the
+  2026-11-10 fix for planted passwords), and the confirm/verify link used to arm
+  whatever password was on file when it was clicked. So an attacker who
+  re-registered a victim's address after the victim's registration but before
+  their click got the account — reseller cabinet (API key, deposit) and
+  storefront (claimed guest orders, wallet) alike. `POST /merchant/cabinet/confirm`
+  and `POST /auth/verify-email` now take the password and set it: only the
+  person holding the mailbox chooses it, and sessions opened with the previous
+  password are revoked.
 - **Google sign-in confirms, and so clears.** The merchant cabinet's Google
   sign-in (`merchants/cabinet_google.py`) lands on an unconfirmed operator by
   verified email, confirms it, and replaces its password with an unusable

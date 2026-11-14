@@ -53,7 +53,8 @@ interface AuthValue {
   /** Redeems a Steam OpenID callback (`POST /auth/steam`) and opens a session. */
   loginWithSteam: (params: Record<string, string>) => Promise<void>;
   /** Redeems a `POST /auth/verify-email` token and opens a session (afterTokens). */
-  verifyEmail: (token: string) => Promise<void>;
+  /** The link sets the password (2026-11-14): the holder types it here. */
+  verifyEmail: (token: string, password: string) => Promise<void>;
   logout: () => void;
 }
 
@@ -162,11 +163,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const verifyEmail = useCallback(
-    async (token: string) => {
+    async (token: string, password: string) => {
       const tokens = await apiFetch<Tokens>("/auth/verify-email", {
         method: "POST",
         anonymous: true,
-        body: { token },
+        body: { token, password },
       });
       await afterTokens(tokens);
     },

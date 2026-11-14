@@ -726,9 +726,16 @@ async def verify_email(
     db: AsyncSession,
     *,
     token: str,
+    password: str,
     settings: Settings | None = None,
 ) -> SessionTokens:
-    """Consume a single-use ``email_verify`` token, mark the email verified, then log in.
+    """Consume a single-use ``email_verify`` token, set the password, mark the email verified, log in.
+
+    The password is the one typed by whoever holds the link. Registration of
+    an unverified address replaces the password on file, so before 2026-11-14
+    an attacker who re-registered a victim's address shortly before the victim
+    clicked armed their own password (audit 2026-11-14). The mailbox owner now
+    chooses it at the moment the mailbox is proven.
 
     The link flow ends in a usable session rather than dropping the user back
     to a login form immediately after they've proven the address is theirs.
@@ -756,9 +763,12 @@ async def verify_email(
     user = await get_user_by_id(db, claims.sub)
     if user is None:
         raise NotFoundError("user not found")
+    user.password_hash = await hash_password(password)
     if user.email_verified_at is None:
         user.email_verified_at = now()
-        await db.flush()
+    await db.flush()
+    # Sessions opened with the previous (possibly planted) password end here.
+    await _revoke_all_for_user(db, user.id, settings=s)
     return await _open_session(db, user=user, settings=s)
 
 

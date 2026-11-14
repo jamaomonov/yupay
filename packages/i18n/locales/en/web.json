@@ -189,7 +189,10 @@
     "signInFailed": "Couldn't sign you in — please try again",
     "steamFinishing": "Finishing Steam sign-in…",
     "appBounce": "Taking you back to the app…",
-    "appBounceFailed": "Sign-in didn't work. Go back to the YuPay app and try again."
+    "appBounceFailed": "Sign-in didn't work. Go back to the YuPay app and try again.",
+    "verifyTitle": "Confirm your email",
+    "verifyIntro": "Set the password you'll sign in with — it can be the one you registered with.",
+    "verifySubmit": "Confirm and sign in"
   },
   "passwordReset": {
     "forgotTitle": "Reset password",
