@@ -88,6 +88,9 @@ class CostRefreshOutcome:
     new_price: Any | None = None
     margin_percent: Any | None = None
     price_drop_blocked: bool = False
+    #: The sync's cost was refused as a suspiciously deep drop and the SKU kept
+    #: its previous cost (``set_sku_cost_usdt(hold_large_drop=True)``).
+    cost_drop_held: bool = False
 
 
 def _route_label(decision: Decision) -> str:
@@ -259,6 +262,7 @@ async def refresh_sku_cost_for_mapping(  # noqa: PLR0911 -- discriminated outcom
     fzr_offers_cache: dict[str, dict[str, Any]] | None = None,
     g2b_catalogue_cache: dict[str, list[dict[str, Any]]] | None = None,
     allow_price_drop: bool = True,
+    hold_large_cost_drop: bool = False,
 ) -> CostRefreshOutcome:
     """Pull the upstream price for ``mapping`` and persist it.
 
@@ -415,7 +419,11 @@ async def refresh_sku_cost_for_mapping(  # noqa: PLR0911 -- discriminated outcom
 
     try:
         cost_update = await catalog_svc.set_sku_cost_usdt(
-            db, sku_id=mapping.sku_id, new_cost=new_cost, allow_price_drop=allow_price_drop
+            db,
+            sku_id=mapping.sku_id,
+            new_cost=new_cost,
+            allow_price_drop=allow_price_drop,
+            hold_large_drop=hold_large_cost_drop,
         )
     except Exception as exc:  # noqa: BLE001
         return CostRefreshOutcome(
@@ -431,6 +439,16 @@ async def refresh_sku_cost_for_mapping(  # noqa: PLR0911 -- discriminated outcom
     # number. Writing that as this supplier's previous price would record a
     # move it never made, into the one table built to compare them.
     previous = cost_update.previous_cost
+    if cost_update.cost_drop_held:
+        return CostRefreshOutcome(
+            updated=False,
+            wrote_cost=False,
+            old_cost=previous,
+            new_cost=new_cost,
+            source=source,
+            cost_drop_held=True,
+            reason="падение закупки больше допустимого — не записано, подтвердите в маппинге",
+        )
     moved = previous != new_cost
     if record_history and moved:
         db.add(

@@ -282,6 +282,62 @@ async def test_a_cut_deeper_than_the_cap_waits_for_a_person(
     assert sku.price_usd == Decimal("78.76")
 
 
+async def test_the_hourly_sync_holds_a_cost_cut_deeper_than_the_cap(
+    db_session: AsyncSession,
+) -> None:
+    """Audit 2026-11-14: a cost that falls >25% in one sync is usually a glitch
+    or a mis-mapped variant, and the reseller price follows cost_usdt with no
+    guard. The automatic path keeps the old cost and says so."""
+    sku_id = await _seed_sku(
+        db_session, "glitch", cost_usdt="10.00", price_usd="11.00", margin_percent="10"
+    )
+    result = await catalog_svc.set_sku_cost_usdt(
+        db_session,
+        sku_id=sku_id,
+        new_cost=Decimal("0.68"),
+        allow_price_drop=False,
+        hold_large_drop=True,
+    )
+    await db_session.commit()
+
+    assert result.cost_drop_held is True
+    sku = (await db_session.execute(select(Sku).where(Sku.id == sku_id))).scalar_one()
+    assert sku.cost_usdt == Decimal("10.00")
+    assert sku.price_usd == Decimal("11.00")
+
+
+async def test_the_hourly_sync_passes_a_cut_within_the_cap(db_session: AsyncSession) -> None:
+    sku_id = await _seed_sku(
+        db_session, "real-drop", cost_usdt="10.00", price_usd="11.00", margin_percent="10"
+    )
+    result = await catalog_svc.set_sku_cost_usdt(
+        db_session,
+        sku_id=sku_id,
+        new_cost=Decimal("8.00"),
+        allow_price_drop=False,
+        hold_large_drop=True,
+    )
+    await db_session.commit()
+
+    assert result.cost_drop_held is False
+    sku = (await db_session.execute(select(Sku).where(Sku.id == sku_id))).scalar_one()
+    assert sku.cost_usdt == Decimal("8.00")
+    assert sku.price_usd == Decimal("8.80")
+
+
+async def test_an_operator_save_writes_any_drop(db_session: AsyncSession) -> None:
+    """Saving the mapping by hand is how a person confirms a real deep drop."""
+    sku_id = await _seed_sku(
+        db_session, "confirmed", cost_usdt="10.00", price_usd="11.00", margin_percent="10"
+    )
+    result = await catalog_svc.set_sku_cost_usdt(db_session, sku_id=sku_id, new_cost=Decimal("5"))
+    await db_session.commit()
+
+    assert result.cost_drop_held is False
+    sku = (await db_session.execute(select(Sku).where(Sku.id == sku_id))).scalar_one()
+    assert sku.cost_usdt == Decimal("5")
+
+
 async def test_a_negative_tolerance_restores_the_ratchet(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:

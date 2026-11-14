@@ -236,6 +236,7 @@ async def refresh_all_mappings(*, supplier_slug: str | None = None) -> PriceRefr
     alerts = 0
     errors = 0
     moves: list[_Move] = []
+    held: list[tuple[str, str, Decimal | None, Decimal | None]] = []
 
     for mapping in mappings:
         checked += 1
@@ -266,6 +267,9 @@ async def refresh_all_mappings(*, supplier_slug: str | None = None) -> PriceRefr
                     fzr_offers_cache=fzr_offers_cache,
                     g2b_catalogue_cache=g2b_catalogue_cache,
                     allow_price_drop=False,
+                    # A cost cut deeper than price_drop_max_auto_pct waits for
+                    # a person: it moves the reseller price too (audit 2026-11-14).
+                    hold_large_cost_drop=True,
                 )
         except Exception as exc:  # noqa: BLE001
             errors += 1
@@ -276,6 +280,9 @@ async def refresh_all_mappings(*, supplier_slug: str | None = None) -> PriceRefr
             )
             continue
 
+        if outcome.cost_drop_held:
+            held.append((sku_code, mapping.supplier_slug, outcome.old_cost, outcome.new_cost))
+            continue
         if not outcome.updated or outcome.new_cost is None:
             continue
         moved += 1
@@ -289,6 +296,8 @@ async def refresh_all_mappings(*, supplier_slug: str | None = None) -> PriceRefr
         text = _format_digest(moves, threshold=threshold)
         if await notifications.send_admin_alert(text, kind="price_change"):
             alerts += 1
+    if held and await _send_held_digest(held):
+        alerts += 1
 
     # Proactive low-balance warning. Independent of whether any
     # mapping moved this tick — supplier could be sub-threshold even
@@ -491,6 +500,35 @@ def _move_line(move: _Move) -> str:
 
 
 _DIGEST_TOP = 10
+
+
+async def _send_held_digest(
+    held: list[tuple[str, str, Decimal | None, Decimal | None]],
+) -> bool:
+    """One message for costs refused as too-deep drops, each SKU once a day.
+
+    The refresh re-reads the same glitch every hour; without the dedupe the
+    chat would get the same line 24 times. Returns whether a message went out.
+    """
+    from yupay.modules.fulfillment.service import _set_redis_dedupe
+
+    fresh = [
+        h
+        for h in held
+        if not await _set_redis_dedupe(f"alert:cost_drop_held:{h[0]}", ttl_seconds=86400)
+    ]
+    if not fresh:
+        return False
+    lines = [
+        f"<b>🛑 Закупка упала слишком резко — не записано: {len(fresh)}</b>",
+        "Обычно это сбой поставщика или не тот вариант в маппинге. Цены не тронуты. "
+        "Если падение настоящее — откройте маппинг SKU и сохраните.",
+    ]
+    for code, supplier, old, new in fresh[:_DIGEST_TOP]:
+        lines.append(f"• <code>{html.escape(code)}</code> ({supplier}) — ${old} → <b>${new}</b>")
+    if len(fresh) > _DIGEST_TOP:
+        lines.append(f"… и ещё {len(fresh) - _DIGEST_TOP}.")
+    return await notifications.send_admin_alert("\n".join(lines), kind="price_change")
 
 
 def _format_digest(moves: list[_Move], *, threshold: float) -> str:

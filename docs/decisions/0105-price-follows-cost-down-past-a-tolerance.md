@@ -36,3 +36,12 @@ point or more off target.
 - Margin banked on cheaper suppliers is given back to customers beyond 2 pp.
 - The margin-drift digest now lists only SKUs the refresh does not reach (no price-collecting
   mapping, hand-set prices).
+
+## Amendment, 2026-11-14 (security audit)
+
+The cap guarded retail only: `cost_usdt` itself was still written, and the reseller price
+(`merchants/pricing.py`, cost × (1 + markup)) follows it with no margin guard — so a supplier
+glitch or a mis-mapped variant could make wholesale stock buyable far below cost before
+anyone looked. The hourly sync now **holds** a cost more than `PRICE_DROP_MAX_AUTO_PCT` below
+the one on file: nothing is written, and a «🛑 Закупка упала слишком резко» digest (each SKU
+once a day) asks a person to confirm by saving the mapping, which writes any value.

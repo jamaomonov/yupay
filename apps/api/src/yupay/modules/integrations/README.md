@@ -115,7 +115,9 @@ health probes, and supplier-cost refresh. Supplier adapter code itself lives in
   price follows the cost down to cost + margin — the owner's rule: never
   below cost, never overpriced — unless the cut is deeper than
   `price_drop_max_auto_pct` (25), which usually means a wrong cost and waits
-  for a person. A cost rise always raises the price; a
+  for a person. Since 2026-11-14 the hourly sync does not even write such a
+  cost (`hold_large_cost_drop`): the reseller price follows `cost_usdt`
+  directly, so a glitch there was wholesale stock below cost. A cost rise always raises the price; a
   negative tolerance restores the old ratchet. The mapping-save route keeps
   the default and lowers a price whenever the operator's number says so. See
   [ADR-0083](../../../../../../docs/decisions/0083-routed-supplier-cost-and-price-ratchet.md)

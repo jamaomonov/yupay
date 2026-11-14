@@ -599,6 +599,11 @@ class CostUpdateResult:
     new_price: Decimal | None = None
     margin_percent: Decimal | None = None
     price_drop_blocked: bool = False
+    #: The automatic sync reported a cost more than ``price_drop_max_auto_pct``
+    #: below the one on file and it was **not** written (2026-11-14 audit):
+    #: a cut that deep is usually a supplier glitch or a mis-mapped variant,
+    #: and the reseller price follows ``cost_usdt`` with no margin guard.
+    cost_drop_held: bool = False
 
 
 def _overpriced(price: Decimal, cost: Decimal, margin_percent: Decimal) -> bool:
@@ -627,12 +632,19 @@ def _overpriced(price: Decimal, cost: Decimal, margin_percent: Decimal) -> bool:
     return cut <= Decimal(str(cfg.price_drop_max_auto_pct))
 
 
+def _drop_too_deep(previous: Decimal, new: Decimal) -> bool:
+    """Whether ``new`` is more than ``price_drop_max_auto_pct`` below ``previous``."""
+    cap = Decimal(str(get_settings().price_drop_max_auto_pct))
+    return previous > 0 and new < previous * (1 - cap / 100)
+
+
 async def set_sku_cost_usdt(
     db: AsyncSession,
     *,
     sku_id: str,
     new_cost: Decimal,
     allow_price_drop: bool = True,
+    hold_large_drop: bool = False,
 ) -> CostUpdateResult:
     """Replace ``Sku.cost_usdt`` and, when a margin is on file, re-derive
     ``price_usd`` from it — subject to ``allow_price_drop``, which the
@@ -685,10 +697,16 @@ async def set_sku_cost_usdt(
     if sku is None:
         raise NotFoundError("sku not found")
     previous_cost = sku.cost_usdt
-    sku.cost_usdt = new_cost
     # Moved or not: a supplier that answered with the same price still
     # answered, and that is what the staleness alert measures.
     sku.cost_synced_at = now()
+    if hold_large_drop and previous_cost is not None and _drop_too_deep(previous_cost, new_cost):
+        # Kept as it was: retail, the reseller price and the margin report all
+        # read this column. A person confirms by saving the mapping by hand.
+        sku.updated_at = now()
+        await db.flush()
+        return CostUpdateResult(previous_cost=previous_cost, cost_drop_held=True)
+    sku.cost_usdt = new_cost
 
     previous_price: Decimal | None = None
     new_price: Decimal | None = None
