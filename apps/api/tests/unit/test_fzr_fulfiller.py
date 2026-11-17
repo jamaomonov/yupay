@@ -260,19 +260,44 @@ async def test_a_lapsed_subscription_says_so_instead_of_being_a_bare_403(
     assert exc.value.money_outcome is MoneyOutcome.RETURNED
 
 
-async def test_a_rate_limit_is_recoverable_not_a_money_mystery(
+async def test_a_rate_limited_create_waits_for_the_poll_instead_of_failing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """They publish a 60/min ceiling on order creates and reject at the edge.
 
-    Grading that UNKNOWN would put a fully recoverable retry in front of a
-    human instead of letting the saga handle it.
+    Failing the line on it turned a burst of orders into refunds (2026-11-17);
+    it is a create that never went out, so the status poll sends it again.
     """
-    client = _FakeClient(raises=FzrError("Too many requests", status=429))
-    with pytest.raises(FulfillerError) as exc:
-        await _fulfill(client, monkeypatch)
+    client = _FakeClient(
+        raises=FzrError("Слишком много запросов. Повторите через 9 с.", status=429)
+    )
+    result = await _fulfill(client, monkeypatch)
 
-    assert exc.value.money_outcome is MoneyOutcome.RETURNED
+    assert result.outcome == "in_progress"
+    assert result.money_outcome is None
+    assert "fzr_create_not_sent" in result.extra_metadata
+    assert "fzr_create_unresolved" not in result.extra_metadata
+
+
+@pytest.mark.parametrize(
+    ("mapping", "item"),
+    [
+        ({"kind": "voucher", "external_variant_id": "800_robux"}, {}),
+        (
+            {"external_product_id": STEAM_SENTINEL, "external_variant_id": ""},
+            {"fulfillment_data": {"steam_login": "someplayer"}},
+        ),
+    ],
+    ids=["gift-card", "steam"],
+)
+async def test_a_rate_limit_waits_on_every_product_path(
+    monkeypatch: pytest.MonkeyPatch, mapping: dict[str, Any], item: dict[str, Any]
+) -> None:
+    client = _FakeClient(raises=FzrError("Too many requests", status=429))
+    result = await _fulfill(client, monkeypatch, mapping=_mapping(**mapping), item=_item(**item))
+
+    assert result.outcome == "in_progress"
+    assert "fzr_create_not_sent" in result.extra_metadata
 
 
 async def test_a_refusal_never_echoes_the_player_id_back_into_the_task(

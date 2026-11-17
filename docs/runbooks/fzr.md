@@ -100,13 +100,30 @@ seconds.
 | Account read   | 30 / min  | the balance probe on a low-balance alert, health |
 | Other          | 120 / min | —                                                |
 
-Our sweeps are far under all of these, which is why **no client-side throttle
-ships with this adapter**. If one becomes necessary it belongs in
-`panel_client`, not in `fzr.py`.
+"Far under all of these" stopped being true on 2026-11-17: one buyer placed
+36 lines in four minutes (peak 20 a minute), each fresh line is read every
+10 s for two minutes, and the status poll hit 120 a minute and drew
+«Слишком много запросов. Повторите через 9 с.». Nothing was lost — every line
+went on — but it showed where each limit bites. What handles it now:
 
-A 429 is graded `RETURNED`: it is rejected at the edge, before anything is
-debited. That is a deliberate difference from a 409 or a 5xx, both of which
-stay `UNKNOWN`.
+- **Create (60/min).** A 429 on a create is no longer a refusal. It is a
+  create that never went out, so the line stays `in_progress` with
+  `fzr_create_not_sent` and the status poll sends it again with the same
+  idempotency key (they replay a reused key, so no second purchase) until it
+  goes through or the 30-minute resend window ends (`panel_resend`). Before,
+  the line failed on the spot.
+- **Status (120/min).** The sweep asks about at most 15 tasks a tick
+  (`panel_reconcile.PER_TICK`, 90 a minute), leaving room for the adoption
+  search. Above that the rest wait for the next tick, oldest first: delivery
+  news is slower, but they stop answering 429.
+- **Alerts.** A 429 or connect failure on a status check is logged in the
+  attempt history but only reaches the chat once the task has gone 5 minutes
+  without a successful check (`fulfillment.check_noise`). A real outage still
+  announces itself, five minutes later than before.
+
+On NOVA, which shares the grading, a 429 is still a refusal graded
+`RETURNED`: it is rejected at the edge, before anything is debited. That is a deliberate difference from a
+409 or a 5xx, both of which stay `UNKNOWN`.
 
 ## Idempotency — they replay, unlike NOVA
 

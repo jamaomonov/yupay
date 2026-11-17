@@ -19,7 +19,7 @@ import html
 import json
 import sys
 from collections.abc import Coroutine, Iterable
-from datetime import timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any, Final, cast
 
@@ -35,6 +35,7 @@ from yupay.core.config import Settings, get_settings
 from yupay.core.errors import AppError, ConflictError, NotFoundError, ValidationError
 from yupay.core.ids import new_id
 from yupay.core.logging import get_logger
+from yupay.modules.fulfillment.check_noise import QUIET_FOR, is_transient_check_failure
 from yupay.modules.fulfillment.cost_resnapshot import resnapshot_line_cost
 from yupay.modules.fulfillment.models import (
     Delivery,
@@ -476,8 +477,13 @@ async def _record_attempt(
     status: str,
     payload: dict[str, Any] | None = None,
     error: str | None = None,
+    transient: bool = False,
 ) -> None:
     """Append an interaction to the task's audit log, folding repeats.
+
+    ``transient`` marks an error the next poll is likely to clear (see
+    ``check_noise``): it is logged as usual but announced only once the task
+    has gone :data:`~.check_noise.QUIET_FOR` without a successful check.
 
     The poller asks the supplier for a status once a minute for as long as the
     order stays open, and every answer used to become a row: one production
@@ -515,6 +521,8 @@ async def _record_attempt(
         previous.repeat_count += 1
         previous.last_seen_at = moment
         task.updated_at = moment
+        if transient and status == "error":
+            await _alert_if_quiet_too_long(db, task=task, kind=kind, error=error, moment=moment)
         return
 
     db.add(
@@ -536,6 +544,40 @@ async def _record_attempt(
     # error reaches us" true, rather than a list of call sites someone has to
     # remember to extend.
     if status == "error":
+        if transient:
+            await _alert_if_quiet_too_long(db, task=task, kind=kind, error=error, moment=moment)
+        else:
+            _dispatch_alert(_alert_fulfillment_error(task, kind=kind, error=error))
+
+
+async def _alert_if_quiet_too_long(
+    db: AsyncSession,
+    *,
+    task: FulfillmentTask,
+    kind: str,
+    error: str | None,
+    moment: datetime,
+) -> None:
+    """Announce a transient failure only once nothing has succeeded for a while.
+
+    Measured from the task's last ``ok`` attempt, not from the first identical
+    error: a throttle's text names a different wait each time («через 9 с»,
+    «через 7 с») and an outage alternates ``ConnectTimeout`` with
+    ``ConnectError``, so "the same error for five minutes" would never happen
+    during exactly the outage that should be announced. The Redis dedupe in the
+    alert keeps a long one to a message an hour.
+    """
+    last_ok = (
+        await db.execute(
+            select(
+                func.max(
+                    func.coalesce(FulfillmentAttempt.last_seen_at, FulfillmentAttempt.created_at)
+                )
+            ).where(FulfillmentAttempt.task_id == task.id, FulfillmentAttempt.status == "ok")
+        )
+    ).scalar_one_or_none()
+    since = last_ok or task.created_at
+    if since is None or moment - since >= QUIET_FOR:
         _dispatch_alert(_alert_fulfillment_error(task, kind=kind, error=error))
 
 
@@ -2870,6 +2912,7 @@ async def process_webhook_update(
             status="error",
             payload={"supplier": task.supplier},
             error=str(exc),
+            transient=is_transient_check_failure(exc),
         )
         log.warning(
             "fulfillment.check_status.failed",

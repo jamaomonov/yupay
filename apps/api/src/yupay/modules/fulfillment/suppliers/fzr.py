@@ -134,6 +134,20 @@ def _parked_or_not_sent(exc: FzrUnavailableError) -> FulfillResult:
     return not_sent_result(SUPPLIER, exc) if exc.never_sent else _parked_for_adoption(exc)
 
 
+def _throttled(exc: FzrError) -> FulfillResult | None:
+    """A create they rate-limited, as a create that never went out.
+
+    They publish 60 order creates a minute per key and reject the excess at the
+    edge, before anything is charged. Until 2026-11-17 that 429 failed the line
+    outright: one buyer placing 36 lines in four minutes came within a factor
+    of two of it, and a busy reseller would cross it. A throttled create is
+    exactly what ``panel_resend`` exists for — the status poll sends it again
+    with the same key (which they replay rather than double-buy) until it gets
+    through or :data:`~.panel_resend.NOT_SENT_WINDOW_MINUTES` runs out.
+    """
+    return not_sent_result(SUPPLIER, exc) if exc.status == 429 else None
+
+
 def _refusal(exc: FzrError, *, fields: dict[str, str] | None = None) -> FulfillerError:
     """Their refusal as a terminal failure, with the money question answered.
 
@@ -285,8 +299,10 @@ class FzrFulfiller(Fulfiller):
                 idempotency_key=idempotency_key,
             )
         except FzrError as exc:
-            if looks_like_low_balance(exc):
-                return await self._low_balance(exc, item, without_our_inputs(str(exc), fields))
+            if (
+                waits := await self._waits(exc, item, without_our_inputs(str(exc), fields))
+            ) is not None:
+                return waits
             if exc.status >= 500:
                 # A server error can come after the debit, exactly like a lost
                 # response: park for adoption rather than fail and invite a
@@ -300,6 +316,16 @@ class FzrFulfiller(Fulfiller):
             return _parked_or_not_sent(exc)
 
         return _GRADE.finish(obj)
+
+    async def _waits(self, exc: FzrError, item: OrderItem, said: str) -> FulfillResult | None:
+        """A refusal that parks the line instead of ending it, or ``None``.
+
+        Two of them, shared by every product path: our balance ran short (wait
+        for a top-up) and they throttled the create (send it again).
+        """
+        if looks_like_low_balance(exc):
+            return await self._low_balance(exc, item, said)
+        return _throttled(exc)
 
     async def _fields_for(self, category_id: str, item: OrderItem) -> dict[str, str]:
         """Their ``fields`` payload, shaped the way *this category* asks.
@@ -367,8 +393,8 @@ class FzrFulfiller(Fulfiller):
                 idempotency_key=idempotency_key,
             )
         except FzrError as exc:
-            if looks_like_low_balance(exc):
-                return await self._low_balance(exc, item, str(exc))
+            if (waits := await self._waits(exc, item, str(exc))) is not None:
+                return waits
             raise _refusal(exc) from exc
         except FzrUnavailableError as exc:
             return _parked_or_not_sent(exc)
@@ -403,8 +429,8 @@ class FzrFulfiller(Fulfiller):
                 idempotency_key=idempotency_key,
             )
         except FzrError as exc:
-            if looks_like_low_balance(exc):
-                return await self._low_balance(exc, item, str(exc))
+            if (waits := await self._waits(exc, item, str(exc))) is not None:
+                return waits
             # The login is ours to redact for the same reason a player id is:
             # their refusal travels into ``task.last_error``.
             raise _refusal(exc, fields={"steamLogin": steam_login}) from exc

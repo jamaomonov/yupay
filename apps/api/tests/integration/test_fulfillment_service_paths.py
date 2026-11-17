@@ -8,6 +8,7 @@ import hashlib
 import hmac
 import json
 import time
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from urllib.parse import urlencode
 
@@ -478,3 +479,92 @@ async def test_a_task_whose_supplier_slug_is_unknown_can_still_be_cancelled(
         .all()
     )
     assert len(errors) == 1
+
+
+# ---------- transient status-check failures stay quiet (check_noise) ----------
+
+
+@pytest.fixture
+def _alerts(monkeypatch: pytest.MonkeyPatch) -> list[str | None]:
+    """The errors ``_record_attempt`` decided to announce."""
+    seen: list[str | None] = []
+
+    def _capture(task: FulfillmentTask, *, kind: str, error: str | None) -> None:
+        seen.append(error)
+
+    monkeypatch.setattr(ff_svc, "_alert_fulfillment_error", _capture)
+    monkeypatch.setattr(ff_svc, "_dispatch_alert", lambda _coro: None)
+    return seen
+
+
+async def test_a_throttled_status_check_is_logged_but_not_announced(
+    db_session: AsyncSession,
+    _stub_routed_order: tuple[str, str],
+    _alerts: list[str | None],
+) -> None:
+    """2026-11-17: one buyer's 36 fzr lines filled the ops chat with 429s for
+    orders that were all delivered. Fresh trouble on a read is noise."""
+    order_id, _ = _stub_routed_order
+    task = await _task_for_order(db_session, order_id)
+
+    await ff_svc._record_attempt(
+        db_session,
+        task=task,
+        kind="status_check",
+        status="error",
+        error="Слишком много запросов. Повторите через 9 с.",
+        transient=True,
+    )
+    await db_session.flush()
+
+    assert _alerts == []
+    assert task.attempts_count >= 1
+
+
+async def test_a_transient_failure_is_announced_once_nothing_succeeded_for_five_minutes(
+    db_session: AsyncSession,
+    _stub_routed_order: tuple[str, str],
+    _alerts: list[str | None],
+) -> None:
+    """Measured from the last good check, so an outage whose text keeps
+    changing (ConnectTimeout, ConnectError) still announces itself."""
+    order_id, _ = _stub_routed_order
+    task = await _task_for_order(db_session, order_id)
+    long_ago = datetime.now(UTC) - timedelta(minutes=6)
+    db_session.add(
+        FulfillmentAttempt(
+            id=new_id(),
+            task_id=task.id,
+            kind="status_check",
+            status="ok",
+            payload={},
+            created_at=long_ago,
+        )
+    )
+    await db_session.flush()
+
+    await ff_svc._record_attempt(
+        db_session,
+        task=task,
+        kind="status_check",
+        status="error",
+        error="ConnectTimeout",
+        transient=True,
+    )
+
+    assert len(_alerts) == 1
+
+
+async def test_a_real_status_check_error_is_still_announced_at_once(
+    db_session: AsyncSession,
+    _stub_routed_order: tuple[str, str],
+    _alerts: list[str | None],
+) -> None:
+    order_id, _ = _stub_routed_order
+    task = await _task_for_order(db_session, order_id)
+
+    await ff_svc._record_attempt(
+        db_session, task=task, kind="status_check", status="error", error="order not found"
+    )
+
+    assert len(_alerts) == 1

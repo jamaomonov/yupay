@@ -45,6 +45,17 @@ from yupay.modules.fulfillment.service import (
 #: mean every in-flight order is polled every ten seconds.
 INTERVAL_SECONDS = 10
 
+#: Most tasks one tick may ask a vendor about, where the vendor publishes a
+#: ceiling. FazerCards allows 120 status reads a minute per key; a fresh line
+#: is read every 10 s for its first two minutes, so twenty lines placed in one
+#: minute already reach it — which one buyer did on 2026-11-17 and drew 429s.
+#: 15 a tick is 90 a minute, leaving room for the adoption search, which reads
+#: their order list under the same key. Past the budget nothing is dropped: the
+#: rest stay due and are taken, oldest first, on the next ticks — the cadence
+#: stretches instead of the vendor refusing. NOVA publishes no ceiling, so it
+#: keeps the selector's own default.
+PER_TICK: dict[str, int] = {"fzr": 15}
+
 
 async def _list_due_task_ids(slug: str) -> list[str]:
     """That vendor's tasks whose next status check is due.
@@ -54,6 +65,8 @@ async def _list_due_task_ids(slug: str) -> list[str]:
     """
     factory = get_session_factory()
     async with factory() as session:
+        if slug in PER_TICK:
+            return await due_reconcile_task_ids(session, supplier=slug, limit=PER_TICK[slug])
         return await due_reconcile_task_ids(session, supplier=slug)
 
 
