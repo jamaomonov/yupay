@@ -669,3 +669,27 @@ async def test_nova_health_answers_from_the_adapter(
     # Not "unknown supplier" and not "no health probe defined": both would mean
     # the page cannot answer for NOVA at all.
     assert body.get("reason") != "no health probe defined"
+
+
+async def test_fzr_stars_mapping_needs_no_variant(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _seed_sku: str,
+) -> None:
+    """2026-11-17: FazerCards sells Stars too, under NOVA's sentinel, so the
+    switch is a copied row. Refusing it here would make fzr Stars unmappable
+    from the admin."""
+    admin = await _login_user(integration_client, tg_id=419)
+    await _grant_admin(db_session, tg_id=419)
+    r = await integration_client.put(
+        f"/api/v1/admin/integrations/mappings/{_seed_sku}",
+        headers={"Authorization": f"Bearer {admin}"},
+        json={
+            "supplier_slug": "fzr",
+            "kind": "game",
+            "external_product_id": "fragment-stars",
+            "quantity": 500,
+        },
+    )
+    assert r.status_code in (200, 201), r.text
+    assert r.json()["mapping"]["external_variant_id"] is None

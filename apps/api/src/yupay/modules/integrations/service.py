@@ -208,8 +208,9 @@ def _is_amount_priced(payload: MappingUpsert) -> bool:
         return True
     # ``fragment-premium`` is deliberately absent: its months *are* the
     # variant, so a Premium mapping saved without one is a mistake the admin
-    # form should still catch. Fragment is NOVA's alone.
-    return payload.supplier_slug == "nova" and product == NOVA_FRAGMENT_STARS
+    # form should still catch. Both panel vendors sell Stars (fzr since
+    # 2026-11-17), under the one shared sentinel.
+    return payload.supplier_slug in PANEL_SUPPLIERS and product == NOVA_FRAGMENT_STARS
 
 
 async def upsert_mapping(db: AsyncSession, payload: MappingUpsert) -> SkuSupplierMapping:

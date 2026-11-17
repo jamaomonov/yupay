@@ -113,6 +113,22 @@ PANEL_SUPPLIERS: frozenset[str] = frozenset({"nova", "fzr"})
 NOVA_FRAGMENT_STARS = "fragment-stars"
 NOVA_FRAGMENT_PREMIUM = "fragment-premium"
 
+#: FazerCards sells the same two products through ordinary v2 endpoints
+#: (``/api/v2/telegram/stars/buy``, ``/premium/buy``) since 2026-11-17. The
+#: sentinels are shared with NOVA's on purpose: they name a shape of mapping —
+#: Stars carry the pack size in ``quantity`` and no variant, Premium carries
+#: its months as the variant — not a vendor's endpoint. One shape is what lets
+#: an operator switch a Stars SKU between the two vendors by copying the row.
+FZR_TELEGRAM_STARS = NOVA_FRAGMENT_STARS
+FZR_TELEGRAM_PREMIUM = NOVA_FRAGMENT_PREMIUM
+
+#: Panel mapping products that are not a catalogue category: asking
+#: ``GET /topups/offers`` about them is a guaranteed 404. Every sweep that
+#: walks mapped categories subtracts this set.
+PANEL_NON_CATALOGUE: frozenset[str] = frozenset(
+    {PANEL_STEAM_SENTINEL, NOVA_FRAGMENT_STARS, NOVA_FRAGMENT_PREMIUM}
+)
+
 
 class SkuSupplierMapping(Base):
     """Mapping between one YuPay SKU and one supplier's external product id."""

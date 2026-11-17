@@ -432,3 +432,58 @@ async def test_a_read_is_never_re_sent(_no_pause: list[float]) -> None:
 
     assert route.call_count == 1
     assert excinfo.value.never_sent is True
+
+
+# ---------- Telegram (shapes read off the live API, 2026-11-17) ----------
+
+
+@respx.mock
+async def test_stars_buy_sends_their_field_names_and_the_key() -> None:
+    route = respx.post(f"{BASE}/api/v2/telegram/stars/buy").mock(
+        return_value=httpx.Response(
+            201, json={"ok": True, "order": {"id": "ord-1", "status": "processing"}}
+        )
+    )
+    order = await _client().create_telegram_stars_order(
+        username="someone", quantity=500, idempotency_key="task-9"
+    )
+
+    assert order["id"] == "ord-1"
+    sent = route.calls.last.request
+    assert sent.headers["Idempotency-Key"] == "task-9"
+    import json
+
+    assert json.loads(sent.content) == {"telegram_username": "someone", "quantity": 500}
+
+
+@respx.mock
+async def test_premium_buy_sends_months_as_an_integer() -> None:
+    route = respx.post(f"{BASE}/api/v2/telegram/premium/buy").mock(
+        return_value=httpx.Response(200, json={"ok": True, "id": "ord-2", "status": "completed"})
+    )
+    order = await _client().create_telegram_premium_order(
+        username="someone", months=6, idempotency_key="task-9"
+    )
+
+    import json
+
+    assert json.loads(route.calls.last.request.content) == {
+        "telegram_username": "someone",
+        "months": 6,
+    }
+    # A flat answer (no ``order`` wrapper) is read too.
+    assert order["id"] == "ord-2"
+    assert "ok" not in order
+
+
+@respx.mock
+async def test_the_telegram_price_reads_are_plain_gets() -> None:
+    respx.get(f"{BASE}/api/v2/telegram/stars").mock(
+        return_value=httpx.Response(200, json={"ok": True, "price_per_star": "0.0152625"})
+    )
+    respx.get(f"{BASE}/api/v2/telegram/premium").mock(
+        return_value=httpx.Response(200, json={"ok": True, "plans": [{"months": 3}]})
+    )
+
+    assert (await _client().get_telegram_stars())["price_per_star"] == "0.0152625"
+    assert (await _client().get_telegram_premium())["plans"] == [{"months": 3}]

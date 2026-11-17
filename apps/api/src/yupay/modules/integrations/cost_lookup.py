@@ -20,6 +20,8 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import select
 
 from yupay.modules.integrations.models import (
+    FZR_TELEGRAM_PREMIUM,
+    FZR_TELEGRAM_STARS,
     NOVA_FRAGMENT_PREMIUM,
     NOVA_FRAGMENT_STARS,
     PANEL_STEAM_SENTINEL,
@@ -415,12 +417,63 @@ async def _fzr_raw_price(
     *,
     offers_cache: dict[str, dict[str, Any]] | None,
 ) -> _RawPrice:
-    """FazerCards' price for one mapping. The shared panel lookup, no extras.
+    """FazerCards' price for one mapping.
 
-    They have no Fragment API, and their Telegram products are deliberately
-    not mapped (see ``fulfillment/suppliers/fzr.py``), so there is nothing to
-    intercept ahead of it.
+    The shared panel lookup, except Telegram: Stars and Premium are priced by
+    their own two reads (``GET /telegram/stars``, ``/telegram/premium``), not
+    by a catalogue category, so the shared sentinels are intercepted first.
     """
+    category_id = mapping.external_product_id.strip()
+    if mapping.kind != "voucher" and category_id in (FZR_TELEGRAM_STARS, FZR_TELEGRAM_PREMIUM):
+        from yupay.modules.integrations.catalog_sync_panel import client_or_none
+
+        client = client_or_none("fzr")
+        if client is None:
+            return _RawPrice(amount=None, source="", reason="FazerCards is not configured")
+        return await _fzr_telegram_price(client, mapping)
     return await _panel_raw_price(
         db, mapping, slug="fzr", label="FazerCards", offers_cache=offers_cache
     )
+
+
+async def _fzr_telegram_price(client: Any, mapping: SkuSupplierMapping) -> _RawPrice:
+    """Stars: one per-Star constant × the mapping's pack size (``1`` on the
+    free-amount line, so the same product gives its per-Star cost). Premium:
+    the plan whose months are the mapping's variant. Refusals are reasons."""
+    from yupay.modules.fulfillment.suppliers.panel_client import (
+        PanelError,
+        PanelUnavailableError,
+    )
+
+    try:
+        if mapping.external_product_id.strip() == FZR_TELEGRAM_STARS:
+            per_star = (await client.get_telegram_stars()).get("price_per_star")
+            if per_star in (None, ""):
+                return _RawPrice(amount=None, source="", reason="FazerCards не вернула цену звезды")
+            amount = Decimal(str(per_star)) * Decimal(int(mapping.quantity))
+            return _RawPrice(amount=amount, source="fzr.telegram.stars", reason=None)
+        months = int(str(mapping.external_variant_id or "").strip() or 0)
+        if months <= 0:
+            return _RawPrice(
+                amount=None, source="", reason="у Premium-маппинга не указано число месяцев"
+            )
+        plans = (await client.get_telegram_premium()).get("plans") or []
+        price = next(
+            (
+                p.get("price_usd")
+                for p in plans
+                if isinstance(p, dict) and str(p.get("months")) == str(months)
+            ),
+            None,
+        )
+        if price in (None, ""):
+            return _RawPrice(
+                amount=None, source="", reason=f"FazerCards не продаёт Premium на {months} мес."
+            )
+        return _RawPrice(amount=Decimal(str(price)), source="fzr.telegram.premium", reason=None)
+    except (PanelError, PanelUnavailableError) as exc:
+        return _RawPrice(amount=None, source="", reason=str(exc)[:200])
+    except (ArithmeticError, TypeError, ValueError) as exc:
+        return _RawPrice(
+            amount=None, source="", reason=f"нечитаемая цена FazerCards: {exc!s}"[:200]
+        )

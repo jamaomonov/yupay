@@ -41,7 +41,7 @@ from yupay.modules.integrations.models import (
     NOVA_FRAGMENT_PREMIUM,
     NOVA_FRAGMENT_STARS,
     NOVA_STEAM_SENTINEL,
-    PANEL_STEAM_SENTINEL,
+    PANEL_NON_CATALOGUE,
     SkuSupplierMapping,
 )
 from yupay.modules.notifications import api as notifications
@@ -148,11 +148,15 @@ async def _fetch_fzr_offers_cache(
     client = client_or_none("fzr")
     if client is None:
         return {}
-    category_ids = {
-        m.external_product_id.strip()
-        for m in mappings
-        if m.supplier_slug == "fzr" and m.kind == "game"
-    } - {PANEL_STEAM_SENTINEL, ""}
+    category_ids = (
+        {
+            m.external_product_id.strip()
+            for m in mappings
+            if m.supplier_slug == "fzr" and m.kind == "game"
+        }
+        - PANEL_NON_CATALOGUE
+        - {""}
+    )
     cache: dict[str, dict[str, Any]] = {}
     for category_id in sorted(category_ids):
         try:

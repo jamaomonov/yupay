@@ -54,7 +54,7 @@ from yupay.modules.catalog.models import Sku
 from yupay.modules.integrations.catalog_watch_settle import settle_delisting
 from yupay.modules.integrations.models import (
     CATALOG_DELISTED,
-    NOVA_STEAM_SENTINEL,
+    PANEL_NON_CATALOGUE,
     SkuSupplierMapping,
     SupplierCatalogCache,
 )
@@ -343,7 +343,7 @@ async def watch_cached_variants(
 
     by_game: dict[str, list[tuple[SkuSupplierMapping, Sku]]] = {}
     for mapping, sku in await _active_mappings(db, supplier_slug=supplier_slug, kind="game"):
-        if mapping.external_product_id == NOVA_STEAM_SENTINEL:
+        if mapping.external_product_id in PANEL_NON_CATALOGUE:
             # The Steam reserve mapping is not a catalogue category and never
             # was (ADR-0082 §4). Asking for its denominations is a guaranteed
             # 404 — the full sweep excludes it for exactly this reason, and

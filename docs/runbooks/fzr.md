@@ -161,14 +161,42 @@ What that buys:
 A 409 is still graded undecided. That branch now means "the vendor is behaving
 unlike itself", which is precisely when caution earns its keep.
 
-## What is deliberately not wired up
+## Telegram Stars and Premium — a second channel since 2026-11-17
 
-**Telegram.** Their `POST /api/v2/telegram/stars/buy` and
-`/telegram/premium/buy` exist and would fit the adapter, but on 2026-09-24 they
-quoted **$0.0152625 per Star against NOVA's $0.015225**, and were dearer on all
-three Premium terms (3 / 6 / 12 months). Routing Telegram here would cost us
-money. The branch is absent rather than present and unused; add it if that
-inverts.
+Left out on 2026-09-24 because fzr was dearer than NOVA ($0.0152625 a Star
+against $0.015225; Premium dearer on all three terms). Wired up on 2026-11-17
+so Telegram does not hang on one vendor: a SKU can be switched here in
+sourcing (`force_supplier = fzr`) or one stuck task handed here from the
+inbox («Передать поставщику»).
+
+Their endpoints, read off the live API (the schema errors name the fields):
+
+| Call                                | Body / answer                                          |
+| ----------------------------------- | ------------------------------------------------------ |
+| `GET /api/v2/telegram/stars`        | `price_per_star`, `min_amount` 50, `max_amount` 100000 |
+| `GET /api/v2/telegram/premium`      | `plans: [{months, price_usd}]` — 3, 6, 12              |
+| `POST /api/v2/telegram/stars/buy`   | `{telegram_username, quantity}`                        |
+| `POST /api/v2/telegram/premium/buy` | `{telegram_username, months}`                          |
+
+**Mappings are NOVA's rows with another supplier.** The sentinels are shared
+(`fragment-stars` with the pack size in `quantity`, `fragment-premium` with
+the months as the variant), so `scripts/seed/2026-11-17_fzr_telegram_mappings.sql`
+copies every NOVA Fragment row to fzr unchanged. fzr is a reserve, so the seed
+moves no orders by itself. The cost basis comes from the two `GET`s
+(`cost_lookup._fzr_telegram_price`), which is also what the inbox shows next to
+fzr when offering a reassign.
+
+**Unknown until the first live order:** the create's answer and the order's
+shape in `GET /api/v2/orders`. The client reads the usual `{ok, order}` and a
+flat `{ok, id, …}`; anything else fails the line as "accepted but no id" with
+the money undecided — check their panel. A lost Telegram create has no
+adoption key, so it waits out the 30-minute window and lands in the inbox
+rather than being bought again. After the first order, check
+`docker compose logs api | grep fzr.unknown_order_status` and the order's
+`kind` in their list, and add an adoption key if it carries the username.
+The «@» is stripped on our side: they take the bare handle.
+
+## What is deliberately not wired up
 
 **Game keys, Steam gifts, manual services.** Not needed for the measured
 saving.

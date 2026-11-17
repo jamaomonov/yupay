@@ -1,4 +1,4 @@
-"""``Fulfiller`` for FazerCards (api.fzr.cards) game, gift-card and Steam lines.
+"""``Fulfiller`` for FazerCards (api.fzr.cards) game, gift-card, Steam and Telegram lines.
 
 FazerCards is a **reserve**, like NOVA and for the same reason: nothing routes
 there on its own, an operator switches a SKU with ``force_supplier``. What
@@ -25,11 +25,14 @@ NOVA, which is why almost all of the machinery is shared:
   expires 2026-09-29; after that someone has to pay for a plan or every order
   routed here fails.
 
-**Telegram is deliberately not wired up.** Their Stars and Premium endpoints
-exist and would fit, but on 2026-09-24 they quoted 0.0152625 per Star against
-NOVA's 0.015225 and were dearer on all three Premium terms. Routing Telegram
-here would cost us money, so the branch is absent rather than present and
-unused.
+**Telegram** (Stars and Premium) was left out on 2026-09-24 because it was
+dearer than NOVA, and wired up on 2026-11-17 as a second channel: a Telegram
+SKU can be switched here in sourcing or handed here from the inbox. It reads
+the same mapping rows as NOVA's Fragment branch (shared sentinels), so the
+switch needs no mapping edits beyond the supplier. A lost Telegram create has
+no adoption key — the order shape was unknown when this was written — so it
+waits out the adoption window and lands in the inbox for a look at their
+panel, never a blind second purchase.
 """
 
 from __future__ import annotations
@@ -41,6 +44,7 @@ from typing import TYPE_CHECKING, Any
 from yupay.core.clock import now
 from yupay.core.config import get_settings
 from yupay.core.logging import get_logger
+from yupay.modules.fulfillment.suppliers.amount import quantity_for
 from yupay.modules.fulfillment.suppliers.base import (
     Fulfiller,
     FulfillerError,
@@ -80,7 +84,11 @@ from yupay.modules.fulfillment.suppliers.panel_resend import (
     resend_from_status,
     should_resend,
 )
-from yupay.modules.integrations.models import FZR_STEAM_SENTINEL
+from yupay.modules.integrations.models import (
+    FZR_STEAM_SENTINEL,
+    FZR_TELEGRAM_PREMIUM,
+    FZR_TELEGRAM_STARS,
+)
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -99,6 +107,8 @@ SUPPLIER = "fzr"
 _VOUCHER_KIND = "voucher"
 
 STEAM_SENTINEL = FZR_STEAM_SENTINEL
+TELEGRAM_STARS = FZR_TELEGRAM_STARS
+TELEGRAM_PREMIUM = FZR_TELEGRAM_PREMIUM
 
 #: Reads their order objects and refusals. See ``panel_grading``.
 _GRADE = PanelGrader(SUPPLIER)
@@ -132,6 +142,29 @@ def _parked_or_not_sent(exc: FzrUnavailableError) -> FulfillResult:
     """A create that never left us is re-sent by the status poll; one that may have
     landed is parked for adoption (``panel_resend``)."""
     return not_sent_result(SUPPLIER, exc) if exc.never_sent else _parked_for_adoption(exc)
+
+
+def _one_per_call(item: OrderItem) -> None:
+    """Refuse a multi-unit top-up before any call: their create has no quantity."""
+    if item.qty > 1:
+        raise FulfillerError(
+            "fzr has no quantity on a top-up order — one call buys one offer",
+            money_outcome=_NOTHING_SPENT,
+        )
+
+
+def _months_of(mapping: Any) -> int:
+    """A Premium mapping's months, from its variant. Refuses before any call."""
+    try:
+        months = int(str(mapping.external_variant_id or "").strip())
+    except ValueError:
+        months = 0
+    if months <= 0:
+        raise FulfillerError(
+            "fzr premium mapping carries no month count in its variant",
+            money_outcome=_NOTHING_SPENT,
+        )
+    return months
 
 
 def _throttled(exc: FzrError) -> FulfillResult | None:
@@ -268,14 +301,15 @@ class FzrFulfiller(Fulfiller):
                 item=item, mapping=mapping, idempotency_key=idempotency_key
             )
 
-        # One call buys one thing — for a game offer and a Steam wallet alike.
-        # There is no Stars carve-out here because Telegram is not routed to
-        # this vendor; see the module docstring.
-        if item.qty > 1:
-            raise FulfillerError(
-                "fzr has no quantity on a top-up order — one call buys one offer",
-                money_outcome=_NOTHING_SPENT,
+        # Telegram ahead of the quantity guard too: a free-amount Stars line
+        # arrives as qty = the customer's star count (``quantity_for``).
+        if category_id in (TELEGRAM_STARS, TELEGRAM_PREMIUM):
+            return await self._fulfill_telegram(
+                db=db, item=item, mapping=mapping, idempotency_key=idempotency_key
             )
+
+        # One call buys one thing — for a game offer and a Steam wallet alike.
+        _one_per_call(item)
 
         if category_id == STEAM_SENTINEL:
             return await self._fulfill_steam(item=item, idempotency_key=idempotency_key)
@@ -291,6 +325,24 @@ class FzrFulfiller(Fulfiller):
                 money_outcome=_NOTHING_SPENT,
             )
 
+        return await self._place_topup(
+            item=item,
+            category_id=category_id,
+            offer_id=offer_id,
+            fields=fields,
+            idempotency_key=idempotency_key,
+        )
+
+    async def _place_topup(
+        self,
+        *,
+        item: OrderItem,
+        category_id: str,
+        offer_id: str,
+        fields: dict[str, str],
+        idempotency_key: str,
+    ) -> FulfillResult:
+        """The games create and its money grading."""
         try:
             obj = await self._client().create_topup_order(
                 category_id=category_id,
@@ -396,6 +448,55 @@ class FzrFulfiller(Fulfiller):
             if (waits := await self._waits(exc, item, str(exc))) is not None:
                 return waits
             raise _refusal(exc) from exc
+        except FzrUnavailableError as exc:
+            return _parked_or_not_sent(exc)
+
+        return _GRADE.finish(obj)
+
+    async def _fulfill_telegram(
+        self,
+        *,
+        db: AsyncSession,
+        item: OrderItem,
+        mapping: Any,
+        idempotency_key: str,
+    ) -> FulfillResult:
+        """Telegram Stars and Premium, on their v2 Telegram endpoints.
+
+        Same mapping shape as NOVA's Fragment rows (``integrations.models``),
+        so a SKU moves between the two vendors unchanged: Stars count from
+        ``quantity_for`` — the one function every Stars adapter must share, or
+        somebody gets 1 Star instead of 5000 — and Premium months from the
+        variant. Money grading is the games path's, refusal for refusal.
+        """
+        data = item.fulfillment_data or {}
+        username = str(data.get("username") or data.get("telegram_username") or "").strip()
+        # They take the bare handle; a customer types it with or without «@».
+        username = username.lstrip("@")
+        if not username:
+            raise FulfillerError(
+                "order item is missing fulfillment_data.username",
+                money_outcome=_NOTHING_SPENT,
+            )
+        is_premium = str(mapping.external_product_id or "").strip() == TELEGRAM_PREMIUM
+        try:
+            if is_premium:
+                months = _months_of(mapping)
+                obj = await self._client().create_telegram_premium_order(
+                    username=username, months=months, idempotency_key=idempotency_key
+                )
+            else:
+                stars = int(await quantity_for(db, item=item, mapping=mapping))
+                obj = await self._client().create_telegram_stars_order(
+                    username=username, quantity=stars, idempotency_key=idempotency_key
+                )
+        except FzrError as exc:
+            said = without_our_inputs(str(exc), {"username": username})
+            if (waits := await self._waits(exc, item, said)) is not None:
+                return waits
+            if exc.status >= 500:
+                return _parked_for_adoption(exc)
+            raise _refusal(exc, fields={"username": username}) from exc
         except FzrUnavailableError as exc:
             return _parked_or_not_sent(exc)
 

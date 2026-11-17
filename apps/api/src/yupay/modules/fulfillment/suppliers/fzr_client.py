@@ -27,10 +27,18 @@ difference is somewhere an assumption carried across would be wrong:
   ``code: "subscription_inactive"`` on every product route, and the Steam
   wallet rebate is tiered (bronze ≈2.5%, silver ≈3%, gold 3.55%).
 * **No Fragment API.** Telegram Stars and Premium are ordinary v2 endpoints
-  (``/api/v2/telegram/stars/buy``). They are deliberately not wired up: on
-  2026-09-24 FazerCards quoted 0.0152625 per Star against NOVA's 0.015225 and
-  was dearer on all three Premium terms, so routing Telegram here would cost
-  us money. Add them if that inverts.
+  with the ``{ok, …}`` envelope. Left out on 2026-09-24 because they were
+  dearer than NOVA (0.0152625 per Star against 0.015225); wired up on
+  2026-11-17 so a Telegram SKU can be switched to fzr in sourcing or handed
+  to it from the inbox when NOVA is down or dearer. Their shapes, read off
+  the live API on 2026-11-17 (the schema errors name the fields):
+
+  - ``GET /api/v2/telegram/stars`` → ``price_per_star``, ``min_amount`` 50,
+    ``max_amount`` 100000;
+  - ``GET /api/v2/telegram/premium`` → ``plans: [{months, price_usd}]`` for
+    3, 6 and 12;
+  - ``POST /api/v2/telegram/stars/buy`` ``{telegram_username, quantity}``;
+  - ``POST /api/v2/telegram/premium/buy`` ``{telegram_username, months}``.
 """
 
 from __future__ import annotations
@@ -42,6 +50,7 @@ from yupay.modules.fulfillment.suppliers.panel_client import (
     PanelError,
     PanelUnavailableError,
     PanelValidation,
+    order_with_debit,
 )
 
 
@@ -83,6 +92,66 @@ class FzrClient(PanelClient):
         """
         return await self._request("GET", "/api/v2/subscription")
 
+    # ---------- Telegram ----------
+
+    async def get_telegram_stars(self) -> dict[str, Any]:
+        """Price of one Star in USD and the order bounds. Stars are linear."""
+        return await self._request("GET", "/api/v2/telegram/stars")
+
+    async def get_telegram_premium(self) -> dict[str, Any]:
+        """Premium plans, ``[{months, price_usd}]``."""
+        return await self._request("GET", "/api/v2/telegram/premium")
+
+    async def create_telegram_stars_order(
+        self, *, username: str, quantity: int, idempotency_key: str
+    ) -> dict[str, Any]:
+        """Buy Stars for a Telegram account.
+
+        Args:
+            username: The recipient, without ``@``. Never logged.
+            quantity: Whole Stars, 50-100000 per their bounds.
+            idempotency_key: Always sent; they replay a reused key.
+        """
+        body = await self._request(
+            "POST",
+            "/api/v2/telegram/stars/buy",
+            json={"telegram_username": username, "quantity": int(quantity)},
+            headers=self._idem(idempotency_key),
+            resend_unsent=True,
+        )
+        return telegram_order_of(body)
+
+    async def create_telegram_premium_order(
+        self, *, username: str, months: int, idempotency_key: str
+    ) -> dict[str, Any]:
+        """Gift Telegram Premium. See :meth:`create_telegram_stars_order`."""
+        body = await self._request(
+            "POST",
+            "/api/v2/telegram/premium/buy",
+            json={"telegram_username": username, "months": int(months)},
+            headers=self._idem(idempotency_key),
+            resend_unsent=True,
+        )
+        return telegram_order_of(body)
+
+
+def telegram_order_of(body: dict[str, Any]) -> dict[str, Any]:
+    """Their Telegram order object, under either envelope.
+
+    No Telegram order had been placed when this was written, so the create's
+    answer is not known first-hand. Every other create answers
+    ``{ok, order, <vendor>Debit}``, and this reads that first; a body that
+    carries the order flat (an ``id`` beside ``ok``) is accepted too. Anything
+    else comes back empty, and ``PanelGrader.finish`` fails the line loudly as
+    "accepted but no id" with the money undecided — never a silent wait.
+    """
+    order = order_with_debit(body)
+    if order:
+        return order
+    if body.get("id") not in (None, "") or body.get("order_id") not in (None, ""):
+        return {k: v for k, v in body.items() if k != "ok"}
+    return {}
+
 
 __all__ = [
     "SUBSCRIPTION_INACTIVE",
@@ -90,4 +159,5 @@ __all__ = [
     "FzrError",
     "FzrUnavailableError",
     "FzrValidation",
+    "telegram_order_of",
 ]

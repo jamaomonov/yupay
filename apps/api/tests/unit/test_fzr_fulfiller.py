@@ -1059,3 +1059,129 @@ async def test_a_refusal_on_the_re_send_is_a_failed_status_not_a_raise(
 
     assert status.outcome == "failed"
     assert status.money_outcome is not None
+
+
+# ---------- Telegram (2026-11-17) ----------
+
+
+class _TgClient(_FakeClient):
+    """The fake with their two Telegram creates."""
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self.tg_calls: list[tuple[str, dict[str, Any]]] = []
+
+    async def create_telegram_stars_order(self, **kwargs: Any) -> dict[str, Any]:
+        self.tg_calls.append(("stars", kwargs))
+        if self._raises is not None:
+            raise self._raises
+        return self._order
+
+    async def create_telegram_premium_order(self, **kwargs: Any) -> dict[str, Any]:
+        self.tg_calls.append(("premium", kwargs))
+        if self._raises is not None:
+            raise self._raises
+        return self._order
+
+
+async def _telegram(
+    client: _TgClient,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    product: str = "fragment-stars",
+    variant: str | None = None,
+    stars: int = 500,
+    data: dict[str, Any] | None = None,
+) -> Any:
+    import yupay.modules.fulfillment.suppliers.fzr as mod
+
+    async def _quantity(_db: Any, *, item: Any, mapping: Any) -> int:
+        return stars
+
+    monkeypatch.setattr(mod, "quantity_for", _quantity)
+    return await _fulfill(
+        client,
+        monkeypatch,
+        mapping=_mapping(external_product_id=product, external_variant_id=variant, quantity=stars),
+        item=_item(fulfillment_data=data if data is not None else {"username": "@someone"}),
+    )
+
+
+async def test_stars_send_the_bare_handle_and_the_shared_star_count(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _TgClient(order={"id": "ord-77", "kind": "telegram_stars", "status": "processing"})
+    result = await _telegram(client, monkeypatch, stars=500)
+
+    assert result.outcome == "in_progress"
+    assert result.external_order_id == "ord-77"
+    assert client.tg_calls == [
+        ("stars", {"username": "someone", "quantity": 500, "idempotency_key": "task-42"})
+    ]
+    assert client.calls == []  # never the games endpoint
+
+
+async def test_premium_sends_the_months_from_the_variant(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = _TgClient(order={"id": "ord-78", "status": "processing"})
+    await _telegram(client, monkeypatch, product="fragment-premium", variant="12")
+
+    assert client.tg_calls[0][0] == "premium"
+    assert client.tg_calls[0][1]["months"] == 12
+
+
+async def test_premium_without_months_is_refused_before_any_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _TgClient()
+    with pytest.raises(FulfillerError) as exc:
+        await _telegram(client, monkeypatch, product="fragment-premium", variant="")
+
+    assert exc.value.money_outcome is MoneyOutcome.RETURNED
+    assert client.tg_calls == []
+
+
+async def test_a_line_without_a_username_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = _TgClient()
+    with pytest.raises(FulfillerError):
+        await _telegram(client, monkeypatch, data={})
+
+    assert client.tg_calls == []
+
+
+async def test_a_telegram_refusal_never_echoes_the_handle(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = _TgClient(raises=FzrError("user someone not found", status=400))
+    with pytest.raises(FulfillerError) as exc:
+        await _telegram(client, monkeypatch)
+
+    assert "someone" not in str(exc.value)
+    assert exc.value.money_outcome is MoneyOutcome.RETURNED
+
+
+async def test_a_throttled_telegram_create_waits_for_the_poll(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _TgClient(raises=FzrError("Слишком много запросов", status=429))
+    result = await _telegram(client, monkeypatch)
+
+    assert result.outcome == "in_progress"
+    assert "fzr_create_not_sent" in result.extra_metadata
+
+
+async def test_a_lost_telegram_create_is_parked_not_failed(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = _TgClient(raises=FzrUnavailableError("ReadTimeout"))
+    result = await _telegram(client, monkeypatch)
+
+    assert result.outcome == "in_progress"
+    assert "fzr_create_unresolved" in result.extra_metadata
+
+
+async def test_an_unreadable_telegram_answer_fails_loudly_with_the_money_open(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Their Telegram create had never been seen when this shipped; an
+    answer we cannot read must not become a silent endless wait."""
+    client = _TgClient(order={})
+    with pytest.raises(FulfillerError) as exc:
+        await _telegram(client, monkeypatch)
+
+    assert exc.value.money_outcome is MoneyOutcome.UNKNOWN

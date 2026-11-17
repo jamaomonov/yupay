@@ -47,7 +47,7 @@ from yupay.modules.fulfillment.suppliers.panel_client import (
 from yupay.modules.integrations import catalog_sync_panel_vouchers as vouchers_sync
 from yupay.modules.integrations import service as svc
 from yupay.modules.integrations.catalog_sync_types import CatalogSyncReport
-from yupay.modules.integrations.models import PANEL_STEAM_SENTINEL
+from yupay.modules.integrations.models import PANEL_NON_CATALOGUE
 
 log = get_logger("yupay.integrations.catalog_sync.panel")
 
@@ -173,7 +173,8 @@ async def _refresh_mapped_game_denoms(
         for category_id in await svc.mapped_external_product_ids(
             db, supplier_slug=client.slug, kind="game"
         )
-        if category_id != PANEL_STEAM_SENTINEL
+        # Telegram Stars/Premium are endpoints, not categories, either.
+        if category_id not in PANEL_NON_CATALOGUE
     ]
     if len(category_ids) > _MAPPED_FETCH_CAP:
         log.warning(
