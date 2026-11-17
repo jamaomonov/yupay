@@ -241,11 +241,13 @@
       "previewLabel": "Merchant price",
       "previewValue": "≈ {price} · preliminary",
       "previewBelowCost": "below cost — check the markup sign",
+      "previewBelowFloor": "below the {floor}% floor — merchants will not see this SKU",
       "previewNoCost": "Without a USDT cost the SKU has no B2B price — it will not appear in the merchant catalog.",
       "save": "Save B2B",
       "saving": "Saving…",
       "saved": "SKU B2B settings saved.",
-      "error": "Failed to save B2B: {message}"
+      "error": "Failed to save B2B: {message}",
+      "confirmBelowFloor": "The markup is below the {floor}% floor: the SKU will disappear from the merchant catalogue and their orders will be refused. Save anyway?"
     },
     "brand": {
       "title": "B2B (merchants)",

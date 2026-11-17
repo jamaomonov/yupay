@@ -876,8 +876,11 @@ Five pure functions, all `Decimal`, no DB access:
   pricing control (spec §8.3): it catches a fat-fingered per-SKU markup
   (including one that goes negative — Task 4 deliberately added no DB
   `CHECK` on `b2b_markup_pct`) and cost spikes a stale markup no longer
-  covers. Callers read `settings.merchant_margin_floor_pct` (default `2`)
-  and pass it in; the pure functions never read settings themselves.
+  covers. Callers read `settings.merchant_margin_floor_pct` (default `0.5`
+  since 2026-11-17, `2` before) and pass it in; the pure functions never read
+  settings themselves. The admin SKU read carries it as
+  `b2b_margin_floor_pct`, and the B2B card warns — and asks before saving —
+  when a markup would put a visible SKU under it.
 - `price_to_charge(current, expected)` is the single home of the ±2% drift
   rule (spec §8.4, amended by the owner 2026-09-07): inside the band it
   returns `current` — **our** price, never the merchant's and never the lower

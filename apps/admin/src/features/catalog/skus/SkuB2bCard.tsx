@@ -17,7 +17,13 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button, Input } from "@yupay/ui";
 import { useRef, useState } from "react";
 
-import { parseMarkupPct, patchSkuB2b, previewB2bPrice, T as catalogB2bT } from "../b2b";
+import {
+  isBelowMarginFloor,
+  parseMarkupPct,
+  patchSkuB2b,
+  previewB2bPrice,
+  T as catalogB2bT,
+} from "../b2b";
 
 import type { SkuB2bOut } from "../b2b";
 import type { Sku } from "../types";
@@ -69,6 +75,13 @@ export function SkuB2bCard({ sku, cost }: Props) {
     },
   });
 
+  const preview = previewB2bPrice(cost, markup);
+  const floor = sku.b2b_margin_floor_pct;
+  // The price list hides a SKU under this floor (`price_list.py`); say so
+  // here, where the markup is chosen, instead of letting it vanish.
+  const belowFloor =
+    preview !== null && !preview.belowCost && isBelowMarginFloor(cost, preview.price, floor);
+
   const submit = () => {
     const parsed = parseMarkupPct(markup);
     if (parsed === null) {
@@ -76,13 +89,19 @@ export function SkuB2bCard({ sku, cost }: Props) {
       return;
     }
     setMarkupError(null);
+    if (
+      visible &&
+      (belowFloor || preview?.belowCost) &&
+      !window.confirm(fill(T.confirmBelowFloor, { floor }))
+    ) {
+      return;
+    }
     // One key per logical attempt: retries of this attempt replay it, the
     // next click mints a fresh one.
     keyRef.current = `sku-b2b-${crypto.randomUUID()}`;
     save.mutate({ markup_pct: parsed, visible_b2b: visible });
   };
 
-  const preview = previewB2bPrice(cost, markup);
   // Distinguish "no usable cost" (the SKU has no B2B price at all — see
   // `effective_cost` in the pricing module) from "markup half-typed"
   // (preview simply unavailable for a moment).
@@ -132,12 +151,17 @@ export function SkuB2bCard({ sku, cost }: Props) {
         {preview ? (
           <p
             className={`mt-0.5 font-mono text-sm font-semibold ${
-              preview.belowCost ? "text-[var(--danger)]" : "text-[var(--accent)]"
+              preview.belowCost || belowFloor ? "text-[var(--danger)]" : "text-[var(--accent)]"
             }`}
           >
             {fill(T.previewValue, { price: formatUsd(preview.price) })}
             {preview.belowCost && (
               <span className="ml-1.5 font-sans font-medium">— {T.previewBelowCost}</span>
+            )}
+            {belowFloor && (
+              <span className="mt-0.5 block font-sans font-medium">
+                {fill(T.previewBelowFloor, { floor })}
+              </span>
             )}
           </p>
         ) : hasCost ? (

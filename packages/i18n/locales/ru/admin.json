@@ -241,11 +241,13 @@
       "previewLabel": "Цена для мерчанта",
       "previewValue": "≈ {price} · предварительно",
       "previewBelowCost": "ниже cost — проверь знак наценки",
+      "previewBelowFloor": "ниже порога {floor}% — мерчанты не увидят этот SKU",
       "previewNoCost": "Без cost USDT у SKU нет B2B-цены — он не попадёт в каталог мерчантов.",
       "save": "Сохранить B2B",
       "saving": "Сохранение…",
       "saved": "B2B-настройки SKU сохранены.",
-      "error": "Не удалось сохранить B2B: {message}"
+      "error": "Не удалось сохранить B2B: {message}",
+      "confirmBelowFloor": "Наценка ниже порога {floor}%: SKU пропадёт из каталога мерчантов, их заказы будут отклонены. Сохранить всё равно?"
     },
     "brand": {
       "title": "B2B (мерчанты)",

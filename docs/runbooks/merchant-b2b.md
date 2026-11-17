@@ -34,6 +34,16 @@ re-run when a brand is reactivated later (see "Reflipping a brand" below).
 
 ## Catalog: reflipping a brand after the fact
 
+**A SKU vanished from the merchant catalogue after a markup edit.** The price
+list withholds any SKU priced under cost × (1 + `merchant_margin_floor_pct`/100),
+and orders for it are refused with `margin_floor`; the API logs
+`merchant_catalog_below_margin_floor` with the SKU codes. The floor is 0.5 %
+since 2026-11-17 (2 % before — a deliberate 0.5 % markup on Free Fire Weekly
+Membership hid it). The admin B2B card shows «ниже порога …» under the price
+preview and asks before saving such a markup. Raise the markup, or change the
+floor with `MERCHANT_MARGIN_FLOOR_PCT` in the api env (restart with
+`IMAGE_TAG`).
+
 The 0068 backfill is a one-time migration, not a standing rule — a brand
 activated (or given its first active SKU) after deploy does **not**
 automatically gain `visible_b2b`. The admin UI covers per-brand/per-SKU

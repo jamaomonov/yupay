@@ -823,7 +823,7 @@ async def test_a_price_outside_the_band_is_price_changed_and_carries_the_current
 async def test_a_markup_below_the_margin_floor_is_refused(
     integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
 ) -> None:
-    """``0.5`` typed for ``5``: the price clears nothing, so the order is refused.
+    """``0.1`` typed for ``10``: under the 0.5 % floor, so the order is refused.
 
     The same setting ``price_list.build`` reads, so the catalog and the order
     path cannot disagree about which SKUs are sellable.
@@ -831,13 +831,13 @@ async def test_a_markup_below_the_margin_floor_is_refused(
     merchant_id = await _new_merchant(integration_client, admin_headers)
     key_id, secret = await _new_key(integration_client, admin_headers, merchant_id)
     await _credit(integration_client, admin_headers, merchant_id, "10.00")
-    sku_id = await _seeded(db_session, cost_usdt=Decimal("100"), b2b_markup_pct=Decimal("0.5"))
+    sku_id = await _seeded(db_session, cost_usdt=Decimal("100"), b2b_markup_pct=Decimal("0.1"))
 
     r = await _post_order(
         integration_client,
         key_id,
         secret,
-        {"merchant_order_id": "floor-1", "sku_id": sku_id, "expected_price": "100.50"},
+        {"merchant_order_id": "floor-1", "sku_id": sku_id, "expected_price": "100.10"},
     )
 
     assert r.status_code == 422, r.text

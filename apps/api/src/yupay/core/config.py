@@ -681,7 +681,10 @@ class Settings(BaseSettings):
     # ``b2b_markup_pct`` (e.g. "0.5" typed for "5") and cost spikes a stale
     # markup no longer covers. Read by callers and passed in — the pure
     # pricing functions never read settings themselves.
-    merchant_margin_floor_pct: Decimal = Field(default=Decimal("2"))
+    # 2 % until 2026-11-17, when the owner priced a SKU at 0.5 % on purpose and
+    # it vanished from the merchant catalogue; the admin B2B card now warns
+    # under this floor, so the floor itself only has to stop nonsense.
+    merchant_margin_floor_pct: Decimal = Field(default=Decimal("0.5"))
     # What one dollar of face value costs us on a balance loaded in dollars
     # (the Steam wallet, ``variable_amount``). The margin floor is checked
     # against this, not against the dollar itself. 0.9645 is fzr's gold-tier

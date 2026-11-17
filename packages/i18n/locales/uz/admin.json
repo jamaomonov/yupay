@@ -241,11 +241,13 @@
       "previewLabel": "Merchant narxi",
       "previewValue": "≈ {price} · dastlabki",
       "previewBelowCost": "costdan past — ustama ishorasini tekshiring",
+      "previewBelowFloor": "{floor}% chegarasidan past — merchantlar bu SKUni ko'rmaydi",
       "previewNoCost": "USDT costsiz SKUda B2B narx yo'q — u merchant katalogiga tushmaydi.",
       "save": "B2B ni saqlash",
       "saving": "Saqlanmoqda…",
       "saved": "SKU B2B sozlamalari saqlandi.",
-      "error": "B2B ni saqlab bo'lmadi: {message}"
+      "error": "B2B ni saqlab bo'lmadi: {message}",
+      "confirmBelowFloor": "Ustama {floor}% chegarasidan past: SKU merchantlar katalogidan yo'qoladi, ularning buyurtmalari rad etiladi. Baribir saqlansinmi?"
     },
     "brand": {
       "title": "B2B (merchantlar)",

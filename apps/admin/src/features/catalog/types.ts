@@ -175,5 +175,9 @@ export interface Sku {
    *  data, same sensitivity as `rate_multiplier` — admin-only. */
   visible_b2b: boolean;
   b2b_markup_pct: string;
+  /** The merchant price list's margin floor, % over cost
+   *  (`settings.merchant_margin_floor_pct`). Below it the SKU is hidden from
+   *  merchants and their orders are refused. */
+  b2b_margin_floor_pct: string;
   price_overrides: SkuPriceOverride[];
 }

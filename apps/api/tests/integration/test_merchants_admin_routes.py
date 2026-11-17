@@ -1302,8 +1302,8 @@ async def test_an_adjustment_under_the_floor_is_refused_with_the_number_that_wor
 ) -> None:
     """The mistake that would otherwise surface one refused order at a time.
 
-    The catalogue at 7 % and the floor at 2 % make -5 the edge: -6 puts the
-    cheapest SKU under it, and EVERY order that merchant places would come
+    The catalogue at 7 % and the floor at 0.5 % (2 % until 2026-11-17) make
+    -6.5 the edge: -7 puts the cheapest SKU under it, and EVERY order that merchant places would come
     back `margin_floor` with nothing on their page explaining why.
     """
     merchant_id = await _create_merchant(integration_client, admin_headers, title="Too greedy")
@@ -1313,14 +1313,14 @@ async def test_an_adjustment_under_the_floor_is_refused_with_the_number_that_wor
     r = await integration_client.patch(
         f"/api/v1/admin/merchants/{merchant_id}/markup",
         headers=admin_headers,
-        json={"markup_adjustment_pp": "-6"},
+        json={"markup_adjustment_pp": "-7"},
     )
 
     assert r.status_code == 422, r.text
     body = r.json()
     assert body["code"] == "markup_below_floor"
     # The fix is a value, not an experiment.
-    assert Decimal(body["lowest_allowed_pp"]) == Decimal("-5")
+    assert Decimal(body["lowest_allowed_pp"]) == Decimal("-6.5")
     assert Decimal(body["thinnest_markup_pct"]) == Decimal("7")
 
 
@@ -1337,7 +1337,7 @@ async def test_the_floor_is_measured_against_the_thinnest_sku_not_the_average(
     r = await integration_client.patch(
         f"/api/v1/admin/merchants/{merchant_id}/markup",
         headers=admin_headers,
-        json={"markup_adjustment_pp": "-3"},
+        json={"markup_adjustment_pp": "-4"},
     )
 
     assert r.status_code == 422, r.text

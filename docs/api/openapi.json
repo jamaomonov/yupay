@@ -2036,6 +2036,11 @@
             "title": "Active",
             "type": "boolean"
           },
+          "b2b_margin_floor_pct": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "B2B Margin Floor Pct",
+            "type": "string"
+          },
           "b2b_markup_pct": {
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "B2B Markup Pct",

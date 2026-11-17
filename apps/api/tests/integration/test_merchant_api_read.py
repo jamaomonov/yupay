@@ -780,10 +780,11 @@ async def test_a_sku_below_the_margin_floor_is_absent_rather_than_advertised(
         db_session,
         n=1,
         skus=[
-            # `0.5` typed for `5`: priced at 0.5% over cost, under the 2% floor.
-            {"sku_code": "fat-fingered", "b2b_markup_pct": Decimal("0.5")},
+            # `0` typed for `10`: the price is the cost, under the 0.5% floor
+            # (2% until 2026-11-17).
+            {"sku_code": "fat-fingered", "b2b_markup_pct": Decimal("0")},
             # Exactly at the floor is still sellable — the guard is `<`, not `<=`.
-            {"sku_code": "at-the-floor", "b2b_markup_pct": Decimal("2")},
+            {"sku_code": "at-the-floor", "b2b_markup_pct": Decimal("0.5")},
             {"sku_code": "healthy", "b2b_markup_pct": Decimal("7")},
         ],
     )

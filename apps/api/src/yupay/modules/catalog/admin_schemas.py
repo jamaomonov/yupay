@@ -613,6 +613,12 @@ class AdminProductOut(BaseModel):
     translations: list[TranslationIn]
 
 
+def _margin_floor_pct() -> Decimal:
+    from yupay.core.config import get_settings
+
+    return get_settings().merchant_margin_floor_pct
+
+
 class AdminSkuOut(BaseModel):
     """Admin-side SKU view including overrides."""
 
@@ -650,6 +656,11 @@ class AdminSkuOut(BaseModel):
     # endpoints; the plain catalog PATCH ignores these fields.
     visible_b2b: bool
     b2b_markup_pct: Decimal
+    #: ``settings.merchant_margin_floor_pct`` — the merchant price list hides a
+    #: SKU priced under cost × (1 + floor/100). Sent so the B2B card can say so
+    #: before saving; until 2026-11-17 a 0.5 % markup quietly removed a SKU
+    #: from every merchant with the preview still showing a price.
+    b2b_margin_floor_pct: Decimal = Field(default_factory=_margin_floor_pct)
     price_overrides: list[SkuPriceOverrideIn]
 
 

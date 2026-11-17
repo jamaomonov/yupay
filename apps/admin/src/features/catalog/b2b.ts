@@ -137,6 +137,22 @@ interface ParsedDecimal {
   scale: number;
 }
 
+/**
+ * Whether a merchant price clears the margin floor:
+ * `price < cost × (1 + floor / 100)` — `merchants/pricing.violates_margin_floor`
+ * on the same decimal strings, in exact integer math like the preview.
+ * `false` when any input is unreadable: a half-typed field is not a warning.
+ */
+export function isBelowMarginFloor(cost: string, price: string, floorPct: string): boolean {
+  const c = parseDecimal(cost, { signed: false });
+  const p = parseDecimal(price, { signed: true });
+  const f = parseDecimal(floorPct, { signed: true });
+  if (!c || !p || !f) return false;
+  const left = p.units * 100n * pow10(c.scale + f.scale);
+  const right = c.units * (100n * pow10(f.scale) + f.units) * pow10(p.scale);
+  return left < right;
+}
+
 function parseDecimal(raw: string, opts: { signed: boolean }): ParsedDecimal | null {
   const cleaned = raw.replace(/\s/g, "").replace(",", ".");
   const match = /^(-?)(\d+)(?:\.(\d+))?$/.exec(cleaned);

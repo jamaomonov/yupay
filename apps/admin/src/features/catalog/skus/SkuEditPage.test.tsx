@@ -290,6 +290,7 @@ it("shows the B2B card with the saved state on an existing SKU", async () => {
     active: true,
     visible_b2b: true,
     b2b_markup_pct: "7.00",
+    b2b_margin_floor_pct: "2",
     price_overrides: [],
   };
   mockedApiGet.mockImplementation((path: string) => {

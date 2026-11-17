@@ -37,6 +37,7 @@ const SKU: Sku = {
   active: true,
   visible_b2b: true,
   b2b_markup_pct: "7.00",
+  b2b_margin_floor_pct: "2",
   price_overrides: [],
 };
 
@@ -132,4 +133,29 @@ it("refuses to send a markup the column cannot hold", () => {
   expect(
     screen.getByText("Наценка — число до ±999.99, максимум два знака после точки."),
   ).toBeInTheDocument();
+});
+
+// 2026-11-17: 0.5 % on freefire weekly (cost 1.5394) priced it at $1.55, under
+// the 2 % floor, and it vanished from every merchant with no word here.
+it("says the SKU will be hidden from merchants when the markup is under the floor", () => {
+  renderCard({ ...SKU, cost_usdt: "1.5394" }, "1.5394");
+  fireEvent.change(screen.getByLabelText("Наценка B2B, %"), { target: { value: "0,5" } });
+  expect(screen.getByText(/ниже порога 2% — мерчанты не увидят этот SKU/)).toBeInTheDocument();
+});
+
+it("stays quiet when the same markup clears a lower floor", () => {
+  renderCard({ ...SKU, cost_usdt: "1.5394", b2b_margin_floor_pct: "0.5" }, "1.5394");
+  fireEvent.change(screen.getByLabelText("Наценка B2B, %"), { target: { value: "0.5" } });
+  expect(screen.queryByText(/ниже порога/)).not.toBeInTheDocument();
+});
+
+it("asks before saving a visible SKU under the floor, and stops on «no»", () => {
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+  renderCard({ ...SKU, cost_usdt: "1.5394" }, "1.5394");
+  fireEvent.change(screen.getByLabelText("Наценка B2B, %"), { target: { value: "0.5" } });
+  fireEvent.click(screen.getByRole("button", { name: "Сохранить B2B" }));
+
+  expect(confirm).toHaveBeenCalledTimes(1);
+  expect(mockedApiPatch).not.toHaveBeenCalled();
+  confirm.mockRestore();
 });

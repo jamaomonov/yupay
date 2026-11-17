@@ -980,6 +980,9 @@ async def test_admin_lists_expose_b2b_read_side(
     # Defaults straight from the columns: hidden, 7% (Task 4's server_default).
     assert created["visible_b2b"] is False
     assert Decimal(created["b2b_markup_pct"]) == Decimal("7.00")
+    # The merchant price list's floor rides along, so the B2B card can warn
+    # before a markup hides the SKU from merchants (2026-11-17).
+    assert Decimal(created["b2b_margin_floor_pct"]) == get_settings().merchant_margin_floor_pct
 
     r = await integration_client.get("/api/v1/admin/catalog/brands", headers=_admin_headers)
     assert r.status_code == 200, r.text
