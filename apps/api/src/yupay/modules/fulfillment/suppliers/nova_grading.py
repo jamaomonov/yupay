@@ -22,6 +22,7 @@ not always what we asked them to deliver.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 from yupay.core.logging import get_logger
@@ -80,14 +81,47 @@ def _low_balance_result(
     )
 
 
+#: The two ``kind`` values of a Fragment (Telegram) order.
+_FRAGMENT_KINDS = frozenset({"STARS", "PREMIUM"})
+
+
+def _fragment_failed_unpaid(obj: dict[str, Any], result: FulfillResult) -> FulfillResult:
+    """A Fragment order that failed before anything was sent on chain.
+
+    A Fragment purchase *is* an on-chain payment, and ``tx_hash`` is where they
+    record it. A ``FAILED`` order with no ``tx_hash`` never paid Telegram: every
+    one of these on production (2026-11-05 .. 11-14) was either their own
+    «could not be completed. Please try again later» or «Insufficient account
+    balance.» — their side or our NOVA balance, which the owner confirmed is
+    what they refuse for. Grading those ``UNKNOWN`` was what made Retry
+    useless: ``arm_retry_key`` will not mint a new key on unknown money, and
+    Fragment answers the old key with the same dead order, so every one ended
+    in a manual delivery.
+
+    ``RETURNED`` lets Retry send a fresh key and place a new order. A failed
+    order that *does* carry a ``tx_hash`` stays ``UNKNOWN``: something left
+    their wallet, and a human should look before we buy again.
+    """
+    if result.outcome != "failed" or str(obj.get("kind") or "") not in _FRAGMENT_KINDS:
+        return result
+    if "tx_hash" not in obj or obj.get("tx_hash"):
+        return result
+    if result.money_outcome is _NOTHING_SPENT:
+        return result
+    extra = dict(result.extra_metadata or {})
+    extra.pop("needs_reconciliation", None)
+    extra["nova_fragment_unpaid"] = True
+    return replace(result, money_outcome=_NOTHING_SPENT, extra_metadata=extra)
+
+
 def _result(obj: dict[str, Any]) -> FulfillResult:
     """Interpret one order object into a fulfilment result."""
-    return _NOVA.result(obj)
+    return _fragment_failed_unpaid(obj, _NOVA.result(obj))
 
 
 def _finish(obj: dict[str, Any]) -> FulfillResult:
     """:func:`_result` plus the guard both create paths need."""
-    return _NOVA.finish(obj)
+    return _fragment_failed_unpaid(obj, _NOVA.finish(obj))
 
 
 #: Re-exported for ``nova.py``, which has always imported its money constants

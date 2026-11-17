@@ -283,6 +283,20 @@ re-sent.
 Waxpeer and G-Engine are deliberately _not_ in that set — they replay the
 original order for a repeated key, so for them the reuse is the protection.
 
+**Telegram (Fragment) failures, 2026-11-17.** Fragment does the opposite of
+the v2 API: a reused key _replays_ the original order. Every NOVA Telegram
+failure on production between 11-05 and 11-14 was `FAILED` with
+`tx_hash: null` — their «could not be completed. Please try again later» or
+«Insufficient account balance.» — and was graded `UNKNOWN`, so Retry kept the
+old key, got the same dead order back, and each ended in a manual delivery.
+A Fragment purchase is an on-chain payment recorded in `tx_hash`; with none,
+Telegram was never paid. Such an order is now graded `RETURNED`
+(`nova_grading._fragment_failed_unpaid`, metadata `nova_fragment_unpaid`),
+so Retry mints a fresh key and places a new order. A `FAILED` order that
+_does_ carry a `tx_hash` stays `UNKNOWN` — look before buying again. Tasks
+recorded before the fix keep `UNKNOWN` (the ladder never moves down):
+deliver those by hand or reassign them to fzr.
+
 ## Switching a SKU to NOVA and back
 
 The exact mirror of the Steam (Waxpeer) / G-Engine procedure — nothing NOVA-
