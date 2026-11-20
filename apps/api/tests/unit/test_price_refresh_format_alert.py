@@ -149,8 +149,20 @@ async def test_a_muted_supplier_is_not_warned_about(monkeypatch: Any) -> None:
 async def test_every_wallet_read_is_logged_muted_ones_too(monkeypatch: Any) -> None:
     """An hourly trail of each balance — the only way to reconcile a supplier's
     charges afterwards (did NOVA keep the money for a FAILED order?)."""
-    from structlog.testing import capture_logs
     from yupay.modules.integrations import price_refresh
+
+    # Not ``structlog.testing.capture_logs``: ``cache_logger_on_first_use``
+    # keeps a logger bound earlier in the session on its old processor chain,
+    # so under xdist the capture came back empty. Swap the module logger.
+    logs: list[dict[str, Any]] = []
+
+    class _Recorder:
+        def _record(self, event: str, **fields: Any) -> None:
+            logs.append({"event": event, **fields})
+
+        debug = info = warning = error = exception = _record
+
+    monkeypatch.setattr(price_refresh, "log", _Recorder())
 
     class _Funded:
         available = True
@@ -162,8 +174,7 @@ async def test_every_wallet_read_is_logged_muted_ones_too(monkeypatch: Any) -> N
         monkeypatch.setitem(REGISTRY, slug, _Funded())
     monkeypatch.setattr(price_refresh, "_WALLET_SUPPLIERS", ("waxpeer", "nova"))
 
-    with capture_logs() as logs:
-        await price_refresh._maybe_warn_low_balance()
+    await price_refresh._maybe_warn_low_balance()
 
     trail = [e for e in logs if e["event"] == "integrations.supplier_balance"]
     assert [(e["supplier"], e["balance"]) for e in trail] == [

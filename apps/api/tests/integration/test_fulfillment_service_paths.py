@@ -180,7 +180,10 @@ async def test_a_pack_cart_gets_one_task_per_piece(
     b = _seed_unit(db_session, slug="cart-b")
     await db_session.commit()
     token = await _login_user(integration_client, tg_id=953)
-    line = lambda sku_id: {"sku_id": sku_id, "qty": 1, "fulfillment_data": {}}  # noqa: E731
+
+    def line(sku_id: str) -> dict[str, object]:
+        return {"sku_id": sku_id, "qty": 1, "fulfillment_data": {}}
+
     r = await integration_client.post(
         "/api/v1/orders",
         headers={"Authorization": f"Bearer {token}", "Idempotency-Key": "fs-order-953-cart-pad"},

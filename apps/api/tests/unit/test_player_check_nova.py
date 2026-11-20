@@ -54,8 +54,14 @@ class _FakeRedis:
         self.store[key] = str(int(self.store.get(key, "0")) + 1)
         return int(self.store[key])
 
-    async def expire(self, key: str, seconds: int) -> bool:
+    async def expire(self, key: str, seconds: int, nx: bool = False) -> bool:
         return True
+
+    def pipeline(self, transaction: bool = True) -> _FakePipeline:
+        # The breaker counts a failure as INCR + EXPIRE NX in one MULTI/EXEC
+        # (8cbcb796); without this the suppressed AttributeError hid every
+        # recorded failure from these tests.
+        return _FakePipeline(self)
 
     async def delete(self, *keys: str) -> int:
         n = 0
@@ -116,6 +122,29 @@ class _FakeNovaFulfiller:
 
     def _client(self) -> _ScriptedNovaClient:
         return self._client_obj
+
+
+class _FakePipeline:
+    """Queues ``incr``/``expire`` and runs them on ``execute``, like a MULTI/EXEC."""
+
+    def __init__(self, redis: _FakeRedis) -> None:
+        self._redis = redis
+        self._calls: list[tuple[str, tuple[object, ...], dict[str, object]]] = []
+
+    async def __aenter__(self) -> _FakePipeline:
+        return self
+
+    async def __aexit__(self, *exc: object) -> None:
+        return None
+
+    def incr(self, key: str) -> None:
+        self._calls.append(("incr", (key,), {}))
+
+    def expire(self, key: str, seconds: int, nx: bool = False) -> None:
+        self._calls.append(("expire", (key, seconds), {"nx": nx}))
+
+    async def execute(self) -> list[object]:
+        return [await getattr(self._redis, n)(*a, **kw) for n, a, kw in self._calls]
 
 
 class _Recorder:

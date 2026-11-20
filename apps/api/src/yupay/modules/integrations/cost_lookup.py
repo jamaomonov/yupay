@@ -447,33 +447,43 @@ async def _fzr_telegram_price(client: Any, mapping: SkuSupplierMapping) -> _RawP
 
     try:
         if mapping.external_product_id.strip() == FZR_TELEGRAM_STARS:
-            per_star = (await client.get_telegram_stars()).get("price_per_star")
-            if per_star in (None, ""):
-                return _RawPrice(amount=None, source="", reason="FazerCards не вернула цену звезды")
-            amount = Decimal(str(per_star)) * Decimal(int(mapping.quantity))
-            return _RawPrice(amount=amount, source="fzr.telegram.stars", reason=None)
-        months = int(str(mapping.external_variant_id or "").strip() or 0)
-        if months <= 0:
-            return _RawPrice(
-                amount=None, source="", reason="у Premium-маппинга не указано число месяцев"
-            )
-        plans = (await client.get_telegram_premium()).get("plans") or []
-        price = next(
-            (
-                p.get("price_usd")
-                for p in plans
-                if isinstance(p, dict) and str(p.get("months")) == str(months)
-            ),
-            None,
-        )
-        if price in (None, ""):
-            return _RawPrice(
-                amount=None, source="", reason=f"FazerCards не продаёт Premium на {months} мес."
-            )
-        return _RawPrice(amount=Decimal(str(price)), source="fzr.telegram.premium", reason=None)
+            return await _fzr_stars_price(client, mapping)
+        return await _fzr_premium_price(client, mapping)
     except (PanelError, PanelUnavailableError) as exc:
         return _RawPrice(amount=None, source="", reason=str(exc)[:200])
     except (ArithmeticError, TypeError, ValueError) as exc:
         return _RawPrice(
             amount=None, source="", reason=f"нечитаемая цена FazerCards: {exc!s}"[:200]
         )
+
+
+async def _fzr_stars_price(client: Any, mapping: SkuSupplierMapping) -> _RawPrice:
+    """Per-Star price × the mapping's pack size."""
+    per_star = (await client.get_telegram_stars()).get("price_per_star")
+    if per_star in (None, ""):
+        return _RawPrice(amount=None, source="", reason="FazerCards не вернула цену звезды")
+    amount = Decimal(str(per_star)) * Decimal(int(mapping.quantity))
+    return _RawPrice(amount=amount, source="fzr.telegram.stars", reason=None)
+
+
+async def _fzr_premium_price(client: Any, mapping: SkuSupplierMapping) -> _RawPrice:
+    """The Premium plan whose months are the mapping's variant."""
+    months = int(str(mapping.external_variant_id or "").strip() or 0)
+    if months <= 0:
+        return _RawPrice(
+            amount=None, source="", reason="у Premium-маппинга не указано число месяцев"
+        )
+    plans = (await client.get_telegram_premium()).get("plans") or []
+    price = next(
+        (
+            p.get("price_usd")
+            for p in plans
+            if isinstance(p, dict) and str(p.get("months")) == str(months)
+        ),
+        None,
+    )
+    if price in (None, ""):
+        return _RawPrice(
+            amount=None, source="", reason=f"FazerCards не продаёт Premium на {months} мес."
+        )
+    return _RawPrice(amount=Decimal(str(price)), source="fzr.telegram.premium", reason=None)
