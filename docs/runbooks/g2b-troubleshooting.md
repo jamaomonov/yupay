@@ -111,10 +111,31 @@ URL reaches us. Rotation invalidates any in-flight game orders that
 G2B still has the old URL for — those will appear as "task stuck", use
 the manual reconciliation above.
 
+## «g2b purchase unconfirmed» — a purchase that got no answer
+
+A purchase (`POST /games/{game}/order`, `POST /products/{id}/purchase`) is sent
+**once** if it may have reached G2B: a read timeout, a dropped connection or a
+5xx. Only a refused/timed-out _connect_ or a 429 is resent. Reason: G2B's
+`X-Idempotency-Key` replays a stored order but does not stop concurrent copies.
+On 2026-11-20 G2B stalled for ~4 min; the client resent one MLBB 1060 order five
+times with the same key and G2B created three paid orders (#2428137, #2428138,
+#2428140), the player got triple diamonds.
+
+What you see: the task is `failed`, `last_error` starts with
+`g2b purchase unconfirmed`, money outcome unknown, the ops chat is alerted.
+
+1. Open the G2B panel and search for the order (game orders carry remark `yupay:<item id[:8]>`;
+   otherwise match by product and time of the attempt).
+2. Order is there → press **Retry** in the inbox. The retry reuses the same
+   idempotency key and G2B returns that order instead of buying again (verified
+   2026-11-20: the 11:58 retry got back #2428140).
+3. No order after ~5 minutes → **Retry** buys it fresh.
+4. Never **Reassign** before checking — another supplier would buy it a second time.
+
 ## 429 from G2B
 
 The G2bClient already retries with exponential backoff (1s, 2s, 4s, 8s)
-on 429 and 5xx. If we're consistently hitting 429:
+on 429 and 5xx (a purchase: on 429 only — see above). If we're consistently hitting 429:
 
 - Check the `g2b.request` log volume on the api / worker container —
   someone is hammering the polling actor or an admin is clicking

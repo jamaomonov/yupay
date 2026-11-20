@@ -8,6 +8,7 @@ Doesn't touch the DB or the saga — just the wire format. Verifies that:
 - 429 is retried with backoff (we monkey-patch ``asyncio.sleep``).
 - 401 stops immediately without retrying.
 - Network errors → ``UpstreamUnavailableError``.
+- A purchase is resent only when it never reached G2B.
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ from yupay.modules.fulfillment.suppliers.g2b_client import (
     G2bClient,
     G2bError,
     G2bTerminalFailure,
+    G2bUnconfirmedError,
 )
 
 pytestmark = pytest.mark.asyncio
@@ -323,3 +325,74 @@ async def test_fetch_product_other_errors_still_raise() -> None:
     )
     with pytest.raises(UpstreamUnavailableError):
         await _client(max_retries=0).fetch_product("107")
+
+
+# ---------- a purchase is never resent once it may have landed ----------
+
+
+async def _no_sleep(_seconds: float) -> None:
+    return None
+
+
+@respx.mock
+async def test_game_order_read_timeout_is_sent_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    """2026-11-20: five resends of one key during a G2B stall became three paid
+    orders. A read timeout means G2B may have the order — one send, then stop."""
+    monkeypatch.setattr("yupay.modules.fulfillment.suppliers.g2b_client.asyncio.sleep", _no_sleep)
+    route = respx.post("https://g2b.test/v1/games/mlbb/order").mock(
+        side_effect=httpx.ReadTimeout("slow")
+    )
+    with pytest.raises(G2bUnconfirmedError):
+        await _client(max_retries=4).create_game_order(
+            game_code="mlbb",
+            catalogue_name="1060",
+            player_id="1",
+            server_id=None,
+            charname=None,
+            callback_url=None,
+            remark=None,
+            idempotency_key="task-1",
+        )
+    assert route.call_count == 1
+
+
+@respx.mock
+async def test_voucher_purchase_5xx_is_sent_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("yupay.modules.fulfillment.suppliers.g2b_client.asyncio.sleep", _no_sleep)
+    route = respx.post("https://g2b.test/v1/products/42/purchase").mock(
+        return_value=httpx.Response(502, text="bad gateway")
+    )
+    with pytest.raises(G2bUnconfirmedError, match="HTTP 502"):
+        await _client(max_retries=4).purchase_voucher(
+            product_id="42", quantity=1, idempotency_key="task-2"
+        )
+    assert route.call_count == 1
+
+
+@respx.mock
+async def test_purchase_that_never_connected_is_resent(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A refused connect or a 429 never reached G2B's order logic — safe to resend."""
+    monkeypatch.setattr("yupay.modules.fulfillment.suppliers.g2b_client.asyncio.sleep", _no_sleep)
+    route = respx.post("https://g2b.test/v1/products/42/purchase").mock(
+        side_effect=[
+            httpx.ConnectError("refused"),
+            httpx.Response(429, json={"detail": "slow down"}),
+            httpx.Response(200, json={"order": {"order_id": 9, "status": "PENDING"}}),
+        ]
+    )
+    result = await _client(max_retries=4).purchase_voucher(
+        product_id="42", quantity=1, idempotency_key="task-3"
+    )
+    assert result.status == "pending"
+    assert route.call_count == 3
+    assert all(c.request.headers["X-Idempotency-Key"] == "task-3" for c in route.calls)
+
+
+@respx.mock
+async def test_a_read_still_retries_a_read_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("yupay.modules.fulfillment.suppliers.g2b_client.asyncio.sleep", _no_sleep)
+    route = respx.get("https://g2b.test/v1/getMe").mock(
+        side_effect=[httpx.ReadTimeout("slow"), httpx.Response(200, json={"balance": 1})]
+    )
+    assert (await _client().get_me())["balance"] == 1
+    assert route.call_count == 2

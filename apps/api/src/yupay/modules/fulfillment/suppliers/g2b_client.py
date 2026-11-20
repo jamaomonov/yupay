@@ -8,7 +8,15 @@ Auth: ``X-API-Key`` header. Idempotency: caller passes
 ``X-Idempotency-Key`` (always the YuPay ``task.id``).
 
 Retry policy: 429 / 5xx are retryable with exponential backoff. 4xx other
-than 429 are terminal and raise immediately — repeated 401s in particular
+than 429 are terminal and raise immediately. A call that *buys* something
+(``create_game_order``, ``purchase_voucher``) is retried only when the request
+provably never reached G2B — a refused or timed-out connect, or a 429 — never
+on a read timeout or a 5xx, after which G2B may have taken the order. Their
+``X-Idempotency-Key`` replays a stored order but does not stop concurrent
+copies: on 2026-11-20 five resends of one key during a G2B stall became three
+paid MLBB orders. A purchase that may have landed raises
+:class:`G2bUnconfirmedError`; an operator retry later reuses the same key and
+G2B replays whichever order it kept — repeated 401s in particular
 will get our IP permanently banned by G2B (see
 ``docs/g2b-intergation.md`` §10). 410 on the voucher delivery endpoint
 means the order has failed / been refunded — treat as terminal-failed.
@@ -72,6 +80,25 @@ class G2bError(Exception):
         super().__init__(f"g2b error: HTTP {status}: {body[:200]}")
         self.status = status
         self.body = body
+
+
+class G2bUnconfirmedError(Exception):
+    """A purchase request was sent and no answer came back.
+
+    G2B may or may not have created (and charged) the order. The caller must
+    not send it again on its own — see the module docstring.
+    """
+
+
+#: Transport errors raised before a single byte of the request left us: the
+#: connection was refused, never completed, or never got a pool slot. Safe to
+#: resend even for a purchase. Everything else (``ReadTimeout``,
+#: ``RemoteProtocolError``, ``WriteError``…) may follow a request G2B received.
+_NEVER_SENT_ERRORS: tuple[type[httpx.RequestError], ...] = (
+    httpx.ConnectError,
+    httpx.ConnectTimeout,
+    httpx.PoolTimeout,
+)
 
 
 class G2bTerminalError(Exception):
@@ -154,8 +181,13 @@ class G2bClient:
         json: dict[str, Any] | None = None,
         idempotency_key: str | None = None,
         treat_410_as: Literal["error", "terminal_failure"] = "error",
+        purchase: bool = False,
     ) -> httpx.Response:
-        """Issue a request with retry on 429/5xx and a fail-fast on 401/400."""
+        """Issue a request with retry on 429/5xx and a fail-fast on 401/400.
+
+        With ``purchase=True`` only a request that never reached G2B is resent;
+        an ambiguous failure raises :class:`G2bUnconfirmedError` at once.
+        """
         url = f"{self._base_url}{path}"
         headers = {"X-API-Key": self._api_key}
         if idempotency_key is not None:
@@ -177,6 +209,10 @@ class G2bClient:
                         attempt=attempt,
                         error=transport_error_text(exc),
                     )
+                    if purchase and not isinstance(exc, _NEVER_SENT_ERRORS):
+                        raise G2bUnconfirmedError(
+                            f"g2b purchase unconfirmed: {transport_error_text(exc)}"
+                        ) from exc
                     if attempt >= self._max_retries:
                         raise UpstreamUnavailableError(
                             f"g2b network error: {transport_error_text(exc)}"
@@ -207,6 +243,11 @@ class G2bClient:
                 # Stop retrying immediately and let the caller decide what to do
                 # (typically: surface a config error and refuse to keep calling).
                 raise G2bError(resp.status_code, _safe_body(resp))
+
+            if purchase and resp.status_code >= 500:
+                raise G2bUnconfirmedError(
+                    f"g2b purchase unconfirmed: HTTP {resp.status_code}: {_safe_body(resp)}"
+                )
 
             if resp.status_code == 429 or resp.status_code >= 500:
                 last_status = resp.status_code
@@ -241,6 +282,7 @@ class G2bClient:
             f"/products/{product_id}/purchase",
             json={"quantity": quantity},
             idempotency_key=idempotency_key,
+            purchase=True,
         )
         body = resp.json()
         order = _unwrap_order(body)
@@ -314,6 +356,7 @@ class G2bClient:
             f"/games/{game_code}/order",
             json=payload,
             idempotency_key=idempotency_key,
+            purchase=True,
         )
         order = _unwrap_order(resp.json())
         return GameOrderCreated(
@@ -515,6 +558,7 @@ __all__ = [
     "G2bClient",
     "G2bError",
     "G2bTerminalFailure",
+    "G2bUnconfirmedError",
     "GameOrderCreated",
     "GameOrderStatus",
     "VoucherDeliveryResult",

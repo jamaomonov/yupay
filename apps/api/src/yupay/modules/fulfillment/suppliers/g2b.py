@@ -40,6 +40,7 @@ from yupay.modules.fulfillment.suppliers.g2b_client import (
     G2bClient,
     G2bError,
     G2bTerminalFailure,
+    G2bUnconfirmedError,
 )
 from yupay.modules.integrations.service import get_mapping
 
@@ -360,6 +361,8 @@ class G2bFulfiller(Fulfiller):
                 quantity=qty,
                 idempotency_key=idempotency_key,
             )
+        except G2bUnconfirmedError as exc:
+            raise _unconfirmed(exc) from exc
         except G2bError as exc:
             if _looks_like_low_balance(exc):
                 return _low_balance_result(
@@ -488,6 +491,8 @@ class G2bFulfiller(Fulfiller):
                 remark=f"yupay:{item.id[:8]}",
                 idempotency_key=idempotency_key,
             )
+        except G2bUnconfirmedError as exc:
+            raise _unconfirmed(exc) from exc
         except G2bError as exc:
             if _looks_like_low_balance(exc):
                 return _low_balance_result(
@@ -686,6 +691,20 @@ def _stringify_or_none(value: Any) -> str | None:
         return None
     s = str(value).strip()
     return s or None
+
+
+def _unconfirmed(exc: G2bUnconfirmedError) -> FulfillerError:
+    """The purchase went out and no answer came back: park it for a human.
+
+    Never resent automatically — G2B's idempotency key does not stop a second
+    copy while the first is still in flight (2026-11-20: three paid orders from
+    one key). The task fails with the money outcome unknown, so an admin retry
+    keeps the same key and G2B replays the order it kept instead of buying again.
+    """
+    return FulfillerError(
+        f"{exc} — check the G2B panel before retrying; a retry reuses the same idempotency key",
+        money_outcome=_MAY_HAVE_SPENT,
+    )
 
 
 def _err_body(exc: G2bError) -> str:

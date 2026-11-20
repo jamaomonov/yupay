@@ -9,7 +9,7 @@ from typing import Any, cast
 
 import pytest
 from yupay.core import config as cfg
-from yupay.modules.fulfillment.suppliers.base import FulfillerError
+from yupay.modules.fulfillment.suppliers.base import FulfillerError, MoneyOutcome
 from yupay.modules.fulfillment.suppliers.g2b import (
     LOW_BALANCE_ERROR,
     G2bFulfiller,
@@ -21,6 +21,7 @@ from yupay.modules.fulfillment.suppliers.g2b_client import (
     G2bClient,
     G2bError,
     G2bTerminalFailure,
+    G2bUnconfirmedError,
     GameOrderCreated,
     GameOrderStatus,
     VoucherDeliveryResult,
@@ -365,6 +366,24 @@ async def test_voucher_purchase_error_mapping(_g2b_env: None) -> None:
         await hard.fulfill(
             db=cast(Any, None), order=cast(Any, None), item=_item(), idempotency_key="k5"
         )
+
+
+async def test_an_unconfirmed_purchase_parks_with_money_unknown(_g2b_env: None) -> None:
+    """No answer to a purchase: fail for a human with the outcome UNKNOWN, so the
+    admin retry keeps the idempotency key and G2B replays rather than rebuys."""
+    for kind, canned in (
+        ("voucher", {"purchase_voucher": G2bUnconfirmedError("g2b purchase unconfirmed")}),
+        ("game", {"create_game_order": G2bUnconfirmedError("g2b purchase unconfirmed")}),
+    ):
+        gw = _fulfiller(_FakeClient(**canned), _mapping(kind))
+        with pytest.raises(FulfillerError, match="check the G2B panel") as excinfo:
+            await gw.fulfill(
+                db=cast(Any, None),
+                order=cast(Any, None),
+                item=_item(player_id="1"),
+                idempotency_key="k-unconfirmed",
+            )
+        assert excinfo.value.money_outcome is MoneyOutcome.UNKNOWN
 
 
 # ---------- game orders ----------

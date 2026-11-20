@@ -585,3 +585,62 @@ async def test_missing_mapping_fails_task(
     ).scalar_one()
     assert task.status == "failed"
     assert "mapping" in (task.last_error or "").lower()
+
+
+# ---------- a purchase that timed out is parked, then replayed by key ----------
+
+
+@respx.mock
+async def test_unanswered_purchase_parks_then_retry_replays_same_key(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """2026-11-20: resending a timed-out purchase bought the same thing three
+    times. Now one send, the task fails for a human with the money unknown, and
+    the admin retry carries the same key so G2B replays the order it kept."""
+    sku_id = await _seed_voucher_sku(db_session)
+    admin = await _login_user(integration_client, tg_id=511)
+    await _grant_admin(db_session, tg_id=511)
+    await _create_mapping(db_session, sku_id=sku_id, kind="voucher", external_product_id="42")
+    await _set_g2b_force(integration_client, token=admin, sku_id=sku_id)
+
+    purchase = respx.post(f"{G2B_BASE}/products/42/purchase").mock(
+        side_effect=[
+            httpx.ReadTimeout("G2B stalled"),
+            httpx.Response(
+                200,
+                json={
+                    "success": True,
+                    "order_id": 7781,
+                    "status": "COMPLETED",
+                    "delivery_items": ["G2B-CODE-R"],
+                },
+            ),
+        ]
+    )
+
+    customer = await _login_user(integration_client, tg_id=512)
+    order_id = await _pay_order(
+        integration_client, token=customer, sku_id=sku_id, key_suffix="voucher-timeout"
+    )
+
+    task = (
+        await db_session.execute(
+            select(FulfillmentTask).where(FulfillmentTask.order_id == order_id)
+        )
+    ).scalar_one()
+    assert task.status == "failed"
+    assert "check the G2B panel" in (task.last_error or "")
+    assert purchase.call_count == 1  # never resent on its own
+
+    retry = await integration_client.post(
+        f"/api/v1/admin/fulfillment/tasks/{task.id}/retry",
+        headers={"Authorization": f"Bearer {admin}"},
+    )
+    assert retry.status_code == 200, retry.text
+    await db_session.refresh(task)
+    assert task.status == "succeeded"
+    assert task.external_order_id == "7781"
+
+    keys = {c.request.headers["X-Idempotency-Key"] for c in purchase.calls}
+    assert len(keys) == 1  # the retry replays, it does not mint a new purchase
