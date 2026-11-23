@@ -224,6 +224,31 @@ A blocked request gets Cloudflare's own response, which carries no CORS header
 at this threshold (real login volume is a few per hour) but it is the reason
 the threshold is generous.
 
+**Credential stuffing on `/auth/login`** (2026-11-23): ~1000 tries a minute
+from ~160 IPs, each IP under both the edge rule and the API's per-IP bucket,
+every try a fresh email — so the per-identity counter never trips either. The
+cost is the argon2 verify each try pays: `ApiSaturated` fires while every
+request answers 401. Tell it from real load by the status mix — a wall of
+`POST /api/v1/auth/login … 401` in `docker compose logs api`.
+
+That run sent `X-Yupay-Surface: web` and no `Origin`, which no browser does
+(the storefront's fetch to `api.yupay.uz` is cross-origin). The API now refuses
+a `web`/`miniapp` login without an allowed `Origin` with a 403 before the hash
+(`auth/routes.py`, `_refuse_browser_claim_without_origin`). The mobile app
+sends `mobile` and no `Origin`, and is not affected. A script can add the
+header, so the edge rule is the real stop — a Cloudflare custom rule (Security
+→ WAF → Custom rules), action **Block**:
+
+```
+(http.request.uri.path eq "/api/v1/auth/login"
+ and not any(http.request.headers["origin"][*] in {"https://yupay.uz" "https://www.yupay.uz"})
+ and not any(http.request.headers["x-yupay-surface"][*] eq "mobile"))
+```
+
+If the run adapts and starts sending a real `Origin`, switch the action to
+**Managed Challenge** only for requests that are not the mobile app — it
+breaks a browser's XHR login, so only for the duration of the attack.
+
 ## Alerting
 
 Alerts go to the ops Telegram chat — the same one the bot posts fulfilment

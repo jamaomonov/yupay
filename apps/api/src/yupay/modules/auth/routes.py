@@ -6,7 +6,7 @@ Mounted under ``/api/v1/auth`` by :mod:`yupay.api.v1`.
 from __future__ import annotations
 
 import hashlib
-from typing import Annotated, Literal
+from typing import Annotated, Final, Literal
 
 from fastapi import APIRouter, Cookie, Depends, Header, Request, Response, status
 from fastapi.responses import RedirectResponse
@@ -15,7 +15,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.api.v1.deps import db_session
 from yupay.core.client_ip import client_ip
 from yupay.core.config import get_settings
-from yupay.core.errors import RateLimitedError, UnauthorizedError, ValidationError
+from yupay.core.errors import (
+    ForbiddenError,
+    RateLimitedError,
+    UnauthorizedError,
+    ValidationError,
+)
 from yupay.core.idempotency import IDEMPOTENCY_HEADER, normalize_idempotency_key
 from yupay.core.logging import get_logger
 from yupay.modules.auth import steam as steam_openid
@@ -224,6 +229,34 @@ async def register_route(
     return RegisterOut(email=user.email)
 
 
+#: Surfaces that are a browser page: their fetch to the API is cross-origin, so
+#: it always carries an ``Origin`` the browser fills in. The mobile app is not a
+#: browser and sends none.
+_BROWSER_SURFACES: Final = frozenset({"web", "miniapp"})
+
+
+def _refuse_browser_claim_without_origin(request: Request) -> None:
+    """Refuse a login that says it is a browser page but has no allowed Origin.
+
+    A credential-stuffing run (2026-11-23, ~1000 tries a minute over ~160 IPs,
+    each under the per-IP limit) sent ``X-Yupay-Surface: web`` and no
+    ``Origin``. Every try cost an argon2 verify, which is what saturated the
+    API. No browser sends that combination, so it is refused before the hash.
+    A script can forge an ``Origin`` — this is a cheap filter, not a boundary;
+    the edge (Cloudflare) is where a determined run is stopped.
+
+    Raises:
+        ForbiddenError: a browser surface without an allowed ``Origin``.
+    """
+    surface = request.headers.get("x-yupay-surface", "").strip().lower()
+    if surface not in _BROWSER_SURFACES:
+        return
+    origin = request.headers.get("origin", "").rstrip("/")
+    if origin and origin in get_settings().cors_allow_origins:
+        return
+    raise ForbiddenError("login refused")
+
+
 @router.post(
     "/login",
     response_model=TokensOut,
@@ -241,6 +274,7 @@ async def login_route(
     # ``subject`` is what keeps this a brute-force guard: the per-IP number is
     # sized for a carrier NAT, so on its own it would let someone hammer one
     # account 60 times a minute.
+    _refuse_browser_claim_without_origin(request)
     await guard_ip(request, bucket="login", subject=body.email)
     tokens = await login_password(db, email=body.email, password=body.password)
     return _session_response(response, tokens, transport=transport)
