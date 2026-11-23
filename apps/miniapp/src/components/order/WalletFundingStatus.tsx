@@ -5,8 +5,9 @@ import { useEffect } from "react";
 
 import { TERMINAL_FAIL } from "./order-helpers";
 import { P2PTransferCard } from "./P2PTransferCard";
+import { UzqrPayCard } from "./UzqrPayCard";
 
-import type { OrderOut, P2PPaymentDetails } from "@/lib/orders";
+import type { OrderOut, P2PPaymentDetails, UzqrPaymentDetails } from "@/lib/orders";
 
 import { useT } from "@/lib/i18n";
 import { openExternalLink } from "@/lib/telegram";
@@ -20,6 +21,7 @@ export function WalletFundingStatus({
   order,
   payUrl,
   p2p = null,
+  uzqr = null,
   onWallet,
   onHome,
 }: {
@@ -27,6 +29,8 @@ export function WalletFundingStatus({
   payUrl: string | null;
   /** Card-transfer details of the pending payment (ADR-0097); the card is the pay button. */
   p2p?: P2PPaymentDetails | null;
+  /** The QR of the pending payment (ADR-0106); the code is the pay button. */
+  uzqr?: UzqrPaymentDetails | null;
   onWallet: () => void;
   onHome: () => void;
 }) {
@@ -74,6 +78,11 @@ export function WalletFundingStatus({
       {order.status === "pending_payment" && p2p ? (
         <div className="-mx-4">
           <P2PTransferCard details={p2p} />
+        </div>
+      ) : null}
+      {order.status === "pending_payment" && uzqr ? (
+        <div className="-mx-4">
+          <UzqrPayCard details={uzqr} />
         </div>
       ) : null}
       {order.status === "pending_payment" && payUrl ? (

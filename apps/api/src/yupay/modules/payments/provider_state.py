@@ -47,6 +47,8 @@ LOGICAL_PROVIDERS: dict[str, LogicalProvider] = {
     # Card transfer settled by the Telegram P2P intake (ADR-0097). This state
     # is the storefront's switch; the P2P settings ``mode`` gates the cabinet.
     "p2p": LogicalProvider("Перевод на карту", ["p2p"]),
+    # Dynamic QR through the CBU's UzQR, settled by the scheduler's poll (ADR-0106).
+    "uzqr": LogicalProvider("UzQR", ["uzqr"]),
 }
 
 SLUG_TO_LOGICAL: dict[str, str] = {

@@ -75,6 +75,7 @@
   "payment.payme.sub": "Card · Humo · Uzcard",
   "payment.uzum.sub": "Humo · Uzcard",
   "payment.paynet.sub": "Humo · Uzcard",
+  "payment.uzqr.sub": "QR in any bank app",
   "payment.usdt.sub": "TRC-20 / ERC-20",
   "payment.maintenance": "Under maintenance",
   "payment.maintenanceShort": "Maintenance",
@@ -673,5 +674,12 @@
   "success.p2p.copy": "Copy",
   "success.p2p.copied": "Copied",
   "success.p2p.expired": "The transfer window has closed. Place the order again.",
-  "success.p2p.waiting": "Waiting for the transfer…"
+  "success.p2p.waiting": "Waiting for the transfer…",
+  "success.uzqr.title": "Pay by QR",
+  "success.uzqr.note": "Scan the code in your bank app and confirm the payment. The order is paid automatically, usually within a minute.",
+  "success.uzqr.phone": "On a phone: save the QR and open it from the gallery in your bank app's scanner.",
+  "success.uzqr.save": "Save QR",
+  "success.uzqr.left": "Time left",
+  "success.uzqr.expired": "The payment time is over. Please place the order again.",
+  "success.uzqr.waiting": "Waiting for the payment…"
 }

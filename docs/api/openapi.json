@@ -14066,6 +14066,16 @@
               }
             ],
             "title": "Succeeded At"
+          },
+          "uzqr": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UzqrPaymentDetailsOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -14259,6 +14269,16 @@
               }
             ],
             "title": "Succeeded At"
+          },
+          "uzqr": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UzqrPaymentDetailsOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -23218,6 +23238,37 @@
           "balance"
         ],
         "title": "UserWalletBalanceOut",
+        "type": "object"
+      },
+      "UzqrPaymentDetailsOut": {
+        "description": "The QR to show for a pending ``uzqr`` payment (ADR-0106).\n\n``qr_text`` is the EMVCo payload UzQR issued for this invoice; the\nstorefront draws it. ``expires_at`` is the order's payment window, after\nwhich the scheduler cancels the invoice. ``None`` on every other provider\nand once the payment stops being pending.",
+        "properties": {
+          "amount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Amount",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "invoice_id": {
+            "title": "Invoice Id",
+            "type": "string"
+          },
+          "qr_text": {
+            "title": "Qr Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "invoice_id",
+          "qr_text",
+          "amount",
+          "expires_at"
+        ],
+        "title": "UzqrPaymentDetailsOut",
         "type": "object"
       },
       "ValidationError": {

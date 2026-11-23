@@ -70,6 +70,7 @@ from yupay_scheduler.jobs import (
     sync_supplier_catalog,
     unpaid_reminder,
     usdt_poll,
+    uzqr_poll,
     uzum_timeout,
     waxpeer_reconcile,
 )
@@ -101,6 +102,7 @@ def build_scheduler() -> AsyncIOScheduler:
     nova_reconcile.register(scheduler)
     p2p_sweep.register(scheduler)
     usdt_poll.register(scheduler)
+    uzqr_poll.register(scheduler)
     push_receipts.register(scheduler)
     payme_timeout.register(scheduler)
     purge_evidence.register(scheduler)

@@ -1,0 +1,41 @@
+sequenceDiagram
+    autonumber
+    actor Buyer
+    participant Web as apps/web · apps/miniapp
+    participant API as payments.routes
+    participant GW as gateways/uzqr
+    participant UzQR as uzqr.uz POS API
+    participant Job as scheduler uzqr_poll
+    participant Poll as uzqr.poll
+    participant Pay as payments.service
+    participant DB as Postgres
+
+    Buyer->>Web: choose UzQR, place order
+    Web->>API: POST /payments/intent {provider: uzqr}
+    API->>GW: create_intent(order)
+    GW->>UzQR: POST /api/v1/pos/invoice/create {external_id, amount}
+    UzQR-->>GW: invoice_id, qr_text
+    GW-->>API: PaymentIntent(external_id=uzqr:INV…, metadata{invoice_id, qr_text})
+    API->>DB: payment pending
+    Web->>API: GET payment → PaymentOut.uzqr {qr_text, amount, expires_at}
+    Web-->>Buyer: QR + clock (PNG, can be saved)
+    Buyer->>UzQR: scans in a bank app, pays
+
+    loop every 5 s, each open invoice (pending or cancelled, not uzqr_closed, < 25 h)
+        Job->>Poll: poll_once()
+        Poll->>UzQR: GET /api/v1/pos/invoice/status?invoice_id
+        alt status 2 (paid)
+            Poll->>Pay: settle_provider_payment(pay_id)
+            Pay->>DB: payment succeeded, order paid (or late-payment path), uzqr_closed
+        else status 3 or 3001
+            Poll->>Pay: cancel_pending_provider_payment, uzqr_closed
+        else status 1 and the order's window is over
+            Poll->>UzQR: POST /api/v1/pos/invoice/cancel
+            alt 200
+                Poll->>Pay: cancel_pending_provider_payment, uzqr_closed
+            else 3002 already paid
+                Poll->>UzQR: GET status → pay_id
+                Poll->>Pay: settle_provider_payment(pay_id)
+            end
+        end
+    end

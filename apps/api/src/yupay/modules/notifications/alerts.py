@@ -48,6 +48,8 @@ URGENT_KINDS: frozenset[str] = frozenset(
         "usdt_unmatched",
         # The address every reseller's USDT goes to was changed.
         "usdt_address_changed",
+        # QR payments are not being booked while payers wait (ADR-0106).
+        "uzqr_poll_down",
     }
 )
 

@@ -1009,6 +1009,16 @@ class Settings(BaseSettings):
     #: restart.
     paynet_pay_url_template: str = Field(default="https://app.paynet.uz/?m=54389&i={account}")
 
+    # --- acquirer: UzQR (CBU single QR, POS API v1.2, ADR-0106) ---
+    # We act as the "POS": create a dynamic QR per payment, poll its status.
+    # ``uzqr_inn`` is the merchant's INN (PINFL for a sole trader); the API
+    # key comes from uzqr.uz «Управление API». Either empty → available=False.
+    uzqr_base_url: str = Field(default="https://uzqr.uz")
+    uzqr_inn: str = Field(default="")
+    uzqr_api_key: str = Field(default="")
+    #: The spec's own figure (§2.5.2): 20 s for every method.
+    uzqr_request_timeout_seconds: float = Field(default=20.0)
+
     # --- acquirer: Payme (Paycom) Merchant API ---
     payme_merchant_id: str = Field(default="")
     payme_key: str = Field(default="")  # production/cabinet key

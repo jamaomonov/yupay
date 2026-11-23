@@ -885,6 +885,13 @@
     "p2pCopied": "Copied",
     "p2pExpired": "The transfer window has closed. Place the order again.",
     "p2pWaiting": "Waiting for the transfer…",
+    "uzqrTitle": "Pay by QR",
+    "uzqrNote": "Scan the code in your bank app and confirm the payment. The order is paid automatically, usually within a minute.",
+    "uzqrPhone": "On your phone? Save the QR and open it from the gallery in your bank app's scanner.",
+    "uzqrSave": "Save QR",
+    "uzqrLeft": "Time left",
+    "uzqrExpired": "The payment time is over. Please place the order again.",
+    "uzqrWaiting": "Waiting for the payment…",
     "walletTopUp": {
       "waiting": {
         "title": "Waiting for payment",

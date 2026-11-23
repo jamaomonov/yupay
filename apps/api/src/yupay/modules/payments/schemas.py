@@ -46,6 +46,21 @@ class P2PPaymentDetailsOut(BaseModel):
     expires_at: datetime
 
 
+class UzqrPaymentDetailsOut(BaseModel):
+    """The QR to show for a pending ``uzqr`` payment (ADR-0106).
+
+    ``qr_text`` is the EMVCo payload UzQR issued for this invoice; the
+    storefront draws it. ``expires_at`` is the order's payment window, after
+    which the scheduler cancels the invoice. ``None`` on every other provider
+    and once the payment stops being pending.
+    """
+
+    invoice_id: str
+    qr_text: str
+    amount: Decimal
+    expires_at: datetime
+
+
 class PaymentOut(BaseModel):
     """A payment as the customer / admin sees it."""
 
@@ -64,6 +79,8 @@ class PaymentOut(BaseModel):
     failed_at: datetime | None
     # Filled by the routes for a pending ``p2p`` payment (``payments.p2p_details``).
     p2p: P2PPaymentDetailsOut | None = None
+    # Filled by the routes for a pending ``uzqr`` payment (``payments.p2p_details``).
+    uzqr: UzqrPaymentDetailsOut | None = None
 
 
 class PaymentAttemptOut(BaseModel):

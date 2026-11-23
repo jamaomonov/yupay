@@ -18,6 +18,7 @@ import humoIcon from "@/assets/payments/humo.png";
 import paymeIcon from "@/assets/payments/payme.png";
 import paynetIcon from "@/assets/payments/paynet.png";
 import usdtIcon from "@/assets/payments/usdt.png";
+import uzqrIcon from "@/assets/payments/uzqr.png";
 import uzumIcon from "@/assets/payments/uzum.png";
 
 export interface PaymentMethod {
@@ -84,6 +85,16 @@ export const PAYMENT_METHODS: PaymentMethod[] = [
     icon: humoIcon,
   },
   {
+    // The CBU's single QR, scanned in any bank app (ADR-0106). No acquirer to
+    // open: the order page draws the QR with a clock, the scheduler books it.
+    id: "uzqr",
+    name: "UzQR",
+    subKey: "payment.uzqr.sub",
+    provider: "uzqr",
+    currency: "UZS",
+    icon: uzqrIcon,
+  },
+  {
     id: "usdt",
     name: "USDT",
     subKey: "payment.usdt.sub",
@@ -94,10 +105,10 @@ export const PAYMENT_METHODS: PaymentMethod[] = [
 ];
 
 /**
- * What a wallet top-up may be paid with. Every method, the card transfer
- * included: the wallet funding screen renders the same ``P2PTransferCard`` as
- * the order page while the deposit is pending, so the customer has somewhere
- * to read the card. ``click_miniapp`` is already this surface's own Click.
+ * What a wallet top-up may be paid with. Every method, the card transfer and
+ * the QR included: the wallet funding screen renders the same
+ * ``P2PTransferCard`` / ``UzqrPayCard`` as the order page while the deposit is
+ * pending, so the customer has somewhere to read the card or scan the code. ``click_miniapp`` is already this surface's own Click.
  */
 export const WALLET_TOPUP_METHODS: PaymentMethod[] = PAYMENT_METHODS;
 

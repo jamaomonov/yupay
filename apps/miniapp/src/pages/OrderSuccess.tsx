@@ -23,6 +23,7 @@ import { DeliveredExtras } from "@/components/order/DeliveredExtras";
 import { ErrorView } from "@/components/order/ErrorView";
 import { ItemCard } from "@/components/order/ItemCard";
 import { P2PTransferCard } from "@/components/order/P2PTransferCard";
+import { UzqrPayCard } from "@/components/order/UzqrPayCard";
 import { AWAITING_DELIVERY, PROCESSING, TERMINAL_FAIL } from "@/components/order/order-helpers";
 import { SkeletonView } from "@/components/order/SkeletonView";
 import { StatusCard, stageFor } from "@/components/order/StatusCard";
@@ -171,6 +172,7 @@ export default function OrderSuccess() {
         order={order}
         payUrl={payUrl}
         p2p={paymentQuery.data?.p2p ?? null}
+        uzqr={paymentQuery.data?.uzqr ?? null}
         onWallet={() => {
           setLocation("/wallet");
         }}
@@ -246,6 +248,12 @@ export default function OrderSuccess() {
       {order.status === "pending_payment" && paymentQuery.data?.p2p && (
         <div className="pt-2">
           <P2PTransferCard details={paymentQuery.data.p2p} />
+        </div>
+      )}
+      {/* Same for a QR (ADR-0106): the code is the payment, the scheduler books it. */}
+      {order.status === "pending_payment" && paymentQuery.data?.uzqr && (
+        <div className="pt-2">
+          <UzqrPayCard details={paymentQuery.data.uzqr} />
         </div>
       )}
 

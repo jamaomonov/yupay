@@ -44,6 +44,9 @@ const METHODS = [
   // A transfer to the owner's Humo card, matched by exact amount (ADR-0097).
   // No hosted page: the order view shows the card, the amount and a clock.
   { id: "p2p", provider: "p2p", nameKey: "methodP2p", icon: "/payment/humo-mark.png" },
+  // The CBU's single QR (ADR-0106). No hosted page either: the order view
+  // draws the QR, and the scheduler books the payment.
+  { id: "uzqr", provider: "uzqr", name: "UzQR", icon: "/payment/uzqr-mark.png" },
 ] as const;
 
 export default function WalletTopUpPage({ params }: { params: Promise<{ locale: string }> }) {
@@ -115,7 +118,7 @@ export default function WalletTopUpPage({ params }: { params: Promise<{ locale: 
         window.location.href = payment.intent_url;
         return;
       }
-      // No hosted page (the dev `mock` acquirer) — the order view already
+      // No hosted page (P2P, UzQR, the dev `mock`) — the order view already
       // renders a deposit, so send them there rather than nowhere.
       window.location.href = pathFor(locale, `/orders/${payment.order_id}`);
     },

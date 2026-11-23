@@ -75,6 +75,7 @@
   "payment.payme.sub": "Karta · Humo · Uzcard",
   "payment.uzum.sub": "Humo · Uzcard",
   "payment.paynet.sub": "Humo · Uzcard",
+  "payment.uzqr.sub": "Istalgan bank ilovasida QR",
   "payment.usdt.sub": "TRC-20 / ERC-20",
   "payment.maintenance": "Texnik ishlar",
   "payment.maintenanceShort": "Texnik",
@@ -673,5 +674,12 @@
   "success.p2p.copy": "Nusxalash",
   "success.p2p.copied": "Nusxalandi",
   "success.p2p.expired": "Oʻtkazma uchun vaqt tugadi. Buyurtmani qaytadan rasmiylashtiring.",
-  "success.p2p.waiting": "Oʻtkazmani kutmoqdamiz…"
+  "success.p2p.waiting": "Oʻtkazmani kutmoqdamiz…",
+  "success.uzqr.title": "QR orqali toʻlang",
+  "success.uzqr.note": "Kodni bankingiz ilovasida skanerlang va toʻlovni tasdiqlang. Buyurtma odatda bir daqiqa ichida oʻzi toʻlanadi.",
+  "success.uzqr.phone": "Telefondan: QR ni saqlang va bank ilovasi skanerida galereyadan oching.",
+  "success.uzqr.save": "QR ni saqlash",
+  "success.uzqr.left": "Qolgan vaqt",
+  "success.uzqr.expired": "Toʻlov vaqti tugadi. Buyurtmani qaytadan rasmiylashtiring.",
+  "success.uzqr.waiting": "Toʻlovni kutmoqdamiz…"
 }

@@ -885,6 +885,13 @@
     "p2pCopied": "Nusxalandi",
     "p2pExpired": "Oʻtkazma uchun vaqt tugadi. Buyurtmani qaytadan rasmiylashtiring.",
     "p2pWaiting": "Oʻtkazmani kutmoqdamiz…",
+    "uzqrTitle": "QR orqali toʻlang",
+    "uzqrNote": "Kodni bankingiz ilovasida skanerlang va toʻlovni tasdiqlang. Buyurtma odatda bir daqiqa ichida oʻzi toʻlanadi.",
+    "uzqrPhone": "Telefondan xarid qilyapsizmi? QR ni saqlang va bank ilovasi skanerida galereyadan oching.",
+    "uzqrSave": "QR ni saqlash",
+    "uzqrLeft": "Qolgan vaqt",
+    "uzqrExpired": "Toʻlov vaqti tugadi. Buyurtmani qaytadan rasmiylashtiring.",
+    "uzqrWaiting": "Toʻlovni kutmoqdamiz…",
     "walletTopUp": {
       "waiting": {
         "title": "Toʻlovni kutmoqdamiz",

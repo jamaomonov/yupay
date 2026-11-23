@@ -9,6 +9,7 @@ import { useEffect, useRef, useState } from "react";
 import type { PaymentOut } from "@/lib/orders-types";
 
 import { P2PTransferCard } from "./P2PTransferCard";
+import { UzqrPayCard } from "./UzqrPayCard";
 
 import { buttonStyles } from "@/lib/button";
 import { ApiError, apiFetch } from "@/lib/client";
@@ -160,6 +161,11 @@ export function OrderPayNow({
   const p2p = awaitingPayment ? (payment.data?.p2p ?? null) : null;
   if (p2p !== null) {
     return <P2PTransferCard details={p2p} locale={locale} />;
+  }
+  // Same for a QR: the code is the payment, and the scheduler books it.
+  const uzqr = awaitingPayment ? (payment.data?.uzqr ?? null) : null;
+  if (uzqr !== null) {
+    return <UzqrPayCard details={uzqr} locale={locale} />;
   }
 
   if (payUrl !== null) {

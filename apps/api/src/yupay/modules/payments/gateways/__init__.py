@@ -28,6 +28,7 @@ from yupay.modules.payments.gateways.octo import OctoGateway
 from yupay.modules.payments.gateways.p2p import P2PGateway
 from yupay.modules.payments.gateways.payme import PaymeGateway
 from yupay.modules.payments.gateways.paynet import PaynetGateway
+from yupay.modules.payments.gateways.uzqr import UzqrGateway
 from yupay.modules.payments.gateways.uzum import UzumGateway
 from yupay.modules.payments.gateways.wallet import WalletGateway
 
@@ -62,6 +63,9 @@ REGISTRY: dict[str, PaymentGateway] = {
     # settled by the Telegram P2P intake (modules/p2p). No redirect, no
     # webhook of its own, manual refunds. ADR-0097.
     "p2p": P2PGateway(),
+    # UzQR — the CBU single QR. A dynamic QR per payment through the POS API,
+    # no callback: the scheduler polls (modules/uzqr/poll.py). ADR-0106.
+    "uzqr": UzqrGateway(),
     # --- Russian acquirers ---
     "yookassa": StubGateway(
         provider="yookassa",
@@ -105,6 +109,7 @@ __all__ = [
     "PaynetGateway",
     "RefundResult",
     "StubGateway",
+    "UzqrGateway",
     "UzumGateway",
     "WalletGateway",
     "WebhookEvent",

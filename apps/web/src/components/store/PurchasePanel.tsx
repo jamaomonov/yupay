@@ -161,6 +161,9 @@ const METHODS: Method[] = [
     w: 160,
     h: 160,
   },
+  // The CBU's single QR, scanned in any bank app (ADR-0106). No redirect: the
+  // order page draws the QR with a clock, the scheduler books the payment.
+  { id: "uzqr", name: "UzQR", provider: "uzqr", icon: "/payment/uzqr-mark.png", w: 160, h: 160 },
 ];
 
 /** A fixed-price SKU's display price. Never call this for a variable-amount
@@ -2118,9 +2121,10 @@ export function PurchasePanel({
         trackHref,
         paidFromBalance: payingFromBalance,
       });
-      if (provider === "p2p") {
+      if (provider === "p2p" || provider === "uzqr") {
         // No acquirer to open: the order page shows the card and the exact
-        // amount (`OrderPayNow` → `P2PTransferCard`) and polls itself to paid.
+        // amount (`OrderPayNow` → `P2PTransferCard`), or the QR
+        // (`UzqrPayCard`), and polls itself to paid.
         try {
           router.push(trackHref);
         } catch {

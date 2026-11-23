@@ -139,6 +139,17 @@ export interface PaymentOut {
   external_id: string | null;
   /** Where to send a card transfer, for a pending `p2p` payment (ADR-0097). */
   p2p?: P2PPaymentDetails | null;
+  /** The QR to scan, for a pending `uzqr` payment (ADR-0106). */
+  uzqr?: UzqrPaymentDetails | null;
+}
+
+/** Mirrors the API's `UzqrPaymentDetailsOut`: the QR text UzQR issued and the window. */
+export interface UzqrPaymentDetails {
+  invoice_id: string;
+  qr_text: string;
+  /** Decimal soʻm as a string, like every money field from the API. */
+  amount: string;
+  expires_at: string;
 }
 
 /** Mirrors the API's `P2PPaymentDetailsOut`: the owner's card and the exact amount. */

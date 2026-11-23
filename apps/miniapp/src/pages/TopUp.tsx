@@ -995,9 +995,10 @@ export default function TopUp() {
           activePkg ? { id: activePkg.id, label: activePkg.label } : undefined,
         );
       }
-      if (result.payment.provider === "p2p") {
+      if (result.payment.provider === "p2p" || result.payment.provider === "uzqr") {
         // No acquirer to open: the order page shows the card and the exact
-        // amount (`P2PTransferCard`) and polls itself to paid.
+        // amount (`P2PTransferCard`), or the QR (`UzqrPayCard`), and polls
+        // itself to paid.
         setLocation(`/order/${result.order.id}`);
         return;
       }
