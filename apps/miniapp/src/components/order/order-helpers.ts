@@ -143,6 +143,8 @@ export function providerLabel(provider: string | null): string | null {
       return "Octo";
     case "paynet":
       return "Paynet";
+    case "uzqr":
+      return "UzQR";
     case "wallet":
       return translate("success.paidWithWallet");
     case null:

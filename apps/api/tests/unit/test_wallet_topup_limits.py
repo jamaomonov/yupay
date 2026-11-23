@@ -25,6 +25,11 @@ def test_card_transfer_funds_a_wallet_in_uzs() -> None:
     assert currency_for_provider("p2p") == "UZS"
 
 
+def test_uzqr_funds_a_wallet_in_uzs() -> None:
+    # ADR-0106: the top-up page offers UzQR, so the slug must fund a deposit.
+    assert currency_for_provider("uzqr") == "UZS"
+
+
 def test_crypto_is_usdt() -> None:
     assert currency_for_provider("crypto") == "USDT"
 
