@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
 
+from yupay.core.clock import now
 from yupay.core.ids import new_id
 from yupay.core.logging import get_logger
 from yupay.modules.integrations.cost_lookup import (
@@ -253,6 +254,60 @@ async def quote_mapping(
     return (cost, None) if cost > 0 else (None, "цена ≤ 0")
 
 
+async def record_price_state(
+    db: AsyncSession,
+    mapping: SkuSupplierMapping,
+    *,
+    cost: Decimal | None = None,
+    error: str | None = None,
+) -> None:
+    """Remember this mapping's last good price and when it was checked (ADR-0108).
+
+    ``supplier_price_history`` records moves only, so an unchanged price and one
+    nobody could fetch for a day look the same there; smart routing must tell
+    them apart. A good price sets ``cost_usdt``/``checked_at``; a failure sets
+    ``failed_at``/``last_error`` and keeps the old price. Never raises: the
+    caller is contracted not to (see :func:`refresh_sku_cost_for_mapping`).
+    """
+    from sqlalchemy import text
+
+    moment = now()
+    try:
+        async with db.begin_nested():
+            if cost is not None:
+                await db.execute(
+                    text(
+                        "INSERT INTO supplier_price_state (sku_id, supplier_slug, cost_usdt,"
+                        " checked_at) VALUES (CAST(:sku AS uuid), :slug, :cost, :at)"
+                        " ON CONFLICT (sku_id, supplier_slug) DO UPDATE SET"
+                        " cost_usdt = :cost, checked_at = :at, last_error = NULL"
+                    ),
+                    {
+                        "sku": mapping.sku_id,
+                        "slug": mapping.supplier_slug,
+                        "cost": cost,
+                        "at": moment,
+                    },
+                )
+            else:
+                await db.execute(
+                    text(
+                        "INSERT INTO supplier_price_state (sku_id, supplier_slug, failed_at,"
+                        " last_error) VALUES (CAST(:sku AS uuid), :slug, :at, :err)"
+                        " ON CONFLICT (sku_id, supplier_slug) DO UPDATE SET"
+                        " failed_at = :at, last_error = :err"
+                    ),
+                    {
+                        "sku": mapping.sku_id,
+                        "slug": mapping.supplier_slug,
+                        "at": moment,
+                        "err": (error or "")[:200],
+                    },
+                )
+    except Exception as exc:  # noqa: BLE001 -- bookkeeping must never fail a refresh
+        log.warning("integrations.price_state.write_failed", error=type(exc).__name__)
+
+
 async def refresh_sku_cost_for_mapping(  # noqa: PLR0911 -- discriminated outcome reads clearer than nested branches
     db: AsyncSession,
     *,
@@ -344,24 +399,29 @@ async def refresh_sku_cost_for_mapping(  # noqa: PLR0911 -- discriminated outcom
     )
 
     if lookup.reason is not None:
+        await record_price_state(db, mapping, error=lookup.reason)
         return CostRefreshOutcome(updated=False, reason=lookup.reason, source=lookup.source or None)
 
     raw_amount = lookup.amount
     source = lookup.source
     if raw_amount is None:
+        await record_price_state(db, mapping, error="поставщик не вернул цену")
         return CostRefreshOutcome(updated=False, reason="поставщик не вернул цену", source=source)
     try:
         new_cost = Decimal(str(raw_amount))
     except (InvalidOperation, ValueError):
+        await record_price_state(db, mapping, error="непарсимая цена")
         return CostRefreshOutcome(
             updated=False,
             reason=f"непарсимая цена: {raw_amount!r}",
             source=source,
         )
     if new_cost <= 0:
+        await record_price_state(db, mapping, error="цена ≤ 0")
         return CostRefreshOutcome(
             updated=False, reason="цена ≤ 0", source=source, new_cost=str(new_cost)
         )
+    await record_price_state(db, mapping, cost=new_cost)
 
     # Both of these read the database, and this function is contracted never
     # to raise: the admin's mapping-save route calls it *before* its commit, so

@@ -50,22 +50,41 @@ _STRIKE_THRESHOLD: Final = 3
 _QUARANTINE_HOURS: Final = (6, 12, 24)
 #: A task still running after this long counts as a failure for quarantine.
 _HUNG_AFTER: Final = timedelta(minutes=30)
+#: A price older than this is not used to choose (two hourly refreshes missed).
+FRESH_FOR: Final = timedelta(hours=3)
+#: A supplier this much cheaper than the route is suspect, not switched to.
+SUSPICIOUS_DROP_PCT: Final = Decimal(30)
+#: The live re-quote at switch time may come in this much above the stored price.
+_VERIFY_SLACK_PCT: Final = Decimal(1)
 #: A shadow proposal or a ``blocked`` line is logged once per this window.
 _REPEAT_LOG_AFTER: Final = timedelta(hours=24)
 
 
 @dataclass(frozen=True)
 class Candidate:
-    """One supplier for one SKU, as the job sees it."""
+    """One supplier for one SKU, as the job sees it.
+
+    ``cost`` is the supplier's last good price and ``fresh`` whether it was
+    confirmed within :data:`FRESH_FOR` — a price nobody could fetch for hours is
+    not a reason to move anything. ``listed`` is false once the catalogue watch
+    saw the supplier drop the position.
+    """
 
     supplier: str
     cost: Decimal | None
     stock: int | None = None
     quarantined: bool = False
+    fresh: bool = True
+    listed: bool = True
+
+    @property
+    def cannot_sell(self) -> bool:
+        """Known not to sell now — as opposed to merely not known."""
+        return self.stock == 0 or self.quarantined or not self.listed
 
     @property
     def usable(self) -> bool:
-        return self.cost is not None and self.stock != 0 and not self.quarantined
+        return self.cost is not None and self.fresh and not self.cannot_sell
 
 
 @dataclass(frozen=True)
@@ -91,13 +110,22 @@ def decide(
         # A route this job knows nothing about (a supplier with no mapping, such
         # as a Steam rule on FoxReload): not its to move.
         return None
-    if not cur.usable:
+    if cur.cannot_sell:
         return _away_from(cur, usable, stock_step_pct=stock_step_pct)
-    if not usable or not dwell_ok:
+    if not cur.usable or not usable or not dwell_ok:
+        # No fresh price for the current route: nothing to compare — stay.
         return None
-    best = usable[0]
+    return _cheaper(cur, usable[0], switch_pct=switch_pct)
+
+
+def _cheaper(cur: Candidate, best: Candidate, *, switch_pct: Decimal) -> Move | None:
+    """Both can sell: move when ``best`` is cheaper by the threshold and believable."""
     if best.supplier == cur.supplier or best.cost is None or cur.cost is None:
         return None
+    if best.cost < cur.cost * (1 - SUSPICIOUS_DROP_PCT / _HUNDRED):
+        # Far cheaper than any honest gap between suppliers: more likely a wrong
+        # price (currency, pack size) than a bargain. A person looks.
+        return Move("suspicious", None)
     if best.cost <= cur.cost * (1 - switch_pct / _HUNDRED):
         return Move("cheaper", best)
     return None
@@ -201,18 +229,17 @@ async def _one(
     apply = conf.smart_mode == "on" and move.to is not None
     if not apply and (move.reason, to_slug) in seen.get("logged", set()):
         return  # proposed or blocked already, within the day
-    db.add(
-        SourcingSwitchLog(
-            id=new_id(),
-            sku_id=rule.sku_id,
-            from_supplier=rule.supplier_slug,
-            to_supplier=to_slug,
-            from_cost_usdt=current.cost if current else None,
-            to_cost_usdt=move.to.cost if move.to else None,
-            reason=move.reason,
-            applied=apply,
-        )
+    log_row = SourcingSwitchLog(
+        id=new_id(),
+        sku_id=rule.sku_id,
+        from_supplier=rule.supplier_slug,
+        to_supplier=to_slug,
+        from_cost_usdt=current.cost if current else None,
+        to_cost_usdt=move.to.cost if move.to else None,
+        reason=move.reason,
+        applied=apply,
     )
+    db.add(log_row)
     if move.to is None:
         report.blocked += 1
         return
@@ -224,11 +251,30 @@ async def _one(
     locked = await db.get(SkuSourcingRule, rule.sku_id, with_for_update=True)
     if locked is None or not locked.managed or locked.supplier_slug != rule.supplier_slug:
         return  # an operator touched it since the read: theirs wins
-    locked.supplier_slug = move.to.supplier
-    locked.updated_by = ACTOR
-    locked.updated_at = now()
-    await db.flush()
-    await refresh_routed_cost(db, sku_id=rule.sku_id)
+    problem: str | None = None
+    async with db.begin_nested() as switch:
+        locked.supplier_slug = move.to.supplier
+        locked.updated_by = ACTOR
+        locked.updated_at = now()
+        await db.flush()
+        # Re-priced live from the new supplier, as an operator's switch is. That
+        # quote is also the check: the stored price may be up to three hours old.
+        outcome = await refresh_routed_cost(db, sku_id=rule.sku_id)
+        problem = _verify(outcome, expected=move.to.cost)
+        if problem is not None:
+            await switch.rollback()
+    if problem is not None:
+        await db.refresh(locked)
+        log_row.applied = False
+        log_row.reason = "verify_failed"
+        report.reasons["verify_failed"] = report.reasons.get("verify_failed", 0) + 1
+        log.info(
+            "sourcing.smart_routing.verify_failed",
+            sku_id=rule.sku_id,
+            supplier=move.to.supplier,
+            problem=problem,
+        )
+        return
     report.moved += 1
     log.info(
         "sourcing.smart_routing.moved",
@@ -239,9 +285,21 @@ async def _one(
     )
 
 
+def _verify(outcome: Any, *, expected: Decimal | None) -> str | None:
+    """Why the live re-quote does not back the switch, or ``None`` when it does."""
+    if outcome is None:
+        return None  # nothing to check against (tests stub the re-price out)
+    new_cost = getattr(outcome, "new_cost", None)
+    if not getattr(outcome, "wrote_cost", False) or new_cost is None:
+        return str(getattr(outcome, "reason", None) or "no live price")[:120]
+    limit = expected * (1 + _VERIFY_SLACK_PCT / _HUNDRED) if expected is not None else None
+    if limit is not None and Decimal(str(new_cost)) > limit:
+        return f"live price {new_cost} above stored {expected}"
+    return None
+
+
 async def _candidates(db: AsyncSession, sku_ids: list[str]) -> dict[str, list[Candidate]]:
-    """Every usable-looking supplier per SKU, with its last known cost and stock."""
-    from yupay.modules.catalog.models import Sku
+    """Every mapped supplier per SKU: last good price, its freshness, stock, state."""
     from yupay.modules.fulfillment.suppliers import REGISTRY
     from yupay.modules.integrations.models import CATALOG_DELISTED, SkuSupplierMapping
     from yupay.modules.sourcing.brand_overview import _stock_by_sku_supplier
@@ -260,38 +318,28 @@ async def _candidates(db: AsyncSession, sku_ids: list[str]) -> dict[str, list[Ca
         .all()
         if m.supplier_slug in REGISTRY and m.supplier_slug not in _NOT_TARGETS
     ]
-    # A delisted mapping stays a candidate with no price: the route sitting on it
-    # is then "cannot sell" and moves, and nothing moves onto it.
+    # A delisted mapping stays a candidate that cannot sell: the route sitting on
+    # it moves, and nothing moves onto it.
     delisted = {
         (m.sku_id, m.supplier_slug) for m in mappings if (m.extra or {}).get(CATALOG_DELISTED)
     }
-    costs: dict[tuple[str, str], Decimal] = {
-        (str(sku), slug): Decimal(cost)
-        for sku, slug, cost in (
+    # The last good price per mapping and when it was confirmed: the price
+    # refresh writes it every pass, moved or not (ADR-0108). History cannot
+    # serve here — it records moves only, so "unchanged" and "unreachable for a
+    # day" look the same in it.
+    fresh_after = now() - FRESH_FOR
+    prices: dict[tuple[str, str], tuple[Decimal | None, bool]] = {
+        (str(sku), slug): (
+            Decimal(cost) if cost is not None else None,
+            checked is not None and checked > fresh_after,
+        )
+        for sku, slug, cost, checked in (
             await db.execute(
                 text(
-                    "SELECT DISTINCT ON (sku_id, supplier_slug) sku_id, supplier_slug, cost_usdt"
-                    " FROM supplier_price_history WHERE sku_id = ANY(CAST(:ids AS uuid[]))"
-                    " ORDER BY sku_id, supplier_slug, captured_at DESC"
+                    "SELECT sku_id, supplier_slug, cost_usdt, checked_at FROM supplier_price_state"
+                    " WHERE sku_id = ANY(CAST(:ids AS uuid[]))"
                 ),
                 {"ids": sku_ids},
-            )
-        ).all()
-    }
-    # The routed supplier's number is the SKU's own cost — fresher than history.
-    routed_cost: dict[str, Any] = {
-        sku_id: cost
-        for sku_id, cost in (
-            await db.execute(select(Sku.id, Sku.cost_usdt).where(Sku.id.in_(sku_ids)))
-        ).all()
-    }
-    rules: dict[str, str | None] = {
-        sku_id: slug
-        for sku_id, slug in (
-            await db.execute(
-                select(SkuSourcingRule.sku_id, SkuSourcingRule.supplier_slug).where(
-                    SkuSourcingRule.sku_id.in_(sku_ids)
-                )
             )
         ).all()
     }
@@ -309,17 +357,15 @@ async def _candidates(db: AsyncSession, sku_ids: list[str]) -> dict[str, list[Ca
     out: dict[str, list[Candidate]] = {}
     for m in mappings:
         key = (m.sku_id, m.supplier_slug)
-        cost = costs.get(key)
-        if rules.get(m.sku_id) == m.supplier_slug and routed_cost.get(m.sku_id):
-            cost = Decimal(routed_cost[m.sku_id])
-        if key in delisted:
-            cost = None
+        cost, fresh = prices.get(key, (None, False))
         out.setdefault(m.sku_id, []).append(
             Candidate(
                 supplier=m.supplier_slug,
                 cost=cost,
                 stock=stock.get(key, (None, None))[0],
                 quarantined=key in quarantined,
+                fresh=fresh,
+                listed=key not in delisted,
             )
         )
     return out

@@ -19,7 +19,7 @@ import httpx
 import pytest
 import respx
 from httpx import AsyncClient
-from sqlalchemy import select, update
+from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core import config as cfg
 from yupay.core.ids import new_id
@@ -197,6 +197,17 @@ async def test_cost_sync_voucher_uses_cache_unit_price(
 
     sku = (await db_session.execute(select(Sku).where(Sku.id == sku_id))).scalar_one()
     assert sku.cost_usdt == Decimal("9.05")
+    # The last good price and when it was checked, for smart routing (ADR-0108).
+    state = (
+        await db_session.execute(
+            text(
+                "SELECT cost_usdt, checked_at IS NOT NULL FROM supplier_price_state"
+                " WHERE sku_id = CAST(:sku AS uuid) AND supplier_slug = 'g2b'"
+            ),
+            {"sku": sku_id},
+        )
+    ).one()
+    assert state == (Decimal("9.05"), True)
 
 
 async def test_cost_sync_voucher_reports_cache_miss(
@@ -214,6 +225,17 @@ async def test_cost_sync_voucher_reports_cache_miss(
     body = r.json()
     assert body["cost_sync"]["updated"] is False
     assert "кэше" in (body["cost_sync"]["reason"] or "")
+    # A failed check is remembered as a failure, with no price behind it.
+    state = (
+        await db_session.execute(
+            text(
+                "SELECT cost_usdt, checked_at, failed_at IS NOT NULL FROM supplier_price_state"
+                " WHERE sku_id = CAST(:sku AS uuid) AND supplier_slug = 'g2b'"
+            ),
+            {"sku": sku_id},
+        )
+    ).one()
+    assert state == (None, None, True)
 
 
 # ---------- game branch ----------

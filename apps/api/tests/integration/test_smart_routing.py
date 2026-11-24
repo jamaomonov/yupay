@@ -3,15 +3,16 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from yupay.core.ids import new_id
 from yupay.modules.catalog.models import Sku
 from yupay.modules.fulfillment.models import FulfillmentTask
-from yupay.modules.integrations.models import SkuSupplierMapping, SupplierPriceHistory
+from yupay.modules.integrations.models import SkuSupplierMapping
 from yupay.modules.orders.models import OrderItem
 from yupay.modules.sourcing import smart_routing
 from yupay.modules.sourcing.models import (
@@ -25,6 +26,9 @@ from tests.integration.test_fulfillment_async import _make_paid_order
 
 pytestmark = pytest.mark.asyncio
 
+#: What the stubbed live re-quote answers at switch time, per SKU (default 0.95).
+LIVE: dict[str, Decimal | None] = {}
+
 
 @pytest.fixture(autouse=True)
 def _job_session_factory(monkeypatch: pytest.MonkeyPatch, db_engine: AsyncEngine) -> None:
@@ -34,11 +38,16 @@ def _job_session_factory(monkeypatch: pytest.MonkeyPatch, db_engine: AsyncEngine
 
 
 @pytest.fixture(autouse=True)
-def _no_live_reprice(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def _noop(db: AsyncSession, **kwargs: Any) -> None:
-        return None
+def _live_reprice(monkeypatch: pytest.MonkeyPatch) -> None:
+    LIVE.clear()
 
-    monkeypatch.setattr("yupay.modules.integrations.cost_refresh.refresh_routed_cost", _noop)
+    async def _quote(db: AsyncSession, *, sku_id: str, **kwargs: Any) -> SimpleNamespace:
+        cost = LIVE.get(sku_id, Decimal("0.95"))
+        return SimpleNamespace(
+            wrote_cost=cost is not None, new_cost=cost, reason=None if cost else "no price"
+        )
+
+    monkeypatch.setattr("yupay.modules.integrations.cost_refresh.refresh_routed_cost", _quote)
 
 
 async def _mode(db: AsyncSession, mode: str) -> None:
@@ -50,7 +59,9 @@ async def _mode(db: AsyncSession, mode: str) -> None:
     await db.commit()
 
 
-async def _sku(db: AsyncSession, tag: str, *, managed: bool, nova_cost: str) -> str:
+async def _sku(
+    db: AsyncSession, tag: str, *, managed: bool, nova_cost: str, fresh: bool = True
+) -> str:
     order = await _make_paid_order(db, tag=tag)
     item = (await db.execute(select(OrderItem).where(OrderItem.order_id == order.id))).scalar_one()
     sku = await db.get(Sku, item.sku_id)
@@ -66,15 +77,19 @@ async def _sku(db: AsyncSession, tag: str, *, managed: bool, nova_cost: str) -> 
                 is_active=True,
             )
         )
-        db.add(
-            SupplierPriceHistory(
-                id=new_id(),
-                sku_id=sku.id,
-                supplier_slug=slug,
-                kind="game",
-                external_product_id=f"{tag}-{slug}",
-                cost_usdt=Decimal(cost),
-            )
+        await db.flush()
+        await db.execute(
+            text(
+                "INSERT INTO supplier_price_state (sku_id, supplier_slug, cost_usdt, checked_at)"
+                " VALUES (CAST(:sku AS uuid), :slug, :cost,"
+                " now() - make_interval(hours => :age))"
+            ),
+            {
+                "sku": sku.id,
+                "slug": slug,
+                "cost": Decimal(cost),
+                "age": 0 if fresh or slug == "g2b" else 5,
+            },
         )
     db.add(
         SkuSourcingRule(sku_id=sku.id, mode="force_supplier", supplier_slug="g2b", managed=managed)
@@ -89,12 +104,13 @@ async def _rule(db: AsyncSession, sku_id: str) -> SkuSourcingRule:
     return rule
 
 
-async def _log(db: AsyncSession, sku_id: str) -> list[SourcingSwitchLog]:
-    return list(
+async def _log(db: AsyncSession, sku_id: str) -> list[tuple[str, str | None, bool]]:
+    rows = (
         (await db.execute(select(SourcingSwitchLog).where(SourcingSwitchLog.sku_id == sku_id)))
         .scalars()
         .all()
     )
+    return [(r.reason, r.to_supplier, r.applied) for r in rows]
 
 
 async def test_on_moves_a_managed_rule_to_the_cheaper_supplier(db_session: AsyncSession) -> None:
@@ -102,8 +118,7 @@ async def test_on_moves_a_managed_rule_to_the_cheaper_supplier(db_session: Async
     sku_id = await _sku(db_session, "sr-on", managed=True, nova_cost="0.95")
     await smart_routing.run_smart_routing()
     assert (await _rule(db_session, sku_id)).supplier_slug == "nova"
-    log = await _log(db_session, sku_id)
-    assert [(r.reason, r.to_supplier, r.applied) for r in log] == [("cheaper", "nova", True)]
+    assert await _log(db_session, sku_id) == [("cheaper", "nova", True)]
 
 
 async def test_shadow_only_logs_and_logs_once(db_session: AsyncSession) -> None:
@@ -112,20 +127,37 @@ async def test_shadow_only_logs_and_logs_once(db_session: AsyncSession) -> None:
     await smart_routing.run_smart_routing()
     await smart_routing.run_smart_routing()
     assert (await _rule(db_session, sku_id)).supplier_slug == "g2b"
-    log = await _log(db_session, sku_id)
-    assert [(r.reason, r.applied) for r in log] == [("cheaper", False)]
+    assert await _log(db_session, sku_id) == [("cheaper", "nova", False)]
 
 
 async def test_a_pinned_rule_is_never_moved(db_session: AsyncSession) -> None:
     await _mode(db_session, "on")
-    sku_id = await _sku(db_session, "sr-pin", managed=False, nova_cost="0.50")
+    sku_id = await _sku(db_session, "sr-pin", managed=False, nova_cost="0.95")
     await smart_routing.run_smart_routing()
     assert (await _rule(db_session, sku_id)).supplier_slug == "g2b"
+
+
+async def test_a_stale_price_moves_nothing(db_session: AsyncSession) -> None:
+    await _mode(db_session, "on")
+    sku_id = await _sku(db_session, "sr-stale", managed=True, nova_cost="0.95", fresh=False)
+    await smart_routing.run_smart_routing()
+    assert (await _rule(db_session, sku_id)).supplier_slug == "g2b"
+    assert await _log(db_session, sku_id) == []
+
+
+async def test_a_switch_the_live_price_does_not_back_is_undone(db_session: AsyncSession) -> None:
+    await _mode(db_session, "on")
+    sku_id = await _sku(db_session, "sr-verify", managed=True, nova_cost="0.95")
+    LIVE[sku_id] = Decimal("1.10")  # nova's real price now is dearer than stored
+    await smart_routing.run_smart_routing()
+    assert (await _rule(db_session, sku_id)).supplier_slug == "g2b"
+    assert await _log(db_session, sku_id) == [("verify_failed", "nova", False)]
 
 
 async def test_three_failures_in_a_day_quarantine_the_supplier(db_session: AsyncSession) -> None:
     await _mode(db_session, "on")
     sku_id = await _sku(db_session, "sr-q", managed=True, nova_cost="1.00")
+    LIVE[sku_id] = Decimal("1.00")
     for n in range(3):
         order = await _make_paid_order(db_session, tag=f"sr-q-{n}")
         item = (

@@ -56,3 +56,24 @@ def test_a_quarantined_route_moves_and_nothing_moves_onto_quarantine() -> None:
 
 def test_a_route_with_no_mapping_is_left_alone() -> None:
     assert _decide("foxreload", [_c("waxpeer", "1.00")]) is None
+
+
+def _stale(slug: str, cost: str) -> Candidate:
+    return Candidate(slug, Decimal(cost), fresh=False)
+
+
+def test_a_stale_current_price_decides_nothing() -> None:
+    assert _decide("fzr", [_stale("fzr", "10.00"), _c("g2b", "9.00")]) is None
+
+
+def test_a_stale_alternative_is_never_the_target() -> None:
+    assert _decide("fzr", [_c("fzr", "10.00"), _stale("g2b", "9.00")]) is None
+
+
+def test_a_far_cheaper_price_is_suspect_not_switched_to() -> None:
+    assert _to(_decide("fzr", [_c("fzr", "10.00"), _c("g2b", "6.00")])) == ("suspicious", None)
+
+
+def test_a_delisted_route_moves_even_with_a_stale_price() -> None:
+    cands = [Candidate("fzr", Decimal("10.00"), fresh=False, listed=False), _c("g2b", "10.20")]
+    assert _to(_decide("fzr", cands)) == ("unavailable", "g2b")

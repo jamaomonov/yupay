@@ -12,6 +12,9 @@ Create Date: 2026-11-24
   back, at most 6 % dearer when the current supplier cannot sell.
 - ``sourcing_switch_log`` — every switch made or, in shadow, proposed.
 - ``sourcing_quarantine`` — a supplier that keeps failing one SKU sits out.
+- ``supplier_price_state`` — each mapping's last good price and when it was
+  last checked. ``supplier_price_history`` records only moves, so it cannot
+  tell an unchanged price from one nobody could fetch for hours.
 """
 
 from __future__ import annotations
@@ -98,7 +101,24 @@ def upgrade() -> None:
     )
 
 
+    op.create_table(
+        "supplier_price_state",
+        sa.Column(
+            "sku_id",
+            UUID(as_uuid=False),
+            sa.ForeignKey("skus.id", ondelete="CASCADE"),
+            primary_key=True,
+        ),
+        sa.Column("supplier_slug", sa.String(32), primary_key=True),
+        sa.Column("cost_usdt", sa.Numeric(20, 6), nullable=True),
+        sa.Column("checked_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("failed_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("last_error", sa.String(200), nullable=True),
+    )
+
+
 def downgrade() -> None:
+    op.drop_table("supplier_price_state")
     op.drop_table("sourcing_quarantine")
     op.drop_index("ix_sourcing_switch_log_created", table_name="sourcing_switch_log")
     op.drop_index("ix_sourcing_switch_log_sku_created", table_name="sourcing_switch_log")

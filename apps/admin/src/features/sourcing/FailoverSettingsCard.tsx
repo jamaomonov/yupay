@@ -70,6 +70,8 @@ const REASONS: Record<string, string> = {
   cheaper: "дешевле",
   unavailable: "не может продать",
   blocked: "нет замены",
+  suspicious: "подозрительно дешёво",
+  verify_failed: "цена не подтвердилась",
 };
 
 function SwitchLog() {
