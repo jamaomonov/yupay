@@ -100,7 +100,6 @@ def upgrade() -> None:
         ),
     )
 
-
     op.create_table(
         "supplier_price_state",
         sa.Column(
