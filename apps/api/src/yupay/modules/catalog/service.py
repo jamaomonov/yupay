@@ -466,7 +466,8 @@ async def get_brand_by_slug(
     rate_cache: dict[str, Decimal | None] = {}
     override_cache: dict[str, ManualOverride | None] = {}
     products_out: list[ProductSummaryOut] = []
-    for product in sorted((p for p in brand.products if p.active), key=lambda p: p.sort_order):
+    shown = await _products_on_page(db, brand, regions)
+    for product in sorted((p for p in shown if p.active), key=lambda p: p.sort_order):
         active_skus = sorted(
             (s for s in product.skus if s.active),
             key=lambda s: (s.sort_order, s.price_usd),
@@ -512,6 +513,32 @@ async def get_brand_by_slug(
     )
 
 
+async def _products_on_page(
+    db: AsyncSession, brand: Brand, regions: list[BrandRegionOut]
+) -> list[Product]:
+    """The products a brand page shows: its own, or — for a main brand that
+    sells nothing itself (PlayStation, Xbox…) — those of the region it opens
+    on, listed first. The storefront then reads the main page like any other
+    (starting price, voucher wording, the app without a switcher); a purchase
+    still names the region's SKU, so orders belong to the region's brand."""
+    own = [p for p in brand.products if p.active and any(s.active for s in p.skus)]
+    if own or brand.region_parent_id is not None or not regions:
+        return list(brand.products)
+    opens_on = (
+        await db.execute(
+            select(Brand)
+            .options(
+                selectinload(Brand.products).selectinload(Product.translations),
+                selectinload(Brand.products)
+                .selectinload(Product.skus)
+                .selectinload(Sku.price_overrides),
+            )
+            .where(Brand.slug == regions[0].slug)
+        )
+    ).scalar_one_or_none()
+    return list(opens_on.products) if opens_on is not None else []
+
+
 #: The main brand's place on a game's region switcher.
 GLOBAL_REGION = "global"
 
@@ -553,6 +580,30 @@ REGION_ORDER: tuple[str, ...] = (
     "no",
     "se",
     "pl",
+    "de",
+    "it",
+    "es",
+    "nl",
+    "be",
+    "lu",
+    "pt",
+    "ie",
+    "fi",
+    "cz",
+    "sk",
+    "hu",
+    "ro",
+    "hr",
+    "kw",
+    "qa",
+    "bh",
+    "om",
+    "lb",
+    "in",
+    "cn",
+    "kr",
+    "ar",
+    "co",
 )
 
 
@@ -566,6 +617,11 @@ async def _brand_regions(db: AsyncSession, brand: Brand) -> tuple[str | None, li
     A region is listed while its brand is active and retail-visible, so a
     region is switched off on the storefront the same way any brand is. A
     game left with its main brand alone has no switcher: the list is empty.
+
+    A main brand that sells nothing itself (PlayStation, Xbox… — every card is
+    a region's) is not a chip: its ``region_code`` names the region the page
+    opens on, which goes first. Its list is kept even with one region, so the
+    page knows where its products are.
     """
     game_id = brand.region_parent_id or brand.id
     rows = (
@@ -577,17 +633,38 @@ async def _brand_regions(db: AsyncSession, brand: Brand) -> tuple[str | None, li
             )
         )
     ).all()
-    main_slug = next((slug for slug, _code, parent in rows if parent is None), None)
+    main = next(((slug, code) for slug, code, parent in rows if parent is None), None)
+    main_slug = main[0] if main else None
     region_of = main_slug if brand.region_parent_id is not None else None
+    shelf = main is not None and not await _sells_anything(db, game_id)
+    default = (main[1] if main else None) if shelf else None
     regions = sorted(
         (
-            (parent is not None, BrandRegionOut(code=code or GLOBAL_REGION, slug=slug))
+            (
+                parent is not None,
+                code != default,
+                BrandRegionOut(code=code or GLOBAL_REGION, slug=slug),
+            )
             for slug, code, parent in rows
+            if not (shelf and parent is None)
         ),
-        key=lambda pair: (pair[0], _region_rank(pair[1].code)),
+        key=lambda row: (row[0], row[1], _region_rank(row[2].code)),
     )
-    out = [region for _is_region, region in regions]
+    out = [region for _is_region, _not_default, region in regions]
+    if shelf:
+        return region_of, out
     return region_of, out if len(out) > 1 else []
+
+
+async def _sells_anything(db: AsyncSession, brand_id: str) -> bool:
+    """True when the brand has an active SKU of an active product of its own."""
+    found = await db.scalar(
+        select(Sku.id)
+        .join(Product, Product.id == Sku.product_id)
+        .where(Product.brand_id == brand_id, Product.active.is_(True), Sku.active.is_(True))
+        .limit(1)
+    )
+    return found is not None
 
 
 async def list_products(

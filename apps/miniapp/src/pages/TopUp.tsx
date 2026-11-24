@@ -248,8 +248,10 @@ export default function TopUp() {
   const region = pickedRegion && pickedRegion.route === gameId ? pickedRegion.code : linkedRegion;
   // The brand the page talks to: products, packages, player check, order.
   // Falls back to the route slug itself while the regions are unknown or
-  // for a one-region game.
-  const brandSlug = regionBrandSlug(regions, region, gameId ?? "");
+  // for a one-region game. Looked up in every region the API lists, not just
+  // the chips: a main brand that sells nothing itself (PlayStation…) opens on
+  // its region even when that region is the only one.
+  const brandSlug = regionBrandSlug(routeSummary.data?.regions ?? [], region, gameId ?? "");
 
   // A game's other ways to buy it (migration 0108) are their own brands and
   // screens, and only the main one is in the games list — the promo-code

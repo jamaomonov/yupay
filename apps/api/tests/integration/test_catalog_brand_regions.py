@@ -77,6 +77,49 @@ async def test_a_hidden_region_drops_off_the_switcher(
     assert out["regions"] == []
 
 
+async def test_a_main_brand_with_nothing_to_sell_opens_on_its_default_region(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """PlayStation, Xbox… have no global card: the main brand only names the
+    game and the region it opens on (its own `region_code`), and is not a chip."""
+    main, own_sku = await _seed_brand(db_session, "psx")
+    own_sku.active = False
+    main.region_code = "us"
+    await _region(db_session, main, "psx-tr", "tr")
+    await _region(db_session, main, "psx-us", "us")
+    await _region(db_session, main, "psx-uk", "uk")
+    await db_session.commit()
+
+    expected = [
+        {"code": "us", "slug": "psx-us"},
+        {"code": "tr", "slug": "psx-tr"},
+        {"code": "uk", "slug": "psx-uk"},
+    ]
+    main_out = (await integration_client.get("/api/v1/catalog/brands/psx")).json()
+    assert main_out["regions"] == expected
+    assert main_out["region_code"] == "us"
+    # The page reads as the region it opens on: its products, not an empty shelf.
+    us_out = (await integration_client.get("/api/v1/catalog/brands/psx-us")).json()
+    assert [p["slug"] for p in main_out["products"]] == [p["slug"] for p in us_out["products"]]
+    assert main_out["products"]
+    tr_out = (await integration_client.get("/api/v1/catalog/brands/psx-tr")).json()
+    assert tr_out["regions"] == expected
+    assert tr_out["region_of"] == "psx"
+
+
+async def test_a_main_brand_with_nothing_to_sell_and_one_region_has_no_switcher(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    main, own_sku = await _seed_brand(db_session, "psy")
+    own_sku.active = False
+    main.region_code = "us"
+    await _region(db_session, main, "psy-us", "us")
+    await db_session.commit()
+
+    out = (await integration_client.get("/api/v1/catalog/brands/psy")).json()
+    assert out["regions"] == [{"code": "us", "slug": "psy-us"}]
+
+
 async def test_a_review_from_a_regional_order_counts_for_the_game(
     integration_client: AsyncClient, db_session: AsyncSession
 ) -> None:

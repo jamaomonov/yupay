@@ -64,3 +64,16 @@ brands already exist from the bulk supplier import, priced and B2B-only.
   `mx`, `za`, `fr`, `at`, `ch`, `dk`, `no`, `se`, `pl`) added to `REGION_ORDER`
   and the web and Mini App switcher labels. Codes need no player check, so no
   "unchecked" hint shows.
+- **2026-11-24 — PlayStation, Xbox, Nintendo eShop, App Store & iTunes, Google
+  Play.** These have no global card, only country brands (122 of them, from
+  the import). Each gets a **main brand that sells nothing itself**
+  (`playstation`, `xbox`, `nintendo`, `app-store`, `google-play`, seed
+  `scripts/seed/2026-11-24_platform_gift_card_regions.sql`). Such a main
+  brand's `region_code` names the region its page opens on: the API leaves the
+  main brand off `regions`, lists that region first (even when it is the only
+  one), and answers the main brand's `products` with that region's
+  (`catalog.service._products_on_page`), so web, Mini App and the mobile app
+  read the page like any other. Purchases still name the region's SKU.
+  Twenty-four more codes were added to `REGION_ORDER` and the labels. The Mini
+  App resolves the brand to talk to from every listed region, not just the
+  chips, so a one-region platform still lands on its region.
