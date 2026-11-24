@@ -80,7 +80,11 @@ export interface SourcingBrandSupplierOut {
    *  A `"current"` cost participates in the cheapest-supplier comparison
    *  exactly like a captured one — `cheapestSlugs` (`brandSourcingFormat.ts`)
    *  only looks at `has_active_mapping`/`latest_cost_usdt`, never this field. */
-  cost_source: "history" | "current" | null;
+  cost_source: "history" | "current" | "checked" | null;
+  /** The last failed price check, when newer than the last good price, and
+   *  why (ADR-0108) — so "no price" carries its reason. */
+  price_failed_at?: string | null;
+  price_error?: string | null;
 }
 
 /** One active SKU's sourcing picture for the brand-overview screen

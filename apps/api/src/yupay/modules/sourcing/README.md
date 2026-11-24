@@ -349,3 +349,12 @@ no-stock) `task.supplier` перезаписывается на slug прова�
 `sourcing_settings.smart_mode`: `off` / `shadow` (только журнал `sourcing_switch_log`) / `on`.
 `set_rule` (любое сохранение оператором) ставит `managed = false`; `PUT /rules:managed` включает и
 выключает автовыбор для списка SKU, не меняя поставщика.
+
+## Свежесть цен и мёртвые маппинги (ADR-0108)
+
+Каждый сбор цен пишет в `supplier_price_state` последнюю удачную цену маппинга и время проверки,
+а при ошибке — `failed_at` и `last_error` (`integrations.cost_refresh.record_price_state`).
+Сравнение поставщиков по бренду берёт цену оттуда (`cost_source = "checked"`) и показывает
+причину, если последняя проверка не удалась. `GET /admin/sourcing/price-failures?hours=24` —
+маппинги без удачной цены дольше срока, сначала те, что сейчас маршрут SKU; в админке — карточка
+«Цены не собираются» на странице «Сорсинг».

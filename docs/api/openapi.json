@@ -15474,6 +15474,140 @@
         "title": "PreviewOut",
         "type": "object"
       },
+      "PriceFailureGroupOut": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "error": {
+            "title": "Error",
+            "type": "string"
+          },
+          "supplier_slug": {
+            "title": "Supplier Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "supplier_slug",
+          "error",
+          "count"
+        ],
+        "title": "PriceFailureGroupOut",
+        "type": "object"
+      },
+      "PriceFailureOut": {
+        "description": "One mapping with no good price for ``hours`` or more.",
+        "properties": {
+          "checked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checked At"
+          },
+          "failed_at": {
+            "format": "date-time",
+            "title": "Failed At",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "routed": {
+            "title": "Routed",
+            "type": "boolean"
+          },
+          "sku_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sku Code"
+          },
+          "sku_id": {
+            "title": "Sku Id",
+            "type": "string"
+          },
+          "supplier_slug": {
+            "title": "Supplier Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sku_id",
+          "supplier_slug",
+          "routed",
+          "checked_at",
+          "failed_at",
+          "last_error"
+        ],
+        "title": "PriceFailureOut",
+        "type": "object"
+      },
+      "PriceFailureReportOut": {
+        "properties": {
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/PriceFailureGroupOut"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PriceFailureOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "routed": {
+            "title": "Routed",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "routed",
+          "groups",
+          "items"
+        ],
+        "title": "PriceFailureReportOut",
+        "type": "object"
+      },
       "PriceHistoryOut": {
         "properties": {
           "items": {
@@ -20725,7 +20859,8 @@
               {
                 "enum": [
                   "history",
-                  "current"
+                  "current",
+                  "checked"
                 ],
                 "type": "string"
               },
@@ -20749,6 +20884,29 @@
               }
             ],
             "title": "Latest Cost Usdt"
+          },
+          "price_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Error"
+          },
+          "price_failed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Failed At"
           },
           "stock": {
             "anyOf": [
@@ -37621,6 +37779,91 @@
           }
         },
         "summary": "Sourcing overview for every active SKU of a brand",
+        "tags": [
+          "admin:sourcing"
+        ]
+      }
+    },
+    "/api/v1/admin/sourcing/price-failures": {
+      "get": {
+        "operationId": "price_failures_route_api_v1_admin_sourcing_price_failures_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "hours",
+            "required": false,
+            "schema": {
+              "default": 24,
+              "title": "Hours",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "supplier",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Supplier"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 300,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PriceFailureReportOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Mappings with no good price for N hours (ADR-0108)",
         "tags": [
           "admin:sourcing"
         ]

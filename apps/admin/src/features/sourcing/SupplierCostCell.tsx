@@ -71,7 +71,11 @@ export function SupplierCell({
           ) : (
             <span
               className="text-[var(--text-tertiary)]"
-              title="Маппинг активен, но цена ещё не снята с этого поставщика"
+              title={
+                supplier.price_error
+                  ? `Цену получить не удалось: ${supplier.price_error}`
+                  : "Маппинг активен, но цена ещё не снята с этого поставщика"
+              }
             >
               — <span className="text-[10px]">цена не снята</span>
             </span>
@@ -93,6 +97,10 @@ export function SupplierCell({
         {cost !== null &&
           (supplier.cost_source === "current" ? (
             <span className="text-[10px] text-[var(--text-tertiary)]">текущая цена SKU</span>
+          ) : supplier.cost_source === "checked" && supplier.captured_at ? (
+            <span className="text-[10px] text-[var(--text-tertiary)]">
+              проверено {shortDate(supplier.captured_at)}
+            </span>
           ) : (
             supplier.captured_at && (
               <span className="text-[10px] text-[var(--text-tertiary)]">
@@ -104,6 +112,19 @@ export function SupplierCell({
               </span>
             )
           ))}
+        {/* Why there is no price, or why the shown one may be old: the last
+            check failed after it. Fixed here, not guessed by the operator. */}
+        {supplier.price_error && supplier.price_failed_at && (
+          <span
+            className="text-[10px] text-[var(--danger-fg)]"
+            title={`Проверка ${shortDate(supplier.price_failed_at)}: ${supplier.price_error}`}
+          >
+            {cost === null ? "не получена" : "последняя проверка не удалась"}:{" "}
+            {supplier.price_error.length > 60
+              ? `${supplier.price_error.slice(0, 60)}…`
+              : supplier.price_error}
+          </span>
+        )}
         {/* Per-supplier stock. `Sku.supplier_stock` holds only the routed
             supplier's number, which is exactly the one an operator
             comparing suppliers already knows — the useful fact is that the
@@ -155,9 +176,19 @@ export function SupplierCell({
 /** Hover tooltip for a supplier's cost value — flags a `"current"` cost as
  *  the SKU's own `cost_usdt` rather than a captured price, mirroring the
  *  visible note below the number. */
-function costTitle(cost: string, source: "history" | "current" | null): string {
+function costTitle(cost: string, source: SourcingBrandSupplierOut["cost_source"]): string {
   if (source === "current") return `${cost} USDT (текущая цена SKU, история не записана)`;
+  if (source === "checked") return `${cost} USDT (последняя подтверждённая цена)`;
   return `${cost} USDT`;
+}
+
+function shortDate(iso: string): string {
+  return new Date(iso).toLocaleString("ru", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 /** Tooltip for a supplier cell's own switch button — states the

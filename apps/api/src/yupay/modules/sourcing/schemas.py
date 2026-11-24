@@ -154,9 +154,15 @@ class SourcingBrandSupplierOut(BaseModel):
     has_active_mapping: bool
     latest_cost_usdt: str | None
     captured_at: datetime | None
-    cost_source: Literal["history", "current"] | None
+    #: ``checked`` — the last good price the hourly refresh confirmed
+    #: (``supplier_price_state``, ADR-0108); ``captured_at`` is that check.
+    cost_source: Literal["history", "current", "checked"] | None
     stock: int | None = None
     stock_at: datetime | None = None
+    #: The last time a price check for this mapping failed, and why — shown when
+    #: it is newer than the last good price, so "no price" carries its reason.
+    price_failed_at: datetime | None = None
+    price_error: str | None = None
 
 
 class SourcingBrandSkuOut(BaseModel):

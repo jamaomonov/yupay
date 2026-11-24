@@ -26,9 +26,9 @@ from collections import defaultdict
 from collections.abc import Sequence
 from datetime import datetime
 from decimal import Decimal
-from typing import Literal
+from typing import Any, Literal
 
-from sqlalchemy import select, tuple_
+from sqlalchemy import select, text, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import lazyload
 
@@ -133,6 +133,57 @@ async def _stock_by_sku_supplier(
         raw, fetched_at = found
         out[(mapping.sku_id, mapping.supplier_slug)] = (_stock_int(raw), fetched_at)
     return out
+
+
+def _supplier_cost(
+    state: tuple[Any, Any, Any, Any] | None,
+    history_entry: tuple[Decimal, datetime] | None,
+    *,
+    routed_cost: Decimal | None,
+) -> tuple[Literal["history", "current", "checked"] | None, str | None, datetime | None]:
+    """One supplier's cost for the comparison, best source first.
+
+    The last good price the hourly refresh confirmed (``checked``); else the
+    latest history row (a move); else, for the supplier the SKU buys from and
+    price collection reaches (``routed_cost`` given), the SKU's own cost —
+    ``Sku.cost_usdt`` could otherwise be a *previous* routed supplier's number.
+    """
+    if state is not None and state[0] is not None and state[1] is not None:
+        return "checked", str(state[0]), state[1]
+    if history_entry is not None:
+        return "history", str(history_entry[0]), history_entry[1]
+    if routed_cost is not None:
+        return "current", str(routed_cost), None
+    return None, None, None
+
+
+async def _price_state(
+    db: AsyncSession, sku_ids: list[str]
+) -> dict[tuple[str, str], tuple[Any, Any, Any, Any]]:
+    """``(cost, checked_at, failed_at, last_error)`` per mapping, in one query."""
+    rows = (
+        await db.execute(
+            text(
+                "SELECT sku_id, supplier_slug, cost_usdt, checked_at, failed_at, last_error"
+                " FROM supplier_price_state WHERE sku_id = ANY(CAST(:ids AS uuid[]))"
+            ),
+            {"ids": sku_ids},
+        )
+    ).all()
+    return {
+        (str(sku), slug): (cost, checked, failed, error)
+        for sku, slug, cost, checked, failed, error in rows
+    }
+
+
+def _price_failure(state: tuple[Any, Any, Any, Any] | None) -> dict[str, Any]:
+    """The failed check to show: only one newer than the last good price."""
+    if state is None:
+        return {}
+    _cost, checked, failed, error = state
+    if failed is None or (checked is not None and checked >= failed):
+        return {}
+    return {"price_failed_at": failed, "price_error": error}
 
 
 def _stock_int(raw: str | None) -> int | None:
@@ -289,6 +340,9 @@ async def get_brand_overview(db: AsyncSession, brand_slug: str) -> SourcingBrand
         (sku_id, supplier_slug): (cost_usdt, captured_at)
         for sku_id, supplier_slug, cost_usdt, captured_at in history_rows
     }
+    # The last good price and the last failure per mapping, from every refresh
+    # (ADR-0108): history alone shows nothing for a price that never moved.
+    price_state = await _price_state(db, list(sku_ids))
     stock_by_pair = await _stock_by_sku_supplier(db, mapping_rows)
     items: list[SourcingBrandSkuOut] = []
     for sku, product in sku_rows:
@@ -322,31 +376,14 @@ async def get_brand_overview(db: AsyncSession, brand_slug: str) -> SourcingBrand
             # (None, None) for a supplier this SKU has no mapping to, which
             # is the honest answer: we never asked it about this rung.
             stock_entry = stock_by_pair.get((sku.id, slug), (None, None))
-            cost_source: Literal["history", "current"] | None
-            supplier_cost: str | None
-            if history_entry is not None:
-                cost_source = "history"
-                supplier_cost = str(history_entry[0])
-                captured_at = history_entry[1]
-            elif (
-                sku.cost_usdt is not None
-                and is_routed_supplier(decision, slug)
-                and supports_price_collection(slug)
-            ):
-                # No history row, but this is the supplier the SKU actually
-                # buys from, price collection actually reaches this supplier
-                # (g2b/nova — otherwise Sku.cost_usdt could be a *previous*
-                # routed supplier's number, never this one's), and there is
-                # a cost to report at all. Its current price is
-                # Sku.cost_usdt, not "not captured" (see
-                # SourcingBrandSupplierOut.cost_source).
-                cost_source = "current"
-                supplier_cost = str(sku.cost_usdt)
-                captured_at = None
-            else:
-                cost_source = None
-                supplier_cost = None
-                captured_at = None
+            state = price_state.get((sku.id, slug))
+            cost_source, supplier_cost, captured_at = _supplier_cost(
+                state,
+                history_entry,
+                routed_cost=sku.cost_usdt
+                if is_routed_supplier(decision, slug) and supports_price_collection(slug)
+                else None,
+            )
             suppliers.append(
                 SourcingBrandSupplierOut(
                     supplier_slug=slug,
@@ -356,6 +393,7 @@ async def get_brand_overview(db: AsyncSession, brand_slug: str) -> SourcingBrand
                     cost_source=cost_source,
                     stock=stock_entry[0],
                     stock_at=stock_entry[1],
+                    **_price_failure(state),
                 )
             )
 

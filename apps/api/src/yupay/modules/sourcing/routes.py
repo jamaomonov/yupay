@@ -25,6 +25,7 @@ from yupay.modules.sourcing import bulk_rules as bulk_rules_svc
 from yupay.modules.sourcing import service as svc
 from yupay.modules.sourcing import settings as sourcing_settings
 from yupay.modules.sourcing.models import SkuSourcingRule
+from yupay.modules.sourcing.price_failures import PriceFailureReportOut, price_failures
 from yupay.modules.sourcing.schemas import (
     SourcingBrandOverviewOut,
     SourcingBulkRuleIn,
@@ -349,3 +350,19 @@ async def list_switches_route(
     from yupay.modules.sourcing.smart_routing import recent_switches
 
     return SourcingSwitchListOut(items=await recent_switches(db, limit=min(max(limit, 1), 200)))
+
+
+@admin_router.get(
+    "/price-failures",
+    response_model=PriceFailureReportOut,
+    summary="Mappings with no good price for N hours (ADR-0108)",
+)
+async def price_failures_route(
+    db: Annotated[AsyncSession, Depends(db_session)],
+    hours: int = 24,
+    supplier: str | None = None,
+    limit: int = 300,
+) -> PriceFailureReportOut:
+    return await price_failures(
+        db, hours=min(max(hours, 1), 24 * 30), supplier=supplier, limit=min(max(limit, 1), 1000)
+    )
