@@ -3,7 +3,8 @@
 On prod (60 days to 2026-11-24) fzr refunded 367 retail tasks — about six a day,
 each a manual refund — and for 338 of them another mapped supplier could have
 delivered with a margin of 3 % or more. This moves such a task once, by itself,
-through the same :func:`service.reassign_task` an operator uses.
+through the same checks an operator's reassign makes (:func:`service.switch_supplier`),
+and leaves the run to the worker.
 
 **Only a definite refusal moves.** The task failed with ``MoneyOutcome.RETURNED``:
 the supplier refunded, or refused before charging (``panel_grading``). A timeout,
@@ -25,6 +26,7 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Any, Final
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.core.clock import now
@@ -111,7 +113,7 @@ async def _eligible(
 
 
 async def try_failover(db: AsyncSession, *, task_id: str) -> bool:
-    """Move a refused task to the next cheapest supplier; ``True`` when it moved.
+    """Put a refused task on the next cheapest supplier; ``True`` when it moved.
 
     Never raises for an ordinary "no": every refusal is a ``False`` with the reason
     on the task. The caller contains unexpected faults.
@@ -179,9 +181,13 @@ async def try_failover(db: AsyncSession, *, task_id: str) -> bool:
         from_supplier=previous,
         to_supplier=option["supplier"],
     )
-    await ff_svc.reassign_task(
+    # Switched, not run: the worker drains the task like any pending one. The
+    # refusal may have been noticed inside a supplier webhook — a request
+    # handler, where calling another supplier is not allowed (AGENTS.md §10).
+    await ff_svc.switch_supplier(
         db, task_id=task.id, supplier=option["supplier"], admin_id=ACTOR, reason="auto_failover"
     )
+    await db.execute(text("SELECT pg_notify('fulfillment_queue', :oid)"), {"oid": order.id})
     return True
 
 

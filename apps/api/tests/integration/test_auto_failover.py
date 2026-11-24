@@ -70,9 +70,13 @@ async def test_a_refused_task_moves_and_delivers(db_session: AsyncSession) -> No
     await ff_svc._settle_merchant_deposit(db_session, task_id=task_id)
     await db_session.commit()
     task = await _task(db_session, task_id)
+    # Switched and queued, not run where the refusal was noticed.
     assert task.supplier == "mock"
-    assert task.status == "succeeded"
+    assert task.status == "pending"
     assert task.extra_metadata[auto_failover.FAILOVER_KEY]["from"] == "fzr"
+    await ff_svc.drain_pending_tasks(db_session)
+    await db_session.commit()
+    assert (await _task(db_session, task_id)).status == "succeeded"
     kinds = (
         (await db_session.execute(select(OrderEvent.kind).where(OrderEvent.order_id == order.id)))
         .scalars()

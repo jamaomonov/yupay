@@ -1206,8 +1206,8 @@ async def _settle_merchant_deposit(db: AsyncSession, *, task_id: str) -> None:
     # failure passes after the savepoint. Self-gated and self-contained.
     await _refund_skin_to_wallet(db, task_id=task_id)
     # A supplier's definite refusal moves the task to the next cheapest one
-    # (ADR-0108, off unless the admin switch is on). When it moved, the move ran
-    # the task again and settled that run itself — nothing is left to do here.
+    # (ADR-0108, off unless the admin switch is on). When it moved, the task is
+    # ``pending`` again for the worker — there is no failure left to settle.
     try:
         async with db.begin_nested():
             from yupay.modules.fulfillment.auto_failover import try_failover
@@ -2096,6 +2096,31 @@ async def reassign_task(
     manual queue, the supplier it is already on, and a supplier whose adapter
     needs a mapping row this SKU does not have.
     """
+    task = await switch_supplier(
+        db, task_id=task_id, supplier=supplier, admin_id=admin_id, reason=reason
+    )
+    task = await _process_contained(db, task_id=task.id, where="reassign")
+    await _settle_merchant_deposit(db, task_id=task.id)
+    await _try_settle_order(db, order_id=task.order_id)
+    await db.flush()
+    return task
+
+
+async def switch_supplier(
+    db: AsyncSession,
+    *,
+    task_id: str,
+    supplier: str,
+    admin_id: str,
+    reason: str = "admin_reassign",
+) -> FulfillmentTask:
+    """Put a failed task back to ``pending`` on another supplier, without running it.
+
+    Every check and write :func:`reassign_task` makes before it runs the task —
+    shared so the automatic failover (ADR-0108) can hand the run to the worker
+    instead of calling a supplier from wherever the refusal was noticed (a
+    supplier webhook is a request handler, AGENTS.md §10).
+    """
     slug = supplier.strip().lower()
     task = await _load_task(db, task_id, for_update=True)
     if task.status not in ("failed", "pending"):
@@ -2163,10 +2188,6 @@ async def reassign_task(
             **cost_note,
         },
     )
-    await db.flush()
-    task = await _process_contained(db, task_id=task_id, where="reassign")
-    await _settle_merchant_deposit(db, task_id=task_id)
-    await _try_settle_order(db, order_id=task.order_id)
     await db.flush()
     return task
 
@@ -3622,6 +3643,7 @@ __all__ = [
     "process_webhook_update",
     "retry_task",
     "start_for_order",
+    "switch_supplier",
 ]
 
 
