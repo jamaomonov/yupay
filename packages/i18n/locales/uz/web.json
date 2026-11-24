@@ -91,14 +91,6 @@
     "eyebrow": "Katalog",
     "titleLine1": "Oʻyinlar va sovgʻa kartalari.",
     "titleLine2": "Soʻmda toʻlov.",
-    "viewAll": "Toʻliq katalog",
-    "brandCount": "{count} ta brend",
-    "open": "Katalogni ochish",
-    "openAria": "«{name}» katalogini ochish",
-    "kinds": {
-      "top-ups": "Valyuta darhol akkauntga — oʻyinchi ID raqami boʻyicha.",
-      "gift-cards": "Kod pochtangizga keladi — uni akkauntingizda faollashtirasiz."
-    },
     "commission": "Komissiya",
     "speed": "Tezlik",
     "rating": "Reyting",
@@ -127,7 +119,9 @@
         "eyebrow": "Tencent · bondlar",
         "tag": "TEZ"
       }
-    }
+    },
+    "allCount": "Barchasi {count}",
+    "seeAll": "Barchasini koʻrish"
   },
   "trust": {
     "speed": {

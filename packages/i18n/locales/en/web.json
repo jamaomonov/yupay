@@ -91,14 +91,6 @@
     "eyebrow": "Catalog",
     "titleLine1": "Games and gift cards.",
     "titleLine2": "Pay in soʻm.",
-    "viewAll": "Full catalog",
-    "brandCount": "{count, plural, one {# brand} other {# brands}}",
-    "open": "Open catalog",
-    "openAria": "Open the {name} catalog",
-    "kinds": {
-      "top-ups": "Currency straight to your account, by player ID.",
-      "gift-cards": "A code by email — redeem it in your account."
-    },
     "commission": "Commission",
     "speed": "Speed",
     "rating": "Rating",
@@ -127,7 +119,9 @@
         "eyebrow": "Tencent · bonds",
         "tag": "FAST"
       }
-    }
+    },
+    "allCount": "All {count}",
+    "seeAll": "See all"
   },
   "trust": {
     "speed": {
