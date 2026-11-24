@@ -1018,6 +1018,10 @@ class Settings(BaseSettings):
     uzqr_api_key: str = Field(default="")
     #: The spec's own figure (§2.5.2): 20 s for every method.
     uzqr_request_timeout_seconds: float = Field(default=20.0)
+    #: uzqr.uz answers Uzbek IPs only — from our VPS the TCP connect times out.
+    #: An HTTP proxy with a UZ address, ``http://user:pass@host:port``; empty
+    #: means direct. A credential: never logged. HTTP only (no socksio).
+    uzqr_proxy_url: str = Field(default="")
 
     # --- acquirer: Payme (Paycom) Merchant API ---
     payme_merchant_id: str = Field(default="")

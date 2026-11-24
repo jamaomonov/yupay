@@ -102,7 +102,9 @@ async def _call(
     }
     try:
         async with httpx.AsyncClient(
-            base_url=settings.uzqr_base_url, timeout=settings.uzqr_request_timeout_seconds
+            base_url=settings.uzqr_base_url,
+            timeout=settings.uzqr_request_timeout_seconds,
+            proxy=settings.uzqr_proxy_url or None,
         ) as client:
             resp = await client.request(method, path, params=params, json=body, headers=headers)
     except httpx.HTTPError as exc:

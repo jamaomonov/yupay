@@ -27,6 +27,7 @@ def _settings(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(s, "uzqr_base_url", BASE)
     monkeypatch.setattr(s, "uzqr_inn", "123456789")
     monkeypatch.setattr(s, "uzqr_api_key", "secret-key")
+    monkeypatch.setattr(s, "uzqr_proxy_url", "")
 
 
 def test_auth_header_is_inn_sha1_of_timestamp_and_key_then_timestamp() -> None:
@@ -145,3 +146,34 @@ async def test_an_unknown_status_is_not_guessed() -> None:
         )
         with pytest.raises(client.UzqrUnavailableError):
             await client.invoice_status("INV1")
+
+
+async def test_calls_go_through_the_uz_proxy_when_one_is_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # uzqr.uz admits Uzbek IPs only; the VPS reaches it through a UZ proxy.
+    monkeypatch.setattr(get_settings(), "uzqr_proxy_url", "http://u:p@proxy.test:3128")
+    seen: dict[str, object] = {}
+    real = httpx.AsyncClient
+
+    def spy(**kwargs: object) -> httpx.AsyncClient:
+        seen.update(kwargs)
+        kwargs.pop("proxy")
+        return real(**kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(client.httpx, "AsyncClient", spy)
+    with respx.mock(base_url=BASE) as mock:
+        mock.post("/api/v1/pos/invoice/cancel").respond(200)
+        await client.cancel_invoice("INV1")
+    assert seen["proxy"] == "http://u:p@proxy.test:3128"
+
+
+async def test_a_proxy_failure_is_unknown_and_does_not_leak_its_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(get_settings(), "uzqr_proxy_url", "http://u:secretpw@proxy.test:3128")
+    with respx.mock(base_url=BASE) as mock:
+        mock.get("/api/v1/pos/invoice/status").mock(side_effect=httpx.ProxyError("refused"))
+        with pytest.raises(client.UzqrUnavailableError) as caught:
+            await client.invoice_status("INV1")
+    assert "secretpw" not in str(caught.value)

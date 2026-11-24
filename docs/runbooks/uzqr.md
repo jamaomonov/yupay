@@ -8,13 +8,17 @@ ADR-0106. Payer scans a QR in any bank app; the scheduler's `uzqr_poll` books th
    active key bound to that QR.
 2. `secrets/api.env` (api **and** scheduler read it): `UZQR_INN` = INN, or PINFL for a sole
    trader; `UZQR_API_KEY` = the key. Restart api + scheduler with `IMAGE_TAG`.
+   `UZQR_PROXY_URL` = `http://user:pass@host:port` of an HTTP proxy with an **Uzbek IP**:
+   uzqr.uz admits UZ addresses only, and from the VPS the TCP connect simply times out
+   (checked 2026-11-23, confirmed by UzQR). Check it from the api container before enabling:
+   `curl -x "$UZQR_PROXY_URL" -s -o /dev/null -w '%{http_code}' https://uzqr.uz/` → 200.
 3. Admin → Платёжные провайдеры → UzQR → active.
 4. Pay a 1 000 soʻm wallet top-up by QR from a real bank app; the order goes paid within
    ~10 s. Check `uzqr.poll.done` in the scheduler log.
 
 ## Something is wrong
 
-- **Alert `uzqr_poll_down`** — no tick in which UzQR answered every call for 10 min while
+- **Alert `uzqr_poll_down`** — first suspect the UZ proxy (expired rental, changed IP). no tick in which UzQR answered every call for 10 min while
   invoices are open. Scheduler logs: `uzqr.poll.refused` (UzQR answered with an error code —
   1001 is a wrong INN/key), `uzqr_poll.failed` (our side). Payments are not lost while this
   lasts: open invoices are re-read when UzQR answers again, for up to 25 h.
