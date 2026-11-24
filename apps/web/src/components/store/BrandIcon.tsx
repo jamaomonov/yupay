@@ -20,7 +20,16 @@ import { pathFor } from "@/lib/seo";
  * Rendered as the direct grid child of `StoreFilter` — `flex` gives the
  * anchor a box, see the note there.
  */
-export async function BrandIcon({ brand, locale }: { brand: BrandSummary; locale: string }) {
+export async function BrandIcon({
+  brand,
+  locale,
+  className = "flex",
+}: {
+  brand: BrandSummary;
+  locale: string;
+  /** Display per breakpoint (`flex` by default), from a layout that caps the count. */
+  className?: string;
+}) {
   const ts = await getTranslations("web.store");
   const img = brand.logo_url ?? brand.hero_image_url;
   const accent = brand.accent_color ?? "#AAFF33";
@@ -28,7 +37,7 @@ export async function BrandIcon({ brand, locale }: { brand: BrandSummary; locale
   return (
     <Link
       href={pathFor(locale, brandPath(brand.slug))}
-      className="focus-visible:ring-primary focus-visible:ring-offset-bg group flex min-w-0 flex-col items-center rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-4"
+      className={`focus-visible:ring-primary focus-visible:ring-offset-bg group min-w-0 flex-col items-center rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-4 ${className}`}
     >
       <span className="border-border bg-card group-hover:ring-primary/70 relative block aspect-square w-full overflow-hidden rounded-[22%] border transition group-hover:ring-2">
         {img ? (

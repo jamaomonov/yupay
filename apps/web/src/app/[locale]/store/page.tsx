@@ -12,23 +12,13 @@ import { BrandIcon } from "@/components/store/BrandIcon";
 import { StoreFilter } from "@/components/store/StoreFilter";
 import { routing } from "@/i18n/routing";
 import { brandPath } from "@/lib/brand-href";
+import { byPopularity } from "@/lib/brand-order";
 import { getBrands, getCategories, type BrandSummary, type CategoryOut } from "@/lib/catalog";
 import { chipStyles } from "@/lib/chip";
 import { headingStyles } from "@/lib/heading";
 import { alternates, GEO_META, localeUrl, ogLocale, pathFor, ROBOTS } from "@/lib/seo";
 
 export const revalidate = 300;
-
-/** What most buyers come for, first; everything else keeps the API's order. */
-const POPULAR = ["mobile-legends", "pubg-mobile", "free-fire", "steam", "roblox"];
-
-function byPopularity(brands: BrandSummary[]): BrandSummary[] {
-  const rank = (slug: string) => {
-    const i = POPULAR.indexOf(slug);
-    return i === -1 ? POPULAR.length : i;
-  };
-  return [...brands].sort((a, b) => rank(a.slug) - rank(b.slug));
-}
 
 const PAY = [
   { src: "/payment/click-dark.svg", name: "Click", w: 157, h: 40 },

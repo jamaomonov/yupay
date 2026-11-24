@@ -27,12 +27,10 @@ export interface StoreFilterItem {
    * The tile, already rendered on the server AND already carrying its React
    * key. It is rendered as the direct grid child — never wrapped.
    *
-   * `BrandTile` is a `<Link>`, so a `<a>`, and an `<a>` is `display: inline`
-   * by default: height simply does not apply to it. As a direct grid item the
-   * grid blockifies it and its `h-[240px]` takes effect. Wrapping it in a
-   * `<div>` — which an earlier version of this file did, purely to hang the
-   * key on — left the anchor inline, so the tile had no height, the `fill`
-   * image had nothing to fill, and every card collapsed into overlapping text.
+   * The tile is a `<Link>`, so an `<a>`, which is `display: inline` by
+   * default. A wrapper `<div>` — an earlier version hung the key on one — left
+   * the anchor inline, so the tile had no box, the `fill` image had nothing to
+   * fill, and every card collapsed into overlapping text.
    */
   node: ReactNode;
 }
@@ -61,7 +59,7 @@ export interface StoreFilterItem {
  * that most visitors arrive at.
  *
  * The tiles stay server components — they are passed in pre-rendered rather
- * than re-created here, so `BrandTile` keeps its server-side translations and
+ * than re-created here, so `BrandIcon` keeps its server-side translations and
  * none of it lands in the browser bundle.
  */
 export function StoreFilter({

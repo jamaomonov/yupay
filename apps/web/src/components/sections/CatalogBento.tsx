@@ -2,20 +2,31 @@ import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
-import { BrandTile } from "@/components/store/BrandTile";
+import { BrandIcon } from "@/components/store/BrandIcon";
+import { byPopularity } from "@/lib/brand-order";
 import { getBrands, type BrandSummary } from "@/lib/catalog";
 import { headingStyles } from "@/lib/heading";
 import { pathFor } from "@/lib/seo";
 
 /**
- * Bento-grid catalog teaser on the landing — a featured brand (2×2) plus
- * smaller brand cards, backed by the live catalog API. Adaptive to any brand
- * count: the feature occupies cols 1–2 / rows 1–2, leaving col 3 for two cards
- * and every further row holding three — so we render the largest multiple of
- * three (capped at 9) and the grid always fills cleanly, however many brands
- * production ends up with. The rest live behind "Весь каталог".
+ * The landing's catalogue teaser: the same square brand icons as /store, two
+ * rows of them, and a last tile into the full catalogue (owner, 2026-11-24 —
+ * the old bento spent a screen on three pieces of key art).
+ *
+ * The last tile always closes a full row: 8 brands + it on a phone (3×3),
+ * 11 + it from `sm` (4×3 and 6×2), 15 + it from `lg` (8×2). Brands past a
+ * breakpoint's count are hidden there rather than dropped, so the order is one
+ * list for every width.
  */
-const MAX = 9;
+const PHONE = 8;
+const TABLET = 11;
+const DESKTOP = 15;
+
+function displayFor(index: number): string {
+  if (index < PHONE) return "flex";
+  if (index < TABLET) return "hidden sm:flex";
+  return "hidden lg:flex";
+}
 
 export async function CatalogBento({ locale }: { locale: string }) {
   const t = await getTranslations("web.catalog");
@@ -28,20 +39,14 @@ export async function CatalogBento({ locale }: { locale: string }) {
   }
   if (all.length === 0) return null;
 
-  // Show every brand up to the cap, even when the last row comes out short.
-  // Rounding down to a multiple of three filled the grid neatly and silently
-  // dropped the tail: at seven brands it rendered six, and the one it cut was
-  // Steam — the product with its own dedicated section higher up the same
-  // page, promoted there with a "Пополнить Steam" button. A ragged last row
-  // costs less than a flagship that cannot be reached from the catalogue block.
-  const brands = all.slice(0, MAX);
-  const [feature, ...rest] = brands;
-  if (!feature) return null;
+  const brands = byPopularity(all).slice(0, DESKTOP);
+  // How many the «all» tile stands for, per width.
+  const left = (shown: number): number => all.length - Math.min(shown, brands.length);
 
   return (
     <section id="catalog" className="relative scroll-mt-[88px] py-14 sm:py-20">
       <div className="mx-auto max-w-[1200px] px-6 sm:px-10">
-        <div className="mb-14 flex items-end justify-between gap-6">
+        <div className="mb-10 flex items-end justify-between gap-6 sm:mb-12">
           <div>
             <div className="text-primary font-mono text-xs font-semibold uppercase tracking-[0.16em]">
               [ 01 / {t("eyebrow")} ]
@@ -60,32 +65,29 @@ export async function CatalogBento({ locale }: { locale: string }) {
           </Link>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 md:auto-rows-[300px] md:grid-cols-3">
-          <BrandTile
-            brand={feature}
-            locale={locale}
-            variant="feature"
-            className="h-[300px] md:col-span-2 md:row-span-2 md:h-auto"
-          />
-          {rest.map((brand) => (
-            <BrandTile
-              key={brand.slug}
-              brand={brand}
-              locale={locale}
-              className="h-[240px] md:h-auto"
-            />
+        <div className="grid grid-cols-3 gap-x-3 gap-y-6 sm:grid-cols-4 sm:gap-x-5 md:grid-cols-6 lg:grid-cols-8">
+          {brands.map((brand, i) => (
+            <BrandIcon key={brand.slug} brand={brand} locale={locale} className={displayFor(i)} />
           ))}
+          <Link
+            href={pathFor(locale, "/store")}
+            className="focus-visible:ring-primary focus-visible:ring-offset-bg group flex min-w-0 flex-col items-center rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-4"
+          >
+            <span className="border-border-2 bg-muted group-hover:border-primary/70 text-foreground relative flex aspect-square w-full flex-col items-center justify-center gap-1 rounded-[22%] border border-dashed transition">
+              <span className="font-display text-[clamp(1.25rem,4vw,1.75rem)] font-extrabold leading-none">
+                {left(PHONE) > 0 && <span className="sm:hidden">+{left(PHONE)}</span>}
+                {left(TABLET) > 0 && (
+                  <span className="hidden sm:inline lg:hidden">+{left(TABLET)}</span>
+                )}
+                {left(DESKTOP) > 0 && <span className="hidden lg:inline">+{left(DESKTOP)}</span>}
+              </span>
+              <ArrowRight size={16} strokeWidth={2.4} className="text-primary" aria-hidden />
+            </span>
+            <span className="text-foreground mt-2.5 line-clamp-2 w-full text-center text-[13px] font-semibold leading-tight sm:text-sm">
+              {t("viewAll")}
+            </span>
+          </Link>
         </div>
-
-        {/* Mobile gets the "view all" CTA below the grid (the header one is
-            desktop-only to keep the heading row uncluttered on phones). */}
-        <Link
-          href={pathFor(locale, "/store")}
-          className="border-border-2 text-foreground hover:border-tx-dim hover:bg-muted rounded-btn mt-4 flex h-[48px] items-center justify-center gap-2 border text-sm font-semibold transition sm:hidden"
-        >
-          {t("viewAll")}
-          <ArrowRight size={14} strokeWidth={2.4} />
-        </Link>
       </div>
     </section>
   );
