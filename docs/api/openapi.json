@@ -2164,6 +2164,11 @@
               }
             ]
           },
+          "one_time_pack": {
+            "default": false,
+            "title": "One Time Pack",
+            "type": "boolean"
+          },
           "price_overrides": {
             "items": {
               "$ref": "#/components/schemas/SkuPriceOverrideIn-Output"
@@ -19803,6 +19808,11 @@
               }
             ]
           },
+          "one_time_pack": {
+            "default": false,
+            "title": "One Time Pack",
+            "type": "boolean"
+          },
           "price_overrides": {
             "items": {
               "$ref": "#/components/schemas/SkuPriceOverrideIn-Input"
@@ -20070,6 +20080,12 @@
               }
             ],
             "description": "A condition the buyer must see before paying (a first-purchase-only bonus, a level cap), in the request's locale. Absent on most SKUs."
+          },
+          "one_time_pack": {
+            "default": false,
+            "description": "A pack sold once per game account: signed-in customers only, and a supplier refusal refunds to the YuPay balance.",
+            "title": "One Time Pack",
+            "type": "boolean"
           },
           "price_usd": {
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
@@ -20442,6 +20458,17 @@
                 "type": "null"
               }
             ]
+          },
+          "one_time_pack": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "One Time Pack"
           },
           "price_overrides": {
             "anyOf": [

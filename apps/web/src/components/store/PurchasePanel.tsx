@@ -1690,6 +1690,15 @@ export function PurchasePanel({
   // own `isLoggedIn`, which also checks the access token at submit time: that
   // check stays exactly as it was, because it guards the money path.
   const isSignedIn = user !== null;
+  // A one-time pack (Free Fire's Level Up) is sold to signed-in customers only:
+  // a supplier refusal refunds it to the YuPay balance, and a guest has none
+  // (ADR-0108). The server refuses a guest order for it too.
+  const needsSignIn =
+    !isSignedIn &&
+    !authLoading &&
+    orderItems.some((it) =>
+      products.some((p) => p.skus.some((s) => s.id === it.sku_id && s.one_time_pack === true)),
+    );
   const [promo, setPromo] = useState<AppliedPromo | null>(null);
   const [promoDropped, setPromoDropped] = useState(false);
 
@@ -1778,6 +1787,7 @@ export function PurchasePanel({
     selectedMethodActive &&
     variableAmountOk &&
     qtyOk &&
+    !needsSignIn &&
     !loading;
   // Tell the user *why* the pay button is inactive instead of leaving a dimmed
   // button with no explanation.
@@ -2733,9 +2743,25 @@ export function PurchasePanel({
               }}
             />
 
+            {needsSignIn && (
+              <div className="rounded-btn border-warning/45 bg-warning/[0.06] mt-6 border px-3.5 py-3 lg:mt-4">
+                <p className="text-[13.5px] font-semibold">{t("oneTimePackTitle")}</p>
+                <p className="text-tx-mute mt-1 text-[13px]">{t("oneTimePackText")}</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    openLogin();
+                  }}
+                  className={buttonStyles({ size: "lg", className: "mt-3 w-full" })}
+                >
+                  {t("oneTimePackSignIn")}
+                </button>
+              </div>
+            )}
             <button
               type="button"
               disabled={!canPay}
+              hidden={needsSignIn}
               onClick={() => {
                 setConfirmOpen(true);
               }}
@@ -2888,13 +2914,16 @@ export function PurchasePanel({
             <button
               type="button"
               onClick={() => {
-                if (canPay) setConfirmOpen(true);
+                if (needsSignIn) openLogin();
+                else if (canPay) setConfirmOpen(true);
                 else asideRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
               }}
               className={buttonStyles({ size: "lg", className: "shrink-0 px-5" })}
             >
               {loading ? (
                 <Loader2 size={18} className="animate-spin" />
+              ) : needsSignIn ? (
+                t("oneTimePackSignInShort")
               ) : canPay ? (
                 t("pay")
               ) : (

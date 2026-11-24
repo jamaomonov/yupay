@@ -824,6 +824,33 @@ def _check_merchant_only_arguments(
         raise ValidationError("affiliate codes do not apply to merchant orders")
 
 
+def _refuse_line_shapes(body: OrderCreate, skus: dict[str, Sku], *, actor: Actor) -> None:
+    """Refuse carts this storefront cannot sell as a whole.
+
+    Raises:
+        ValidationError: A skin beside other lines, or a one-time pack bought as a guest.
+    """
+    sku_ids = [item.sku_id for item in body.items]
+    # A CS2 skin rides alone: a skin that falls through refunds its whole order to
+    # the balance (skins.checkout, plan 3a), so a second line — delivered or not —
+    # would be refunded with it.
+    if len(body.items) > 1 and any(skins_checkout.is_skin_sku(skus[sid]) for sid in sku_ids):
+        raise ValidationError(
+            "a skin is bought on an order of its own",
+            extra={"reason": "skin_order_single_line"},
+        )
+    # A one-time pack (Free Fire's Level Up) is refused by every supplier for a
+    # player who already has it, and that refusal refunds to the buyer's balance
+    # (ADR-0108) — a guest has none, so a guest cannot buy it.
+    if actor.user_id is None and actor.merchant_id is None:
+        one_time = [sid for sid in sku_ids if skus[sid].one_time_pack]
+        if one_time:
+            raise ValidationError(
+                "sign in to buy this pack",
+                extra={"reason": "login_required", "sku_ids": one_time},
+            )
+
+
 async def create_order(
     db: AsyncSession,
     body: OrderCreate,
@@ -910,14 +937,7 @@ async def create_order(
     ]
     if missing:
         raise ValidationError("unknown or inactive SKU", extra={"sku_ids": missing})
-    # A CS2 skin rides alone: a skin that falls through refunds its whole order to
-    # the balance (skins.checkout, plan 3a), so a second line — delivered or not —
-    # would be refunded with it.
-    if len(body.items) > 1 and any(skins_checkout.is_skin_sku(skus[sid]) for sid in sku_ids):
-        raise ValidationError(
-            "a skin is bought on an order of its own",
-            extra={"reason": "skin_order_single_line"},
-        )
+    _refuse_line_shapes(body, skus, actor=actor)
 
     # 2) Build order items with frozen price + validated fulfillment_data.
     # Resolved once, up front, so the variable-amount×USD guard in

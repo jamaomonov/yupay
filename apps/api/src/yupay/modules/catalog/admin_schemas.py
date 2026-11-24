@@ -443,6 +443,8 @@ class SkuCreate(BaseModel):
     active: bool = True
     # A condition shown before paying — see ``Sku.notice``.
     notice: SkuNoticeIn | None = None
+    # See ``Sku.one_time_pack``.
+    one_time_pack: bool = False
     price_overrides: list[SkuPriceOverrideIn] = Field(default_factory=list)
 
     # SSRF guard — see BrandCreate._validate_image_hosts.
@@ -512,6 +514,7 @@ class SkuUpdate(BaseModel):
     active: bool | None = None
     # Sent-aware like the variable-amount block: JSON ``null`` clears the notice.
     notice: SkuNoticeIn | None = None
+    one_time_pack: bool | None = None
     price_overrides: list[SkuPriceOverrideIn] | None = None
 
     # SSRF guard — see BrandUpdate._validate_image_hosts.
@@ -650,6 +653,7 @@ class AdminSkuOut(BaseModel):
     sort_order: int
     active: bool
     notice: SkuNoticeIn | None = None
+    one_time_pack: bool = False
     # Read side of the merchants module's ``PATCH /admin/catalog/skus/{id}/b2b``
     # — admin-only, never on the public SkuOut (the markup is margin data, same
     # sensitivity as rate_multiplier above). Writes stay on the merchants

@@ -379,6 +379,10 @@ class Sku(Base):
     # a line of text, per locale — ``{"badge": {"ru": …}, "text": {"ru": …}}``, ``badge``
     # optional (migration 0106). The storefront shows it on the tile and in the confirm step.
     notice: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    # A pack the game sells once per account (Free Fire's Level Up Packages): every
+    # supplier refuses a player who already has it. Signed-in buyers only, a refusal
+    # refunds to the balance at once, never handed to another supplier (ADR-0108).
+    one_time_pack: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     # ``active`` gates both channels, as on :class:`Brand`. ``visible_b2b`` is
     # the merchant-catalog gate on top of it. Effective B2B visibility is ``brand.visible_b2b AND sku.visible_b2b`` —
     # see the matching column on :class:`Brand`.

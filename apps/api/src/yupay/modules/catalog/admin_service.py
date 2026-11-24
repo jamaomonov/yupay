@@ -914,6 +914,7 @@ async def create_sku(db: AsyncSession, body: SkuCreate) -> Sku:
         sort_order=body.sort_order,
         active=body.active,
         notice=body.notice.model_dump() if body.notice else None,
+        one_time_pack=body.one_time_pack,
         price_overrides=[
             SkuPrice(currency=o.currency, price=o.price) for o in body.price_overrides
         ],
@@ -1011,6 +1012,8 @@ async def update_sku(db: AsyncSession, sku_id: str, body: SkuUpdate) -> Sku:
     # relaxed amount_unit/units_per_usd rule below.
     _apply_qty_bounds(row, body, sent)
     _apply_notice(row, body, sent)
+    if "one_time_pack" in sent and body.one_time_pack is not None:
+        row.one_time_pack = body.one_time_pack
     _apply_amount_unit(row, body, sent)
 
     # Validate the RESULTING row, not just the fields this request touched.

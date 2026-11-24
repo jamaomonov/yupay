@@ -701,6 +701,52 @@ async def notify_skin_refunded(order_id: str, *, try_later: bool = False) -> boo
     return await tg.send_message(bot_token=token, chat_id=chat_id, text=text)
 
 
+def pack_refund_text(*, name: str, amount: str) -> str:
+    """The bot's message for a one-time pack the supplier refused (ADR-0108)."""
+    return (
+        "<b>Пакет не удалось зачислить</b>\n\n"
+        f"{html.escape(name)}\n"
+        "Обычно так бывает, если пакет уже куплен на этом аккаунте "
+        "или уровень игрока выше уровня пакета.\n"
+        f"Деньги вернулись на баланс YuPay: <b>{html.escape(amount)}</b>"
+    )
+
+
+async def notify_pack_refunded(order_id: str, *, sku_id: str, amount: str | None = None) -> bool:
+    """Telegram: a one-time pack was refused and its money is on the balance.
+
+    Args:
+        order_id: The order.
+        sku_id: The refused line's SKU, to name the pack.
+        amount: The refunded amount in the payment currency; ``None`` = the whole order.
+    """
+    async with get_session_factory()() as db:
+        order = await _load_order(db, order_id)
+        if order is None:
+            return False
+        chat = await _resolve_chat_id(db, user_id=order.user_id)
+        if chat is None:
+            return False
+        chat_id, _name = chat
+    token = get_settings().telegram_bot_token
+    if not token:
+        return False
+    item = next((i for i in order.items if i.sku_id == sku_id), None)
+    display = build_item_display(item, locale="ru") if item is not None else None
+    name = (
+        " · ".join(p for p in (display.brand_name, display.denomination) if p)
+        if display is not None
+        else ""
+    )
+    text = pack_refund_text(
+        name=name or "Пакет",
+        amount=_format_amount(
+            amount if amount is not None else order.total_charged, order.currency
+        ),
+    )
+    return await tg.send_message(bot_token=token, chat_id=chat_id, text=text)
+
+
 async def _load_order(db: AsyncSession, order_id: str) -> Order | None:
     """Eager-load the chain we need to summarise the order in one go.
 

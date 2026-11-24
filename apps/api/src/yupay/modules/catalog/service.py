@@ -805,6 +805,7 @@ async def get_product_by_slug(
                 max_qty=sku.max_qty,
                 in_stock=sku.in_stock,
                 notice=_pick_notice(sku.notice, locale),
+                one_time_pack=sku.one_time_pack,
                 display_price=display,
             )
         )
@@ -873,6 +874,7 @@ async def get_sku_by_id(
         max_qty=sku.max_qty,
         in_stock=sku.in_stock,
         notice=_pick_notice(sku.notice, locale),
+        one_time_pack=sku.one_time_pack,
         display_price=display,
     )
 

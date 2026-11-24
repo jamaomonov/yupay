@@ -1205,6 +1205,23 @@ async def _settle_merchant_deposit(db: AsyncSession, *, task_id: str) -> None:
     # Retail CS2 skins ride the same seam: it is the one place every terminal
     # failure passes after the savepoint. Self-gated and self-contained.
     await _refund_skin_to_wallet(db, task_id=task_id)
+    # So do one-time packs (Free Fire's Level Up): a refusal refunds to the
+    # balance at once (ADR-0108). Self-gated; a fault is alerted, never raised.
+    try:
+        from yupay.modules.fulfillment.one_time_pack import refund_refused_pack
+
+        await refund_refused_pack(db, task_id=task_id, money_outcome_key=MONEY_OUTCOME_KEY)
+    except Exception as exc:  # as the skin refund: never stall the queue
+        log.exception("fulfillment.one_time_pack.refund_failed", error=type(exc).__name__)
+        failed_task = await db.get(FulfillmentTask, task_id)
+        if failed_task is not None:
+            _dispatch_alert(
+                _alert_fulfillment_error(
+                    failed_task,
+                    kind="one_time_pack_refund_failed",
+                    error=f"refund to balance failed: {type(exc).__name__}",
+                )
+            )
     try:
         row = await _merchant_of_task(db, task_id)
         if row is None:

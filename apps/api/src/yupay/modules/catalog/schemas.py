@@ -368,6 +368,13 @@ class SkuOut(BaseModel):
             " cap), in the request's locale. Absent on most SKUs."
         ),
     )
+    one_time_pack: bool = Field(
+        default=False,
+        description=(
+            "A pack sold once per game account: signed-in customers only, and a supplier"
+            " refusal refunds to the YuPay balance."
+        ),
+    )
     display_price: PriceOut | None = Field(
         default=None,
         description="Localised price. Returned only when the request specifies a currency.",

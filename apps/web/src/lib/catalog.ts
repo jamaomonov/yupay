@@ -113,6 +113,9 @@ export interface SkuOut {
   // cap), already in the request's locale. Optional for the same prerender
   // reason; absent or null means none.
   notice?: SkuNotice | null;
+  // Sold once per game account: signed-in customers only (ADR-0108). Optional
+  // for the same prerender reason.
+  one_time_pack?: boolean;
   display_price: PriceOut | null;
 }
 

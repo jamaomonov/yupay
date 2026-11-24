@@ -164,6 +164,8 @@ export interface Sku {
   image_url: string | null;
   sort_order: number;
   active: boolean;
+  /** Sold once per game account: sign-in only, a refusal refunds to the balance (ADR-0108). */
+  one_time_pack?: boolean;
   /** A condition shown before paying: a tile label and a line, per locale. */
   notice?: {
     badge?: { ru: string; en: string; uz: string } | null;

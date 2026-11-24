@@ -157,6 +157,7 @@ const skuSchema = z
     image_url: z.string().url().or(z.literal("")).optional().nullable(),
     sort_order: z.coerce.number().int().default(0),
     active: z.boolean().default(true),
+    one_time_pack: z.boolean().default(false),
     // The notice (`Sku.notice`): a tile label and the line shown before paying,
     // per locale. All empty = no notice; the text needs all three locales.
     notice_badge_ru: z.string().max(20, "до 20 символов").default(""),
@@ -281,6 +282,7 @@ const EMPTY: FormValues = {
   image_url: "",
   sort_order: 0,
   active: true,
+  one_time_pack: false,
   ...NO_NOTICE,
   price_overrides: [],
 };
@@ -302,6 +304,7 @@ interface SkuCreateBody {
   image_url: string | null;
   sort_order: number;
   active: boolean;
+  one_time_pack?: boolean;
   notice: SkuNotice | null;
   price_overrides: { currency: string; price: string }[];
 }
@@ -322,6 +325,7 @@ interface SkuPatchBody {
   image_url: string | null;
   sort_order: number;
   active: boolean;
+  one_time_pack?: boolean;
   notice: SkuNotice | null;
   price_overrides: { currency: string; price: string }[];
 }
@@ -430,6 +434,7 @@ export function SkuEditPage() {
       image_url: existing.image_url ?? "",
       sort_order: existing.sort_order,
       active: existing.active,
+      one_time_pack: existing.one_time_pack ?? false,
       ...noticeFields(existing.notice ?? null),
       price_overrides: existing.price_overrides.map((o) => ({
         currency: o.currency,
@@ -585,6 +590,7 @@ export function SkuEditPage() {
           image_url: values.image_url?.trim() || null,
           sort_order: values.sort_order,
           active: values.active,
+          one_time_pack: values.one_time_pack,
           notice: noticeBody(values),
           price_overrides: values.price_overrides.map((o) => ({
             currency: o.currency.toUpperCase(),
@@ -609,6 +615,7 @@ export function SkuEditPage() {
         image_url: values.image_url?.trim() || null,
         sort_order: values.sort_order,
         active: values.active,
+        one_time_pack: values.one_time_pack,
         notice: noticeBody(values),
         price_overrides: values.price_overrides.map((o) => ({
           currency: o.currency.toUpperCase(),
@@ -918,6 +925,16 @@ export function SkuEditPage() {
               </label>
             </Field>
           </div>
+
+          <Field
+            label="Разовый пакет"
+            help="Игра продаёт его один раз на аккаунт (Level Up в Free Fire). Купить можно только после входа; если поставщик откажет, деньги сразу вернутся на баланс покупателя."
+          >
+            <label className="mt-1 flex h-10 items-center gap-2 rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm">
+              <input type="checkbox" {...form.register("one_time_pack")} className="size-4" />
+              Только после входа, отказ — на баланс
+            </label>
+          </Field>
 
           <Field
             label="Плашка перед оплатой"
