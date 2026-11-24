@@ -286,7 +286,10 @@ async def set_rule(
     mode: Mode,
     supplier_slug: str | None,
     admin_id: str,
+    managed: bool = False,
 ) -> SkuSourcingRule:
+    """Write one SKU's rule. An operator's save pins it (``managed=False``);
+    the smart-routing job passes ``managed=True`` to keep moving it (ADR-0108)."""
     if mode == "force_supplier" and not supplier_slug:
         raise ValidationError("supplier_slug is required for mode=force_supplier")
     if mode != "force_supplier" and supplier_slug:
@@ -340,12 +343,14 @@ async def set_rule(
             sku_id=sku_id,
             mode=mode,
             supplier_slug=supplier_slug,
+            managed=managed and mode == "force_supplier",
             updated_by=admin_id,
         )
         db.add(existing)
     else:
         existing.mode = mode
         existing.supplier_slug = supplier_slug
+        existing.managed = managed and mode == "force_supplier"
         existing.updated_by = admin_id
         existing.updated_at = now()
     await db.flush()

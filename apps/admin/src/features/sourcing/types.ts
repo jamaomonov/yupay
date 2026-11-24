@@ -122,6 +122,8 @@ export interface SourcingBrandSkuOut {
   primary: string;
   fallback: string | null;
   rule_present: boolean;
+  /** Smart routing moves this SKU's supplier (ADR-0108). */
+  managed?: boolean;
   suppliers: SourcingBrandSupplierOut[];
 }
 

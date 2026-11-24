@@ -20647,6 +20647,11 @@
             ],
             "title": "Fallback"
           },
+          "managed": {
+            "default": false,
+            "title": "Managed",
+            "type": "boolean"
+          },
           "price_usd": {
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Price Usd",
@@ -20917,6 +20922,31 @@
         "title": "SourcingDecisionOut",
         "type": "object"
       },
+      "SourcingManagedIn": {
+        "additionalProperties": false,
+        "description": "Hand SKUs to smart routing, or take them back (pin the current supplier).",
+        "properties": {
+          "managed": {
+            "title": "Managed",
+            "type": "boolean"
+          },
+          "sku_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Sku Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "sku_ids",
+          "managed"
+        ],
+        "title": "SourcingManagedIn",
+        "type": "object"
+      },
       "SourcingRuleIn": {
         "additionalProperties": false,
         "properties": {
@@ -21027,6 +21057,11 @@
             ],
             "title": "Denomination"
           },
+          "managed": {
+            "default": false,
+            "title": "Managed",
+            "type": "boolean"
+          },
           "mode": {
             "enum": [
               "auto",
@@ -21121,13 +21156,40 @@
             ],
             "title": "Failover Mode",
             "type": "string"
+          },
+          "smart_dwell_hours": {
+            "title": "Smart Dwell Hours",
+            "type": "integer"
+          },
+          "smart_mode": {
+            "enum": [
+              "off",
+              "shadow",
+              "on"
+            ],
+            "title": "Smart Mode",
+            "type": "string"
+          },
+          "smart_stock_step_pct": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Smart Stock Step Pct",
+            "type": "string"
+          },
+          "smart_switch_pct": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Smart Switch Pct",
+            "type": "string"
           }
         },
         "required": [
           "failover_mode",
           "failover_min_margin_retail_pct",
           "failover_min_margin_b2b_pct",
-          "failover_max_step_pct"
+          "failover_max_step_pct",
+          "smart_mode",
+          "smart_switch_pct",
+          "smart_dwell_hours",
+          "smart_stock_step_pct"
         ],
         "title": "SourcingSettingsOut",
         "type": "object"
@@ -21202,9 +21264,190 @@
               }
             ],
             "title": "Failover Mode"
+          },
+          "smart_dwell_hours": {
+            "anyOf": [
+              {
+                "maximum": 168.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Smart Dwell Hours"
+          },
+          "smart_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "off",
+                  "shadow",
+                  "on"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Smart Mode"
+          },
+          "smart_stock_step_pct": {
+            "anyOf": [
+              {
+                "maximum": 50.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Smart Stock Step Pct"
+          },
+          "smart_switch_pct": {
+            "anyOf": [
+              {
+                "maximum": 50.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Smart Switch Pct"
           }
         },
         "title": "SourcingSettingsPatch",
+        "type": "object"
+      },
+      "SourcingSwitchListOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SourcingSwitchOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "SourcingSwitchListOut",
+        "type": "object"
+      },
+      "SourcingSwitchOut": {
+        "description": "One logged smart-routing switch, with the SKU's name for the admin list.",
+        "properties": {
+          "applied": {
+            "title": "Applied",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "from_cost_usdt": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Cost Usdt"
+          },
+          "from_supplier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Supplier"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "sku_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sku Code"
+          },
+          "sku_id": {
+            "title": "Sku Id",
+            "type": "string"
+          },
+          "to_cost_usdt": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To Cost Usdt"
+          },
+          "to_supplier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To Supplier"
+          }
+        },
+        "required": [
+          "sku_id",
+          "from_supplier",
+          "to_supplier",
+          "from_cost_usdt",
+          "to_cost_usdt",
+          "reason",
+          "applied",
+          "created_at"
+        ],
+        "title": "SourcingSwitchOut",
         "type": "object"
       },
       "StatsOut": {
@@ -37733,6 +37976,81 @@
         ]
       }
     },
+    "/api/v1/admin/sourcing/rules:managed": {
+      "put": {
+        "operationId": "set_managed_route_api_v1_admin_sourcing_rules_managed_put",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourcingManagedIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourcingBulkRuleOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Hand SKUs to smart routing, or pin them (ADR-0108)",
+        "tags": [
+          "admin:sourcing"
+        ]
+      }
+    },
     "/api/v1/admin/sourcing/settings": {
       "get": {
         "operationId": "get_settings_route_api_v1_admin_sourcing_settings_get",
@@ -37850,6 +38168,65 @@
           }
         },
         "summary": "Edit the smart-sourcing switches (ADR-0108)",
+        "tags": [
+          "admin:sourcing"
+        ]
+      }
+    },
+    "/api/v1/admin/sourcing/switches": {
+      "get": {
+        "operationId": "list_switches_route_api_v1_admin_sourcing_switches_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourcingSwitchListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Recent smart-routing switches (ADR-0108)",
         "tags": [
           "admin:sourcing"
         ]

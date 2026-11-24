@@ -151,3 +151,51 @@ async def bulk_set_rules(
 
 
 __all__ = ["bulk_set_rules"]
+
+
+async def set_managed(
+    db: AsyncSession, *, sku_ids: list[str], managed: bool, admin_id: str
+) -> list[SourcingBulkRuleResultOut]:
+    """Hand SKUs to smart routing (ADR-0108), or take them back as a pin.
+
+    The supplier does not change here: a SKU keeps the one it routes to now,
+    and from the next hourly pass the job may move it. A SKU with no explicit
+    rule gets one on its current route; one that routes to the warehouse or the
+    manual queue cannot be handed over and is reported, not skipped silently.
+    """
+    from yupay.modules.sourcing.models import SkuSourcingRule
+
+    results: list[SourcingBulkRuleResultOut] = []
+    for sku_id in sku_ids:
+        try:
+            async with db.begin_nested():
+                await inv_svc.get_sku_or_404(db, sku_id)
+                rule = await db.get(SkuSourcingRule, sku_id, with_for_update=True)
+                if rule is None or rule.mode != "force_supplier":
+                    slug = await _routed_supplier(db, sku_id)
+                    rule = await set_rule(
+                        db,
+                        sku_id=sku_id,
+                        mode="force_supplier",
+                        supplier_slug=slug,
+                        admin_id=admin_id,
+                    )
+                rule.managed = managed
+                rule.updated_by = admin_id
+                await db.flush()
+        except (ValidationError, NotFoundError) as exc:
+            results.append(SourcingBulkRuleResultOut(sku_id=sku_id, ok=False, error=exc.detail))
+            continue
+        results.append(SourcingBulkRuleResultOut(sku_id=sku_id, ok=True))
+    return results
+
+
+async def _routed_supplier(db: AsyncSession, sku_id: str) -> str:
+    """The supplier a SKU routes to now; refuses the warehouse and the manual queue."""
+    from yupay.modules.sourcing.service import resolve_for_sku
+
+    decision = await resolve_for_sku(db, sku_id)
+    slug = decision.primary.removeprefix("supplier:")
+    if not decision.primary.startswith("supplier:") or slug == "manual":
+        raise ValidationError("routes to the warehouse or the manual queue")
+    return slug

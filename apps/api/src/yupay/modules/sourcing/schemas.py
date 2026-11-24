@@ -38,6 +38,8 @@ class SourcingRuleOut(BaseModel):
     brand_name: str | None = None
     mode: Mode
     supplier_slug: str | None
+    #: The smart-routing job moves this rule's supplier (ADR-0108).
+    managed: bool = False
     updated_by: str | None
     updated_at: datetime
     #: What the switch did to our cost basis, and to the shelf price.
@@ -193,6 +195,8 @@ class SourcingBrandSkuOut(BaseModel):
     primary: str
     fallback: str | None
     rule_present: bool
+    #: Smart routing moves this SKU's supplier (ADR-0108).
+    managed: bool = False
     suppliers: list[SourcingBrandSupplierOut]
 
 
@@ -248,3 +252,31 @@ __all__ = [
     "SourcingRuleListOut",
     "SourcingRuleOut",
 ]
+
+
+class SourcingManagedIn(BaseModel):
+    """Hand SKUs to smart routing, or take them back (pin the current supplier)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    sku_ids: list[str] = Field(min_length=1, max_length=500)
+    managed: bool
+
+
+class SourcingSwitchOut(BaseModel):
+    """One logged smart-routing switch, with the SKU's name for the admin list."""
+
+    sku_id: str
+    sku_code: str | None = None
+    label: str | None = None
+    from_supplier: str | None
+    to_supplier: str | None
+    from_cost_usdt: Decimal | None
+    to_cost_usdt: Decimal | None
+    reason: str
+    applied: bool
+    created_at: datetime
+
+
+class SourcingSwitchListOut(BaseModel):
+    items: list[SourcingSwitchOut]

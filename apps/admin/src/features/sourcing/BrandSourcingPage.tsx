@@ -13,6 +13,7 @@
  * mints Idempotency-Keys. */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Button } from "@yupay/ui";
 import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
@@ -33,7 +34,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { SearchBox } from "@/components/SearchBox";
 import { ErrorState } from "@/components/States";
 import { useToast } from "@/components/Toast";
-import { apiGet } from "@/lib/api";
+import { api, apiGet } from "@/lib/api";
 import { extractApiMessage } from "@/lib/apiError";
 import { qk } from "@/lib/queryKeys";
 import { matchesText } from "@/lib/textSearch";
@@ -88,6 +89,21 @@ export function BrandSourcingPage() {
     const map = new Map(items.map((i) => [i.sku_id, i.sku_code]));
     return (skuId: string) => map.get(skuId) ?? skuId;
   }, [items]);
+
+  // Hand the ticked SKUs to smart routing, or pin them where they are (ADR-0108).
+  const managedMutation = useMutation<SourcingBulkRuleOut, unknown, { managed: boolean }>({
+    mutationFn: ({ managed }) =>
+      api<SourcingBulkRuleOut>("/api/v1/admin/sourcing/rules:managed", {
+        method: "PUT",
+        headers: { "Idempotency-Key": crypto.randomUUID() },
+        body: JSON.stringify({ sku_ids: [...selected], managed }),
+      }),
+    onSuccess: (data) => {
+      const failed = data.items.filter((i) => !i.ok);
+      setFailures(new Map(failed.map((f) => [f.sku_id, f.error ?? "неизвестная ошибка"])));
+      void qc.invalidateQueries({ queryKey: qk.sourcingBrandOverview(brandSlug ?? "") });
+    },
+  });
 
   const switchMutation = useMutation<SourcingBulkRuleOut, unknown, { skuIds: string[] }>({
     // `force_inventory` needs one extra step the other modes don't: a
@@ -294,6 +310,33 @@ export function BrandSourcingPage() {
           switchMutation.mutate({ skuIds: [...selected] });
         }}
       />
+
+      {selected.size > 0 && (
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] px-4 py-3 text-sm">
+          <span className="text-[var(--text-secondary)]">
+            Автовыбор поставщика для выбранных ({selected.size}):
+          </span>
+          <Button
+            size="sm"
+            disabled={managedMutation.isPending}
+            onClick={() => {
+              managedMutation.mutate({ managed: true });
+            }}
+          >
+            Включить
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={managedMutation.isPending}
+            onClick={() => {
+              managedMutation.mutate({ managed: false });
+            }}
+          >
+            Закрепить текущего
+          </Button>
+        </div>
+      )}
 
       {brandSlug === null ? (
         <p className="text-sm text-[var(--text-secondary)]">Выбери бренд, чтобы увидеть SKU.</p>

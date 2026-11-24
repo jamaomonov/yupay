@@ -5,7 +5,16 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, Numeric, String, text
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    text,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -24,6 +33,9 @@ class SkuSourcingRule(Base):
     )
     mode: Mapped[str] = mapped_column(String(24), nullable=False)
     supplier_slug: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # The hourly smart-routing job may move ``supplier_slug`` (ADR-0108). The mode
+    # stays ``force_supplier``; an operator's own save clears this (a pin).
+    managed: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     updated_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
@@ -60,6 +72,15 @@ class SourcingSettings(Base):
     failover_max_step_pct: Mapped[Decimal] = mapped_column(
         Numeric(6, 2), nullable=False, server_default="6"
     )
+    #: Smart routing: ``off`` / ``shadow`` (log only) / ``on``.
+    smart_mode: Mapped[str] = mapped_column(String(16), nullable=False, server_default="off")
+    smart_switch_pct: Mapped[Decimal] = mapped_column(
+        Numeric(6, 2), nullable=False, server_default="1"
+    )
+    smart_dwell_hours: Mapped[int] = mapped_column(Integer, nullable=False, server_default="6")
+    smart_stock_step_pct: Mapped[Decimal] = mapped_column(
+        Numeric(6, 2), nullable=False, server_default="6"
+    )
     updated_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
@@ -69,7 +90,52 @@ class SourcingSettings(Base):
         CheckConstraint(
             "failover_mode IN ('off','retail','all')", name="ck_sourcing_settings_failover_mode"
         ),
+        CheckConstraint(
+            "smart_mode IN ('off','shadow','on')", name="ck_sourcing_settings_smart_mode"
+        ),
     )
 
 
-__all__ = ["SkuSourcingRule", "SourcingSettings"]
+class SourcingSwitchLog(Base):
+    """One switch the smart-routing job made, or in ``shadow`` would have made."""
+
+    __tablename__ = "sourcing_switch_log"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True)
+    sku_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("skus.id", ondelete="CASCADE"), nullable=False
+    )
+    from_supplier: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    to_supplier: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    from_cost_usdt: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
+    to_cost_usdt: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
+    #: ``cheaper`` / ``unavailable`` / ``blocked`` (nothing acceptable to move to).
+    reason: Mapped[str] = mapped_column(String(24), nullable=False)
+    applied: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
+    )
+
+
+class SourcingQuarantine(Base):
+    """A supplier sitting out one SKU after repeated failures, until ``until``."""
+
+    __tablename__ = "sourcing_quarantine"
+
+    sku_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("skus.id", ondelete="CASCADE"), primary_key=True
+    )
+    supplier_slug: Mapped[str] = mapped_column(String(32), primary_key=True)
+    until: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    strikes: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
+    )
+
+
+__all__ = [
+    "SkuSourcingRule",
+    "SourcingQuarantine",
+    "SourcingSettings",
+    "SourcingSwitchLog",
+]

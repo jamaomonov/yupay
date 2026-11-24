@@ -371,6 +371,7 @@ async def get_brand_overview(db: AsyncSession, brand_slug: str) -> SourcingBrand
                 primary=decision.primary,
                 fallback=decision.fallback,
                 rule_present=decision.rule_present,
+                managed=bool((rule := rules_by_sku.get(sku.id)) is not None and rule.managed),
                 suppliers=suppliers,
             )
         )

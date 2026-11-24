@@ -150,7 +150,11 @@ export function BrandSourcingTable({
                   <div className="flex flex-col gap-1">
                     <span>{describeRoute(item.primary)}</span>
                     <span className="text-[10px] text-[var(--text-tertiary)]">
-                      {item.rule_present ? "явное правило" : "авто"}
+                      {item.managed
+                        ? "автовыбор поставщика"
+                        : item.rule_present
+                          ? "явное правило"
+                          : "авто"}
                     </span>
                     <div className="flex flex-wrap gap-1">
                       <QuickModeButton

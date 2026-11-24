@@ -30,9 +30,11 @@ from yupay.modules.sourcing.schemas import (
     SourcingBulkRuleIn,
     SourcingBulkRuleOut,
     SourcingDecisionOut,
+    SourcingManagedIn,
     SourcingRuleIn,
     SourcingRuleListOut,
     SourcingRuleOut,
+    SourcingSwitchListOut,
 )
 from yupay.modules.users.models import User
 
@@ -314,3 +316,36 @@ async def patch_settings_route(
         **body.model_dump(exclude_none=True, mode="json"),
     )
     return sourcing_settings.SourcingSettingsOut.model_validate(row)
+
+
+@admin_router.put(
+    "/rules:managed",
+    response_model=SourcingBulkRuleOut,
+    summary="Hand SKUs to smart routing, or pin them (ADR-0108)",
+)
+async def set_managed_route(
+    body: SourcingManagedIn,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    admin: Annotated[User, Depends(require_admin)],
+    idempotency_key: Annotated[str | None, Header(alias=IDEMPOTENCY_HEADER)] = None,
+) -> SourcingBulkRuleOut:
+    # Idempotent by construction: the same flag twice is the same end state.
+    normalize_idempotency_key(idempotency_key)
+    items = await bulk_rules_svc.set_managed(
+        db, sku_ids=body.sku_ids, managed=body.managed, admin_id=admin.id
+    )
+    return SourcingBulkRuleOut(items=items)
+
+
+@admin_router.get(
+    "/switches",
+    response_model=SourcingSwitchListOut,
+    summary="Recent smart-routing switches (ADR-0108)",
+)
+async def list_switches_route(
+    db: Annotated[AsyncSession, Depends(db_session)],
+    limit: int = 50,
+) -> SourcingSwitchListOut:
+    from yupay.modules.sourcing.smart_routing import recent_switches
+
+    return SourcingSwitchListOut(items=await recent_switches(db, limit=min(max(limit, 1), 200)))

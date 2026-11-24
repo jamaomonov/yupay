@@ -338,3 +338,14 @@ no-stock) `task.supplier` перезаписывается на slug прова�
 Одна строка (`id = 1`), правится в админке через `GET/PATCH /admin/sourcing/settings`
 (`settings.py`): режим автопередачи упавших задач и её пороги. Как их применяет fulfilment —
 `fulfillment/auto_failover.py`.
+
+## Автовыбор поставщика (`smart_routing.py`, ADR-0108)
+
+Правило с `managed = true` раз в час переводится на самого дешёвого поставщика, который может
+продать: дешевле текущего минимум на `smart_switch_pct`, не раньше `smart_dwell_hours` после
+прошлого переключения; если текущий не может продать (нет в наличии, снят с каталога, нет цены,
+карантин) — сразу, но не дороже чем на `smart_stock_step_pct`. Поставщик, трижды за сутки не
+справившийся с SKU, уходит в карантин (`sourcing_quarantine`: 6 ч, при повторе 12 и 24). Режим
+`sourcing_settings.smart_mode`: `off` / `shadow` (только журнал `sourcing_switch_log`) / `on`.
+`set_rule` (любое сохранение оператором) ставит `managed = false`; `PUT /rules:managed` включает и
+выключает автовыбор для списка SKU, не меняя поставщика.

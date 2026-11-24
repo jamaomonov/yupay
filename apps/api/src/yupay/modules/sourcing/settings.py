@@ -13,6 +13,7 @@ from yupay.core.clock import now
 from yupay.modules.sourcing.models import SourcingSettings
 
 FailoverMode = Literal["off", "retail", "all"]
+SmartMode = Literal["off", "shadow", "on"]
 _ROW_ID = 1
 
 
@@ -25,6 +26,10 @@ class SourcingSettingsOut(BaseModel):
     failover_min_margin_retail_pct: Decimal
     failover_min_margin_b2b_pct: Decimal
     failover_max_step_pct: Decimal
+    smart_mode: SmartMode
+    smart_switch_pct: Decimal
+    smart_dwell_hours: int
+    smart_stock_step_pct: Decimal
 
 
 class SourcingSettingsPatch(BaseModel):
@@ -36,6 +41,10 @@ class SourcingSettingsPatch(BaseModel):
     failover_min_margin_retail_pct: Decimal | None = Field(default=None, ge=0, le=50)
     failover_min_margin_b2b_pct: Decimal | None = Field(default=None, ge=0, le=50)
     failover_max_step_pct: Decimal | None = Field(default=None, ge=0, le=50)
+    smart_mode: SmartMode | None = None
+    smart_switch_pct: Decimal | None = Field(default=None, ge=0, le=50)
+    smart_dwell_hours: int | None = Field(default=None, ge=0, le=168)
+    smart_stock_step_pct: Decimal | None = Field(default=None, ge=0, le=50)
 
 
 async def load(db: AsyncSession) -> SourcingSettings:
@@ -51,6 +60,10 @@ async def load(db: AsyncSession) -> SourcingSettings:
         failover_min_margin_retail_pct=Decimal("3"),
         failover_min_margin_b2b_pct=Decimal("0"),
         failover_max_step_pct=Decimal("6"),
+        smart_mode="off",
+        smart_switch_pct=Decimal("1"),
+        smart_dwell_hours=6,
+        smart_stock_step_pct=Decimal("6"),
     )
 
 
@@ -74,4 +87,11 @@ async def update(
     return row
 
 
-__all__ = ["FailoverMode", "SourcingSettingsOut", "SourcingSettingsPatch", "load", "update"]
+__all__ = [
+    "FailoverMode",
+    "SmartMode",
+    "SourcingSettingsOut",
+    "SourcingSettingsPatch",
+    "load",
+    "update",
+]
