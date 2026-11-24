@@ -56,3 +56,16 @@ it("lists the whole catalogue without a category", () => {
   expect(lists()).toHaveLength(1);
   expect(lists()[0]).toMatchObject({ ecommerce: { item_list_id: "all" } });
 });
+
+it("shelves the whole catalogue by category, and a search flattens it", () => {
+  renderFilter();
+  expect(screen.getByRole("heading", { name: /Игры/ })).toBeTruthy();
+  // A brand whose category has no chip is still on the page.
+  expect(screen.getByText("Steam")).toBeTruthy();
+  expect(screen.getByText("PUBG")).toBeTruthy();
+
+  fireEvent.change(screen.getByRole("searchbox"), { target: { value: "ste" } });
+  expect(screen.queryByRole("heading")).toBeNull();
+  expect(screen.getByText("Steam")).toBeTruthy();
+  expect(screen.queryByText("PUBG")).toBeNull();
+});

@@ -8,7 +8,7 @@ import type { Metadata } from "next";
 
 import { JsonLd } from "@/components/JsonLd";
 import { TrustBand } from "@/components/sections/TrustBand";
-import { BrandTile } from "@/components/store/BrandTile";
+import { BrandIcon } from "@/components/store/BrandIcon";
 import { StoreFilter } from "@/components/store/StoreFilter";
 import { routing } from "@/i18n/routing";
 import { brandPath } from "@/lib/brand-href";
@@ -145,23 +145,15 @@ export default async function StorePage({ params }: { params: Promise<{ locale: 
   };
 
   return (
-    <main className="relative min-h-screen pb-28 pt-[120px]">
+    <main className="relative min-h-screen pb-28 pt-[96px] sm:pt-[104px]">
       <JsonLd data={collectionLd} />
       <JsonLd data={breadcrumbLd} />
       <JsonLd data={faqLd} />
 
-      <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[420px]">
-        <div className="grid-cell absolute inset-0" />
-        <div
-          className="glow-lime absolute"
-          style={{ width: 600, height: 600, right: "6%", top: "-14%" }}
-        />
-      </div>
-
       <div className="mx-auto max-w-[1200px] px-6 sm:px-10">
         <nav
           aria-label={tn("breadcrumbLabel")}
-          className="text-tx-dim mb-7 flex items-center gap-1.5 font-mono text-[11px]"
+          className="text-tx-dim mb-4 flex items-center gap-1.5 text-xs"
         >
           <Link href={pathFor(locale)} className="hover:text-tx-mute transition">
             {t("breadcrumbHome")}
@@ -170,36 +162,36 @@ export default async function StorePage({ params }: { params: Promise<{ locale: 
           <span className="text-tx-mute">{t("breadcrumbStore")}</span>
         </nav>
 
-        <div className="text-primary font-mono text-xs font-semibold uppercase tracking-[0.16em]">
-          [ {t("eyebrow")} ]
-        </div>
-        <h1 className="font-display mt-3 max-w-[760px] text-[clamp(2.2rem,5vw,3.6rem)] font-extrabold leading-[0.98] tracking-[-0.04em]">
-          {t("title")}
-        </h1>
-        <p className="text-tx-mute mt-5 max-w-[620px] text-base leading-relaxed sm:text-lg">
-          {t("subtitle")}
-        </p>
-
-        <div className="mt-7 flex flex-wrap items-center gap-3">
-          <span className="text-tx-dim font-mono text-[11px] uppercase tracking-[0.12em]">
-            {t("payWith")}
-          </span>
-          {PAY.map((p) => (
-            <span
-              key={p.name}
-              className="flex h-11 w-16 items-center justify-center rounded-lg bg-white p-1.5"
-            >
-              <Image
-                src={p.src}
-                alt={p.name}
-                title={p.name}
-                width={p.w}
-                height={p.h}
-                style={{ maxWidth: "100%", maxHeight: "100%", width: "auto", height: "auto" }}
-                className="object-contain"
-              />
-            </span>
-          ))}
+        {/* Compact on purpose: the catalogue is the page, the header only
+            names it (owner, 2026-11-24 — the old hero pushed every game below
+            the fold). */}
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between lg:gap-10">
+          <div className="max-w-[680px]">
+            <h1 className="font-display text-[clamp(1.6rem,3.4vw,2.4rem)] font-extrabold leading-[1.05] tracking-[-0.03em]">
+              {t("title")}
+            </h1>
+            <p className="text-tx-mute mt-2 line-clamp-2 text-sm leading-relaxed sm:line-clamp-none sm:text-[15px]">
+              {t("subtitle")}
+            </p>
+          </div>
+          <div role="group" className="flex shrink-0 items-center gap-2" aria-label={t("payWith")}>
+            {PAY.map((p) => (
+              <span
+                key={p.name}
+                className="flex h-8 w-12 items-center justify-center rounded-md bg-white p-1"
+              >
+                <Image
+                  src={p.src}
+                  alt={p.name}
+                  title={p.name}
+                  width={p.w}
+                  height={p.h}
+                  style={{ maxWidth: "100%", maxHeight: "100%", width: "auto", height: "auto" }}
+                  className="object-contain"
+                />
+              </span>
+            ))}
+          </div>
         </div>
 
         <StoreFilter
@@ -212,17 +204,8 @@ export default async function StorePage({ params }: { params: Promise<{ locale: 
             category: brand.category_slug,
             name: brand.name,
             // The key lives on the tile itself: `StoreFilter` renders it as the
-            // direct grid child, because `BrandTile` is an `<a>` and an `<a>`
-            // only gets its height once the grid blockifies it.
-            node: (
-              <BrandTile
-                key={brand.slug}
-                brand={brand}
-                locale={locale}
-                variant="grid"
-                className="h-[150px] sm:h-[240px]"
-              />
-            ),
+            // direct grid child.
+            node: <BrandIcon key={brand.slug} brand={brand} locale={locale} />,
           }))}
         />
 

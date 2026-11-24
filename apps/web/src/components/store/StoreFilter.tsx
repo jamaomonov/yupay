@@ -7,6 +7,10 @@ import { pushAnalyticsEvent, viewItemListEvent } from "@/lib/analytics-events";
 import { inputStyles } from "@/lib/input";
 import { pathFor } from "@/lib/seo";
 
+/** The icon shelf: three across on a phone, eight on a desktop. */
+const GRID =
+  "mt-4 grid grid-cols-3 gap-x-3 gap-y-6 sm:grid-cols-4 sm:gap-x-5 md:grid-cols-6 lg:grid-cols-8";
+
 export interface StoreChip {
   slug: string;
   label: string;
@@ -111,55 +115,93 @@ export function StoreFilter({
       ? items
       : items.filter((i) => i.category === active);
 
+  // «Все» with nothing typed reads as a shelf per category; a picked category
+  // or a search is one flat grid.
+  const grouped = !needle && active === "all";
+  const sections = grouped
+    ? chips
+        .filter((c) => c.slug !== "all")
+        .map((c) => ({ chip: c, items: items.filter((i) => i.category === c.slug) }))
+        .filter((g) => g.items.length > 0)
+    : [];
+  // A brand whose category has no chip still shows, on a shelf of its own.
+  const unshelved = grouped
+    ? items.filter((i) => !chips.some((c) => c.slug !== "all" && c.slug === i.category))
+    : [];
+
   return (
     <>
-      {/* Pinned under the header on a phone: 55 games are a long scroll, and
-          the box is the way out of it. */}
-      <div className="bg-bg/90 sticky top-[64px] z-20 -mx-6 mt-8 px-6 py-2 backdrop-blur sm:static sm:mx-0 sm:bg-transparent sm:px-0 sm:py-0 sm:backdrop-blur-none">
-        <input
-          type="search"
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-          }}
-          placeholder={searchLabel}
-          aria-label={searchLabel}
-          className={inputStyles({ className: "sm:max-w-[420px]" })}
-        />
+      {/* Pinned under the fixed 72px header at every width: the search and the
+          categories are how a buyer moves through the shelf. */}
+      <div className="bg-bg/90 border-border/60 sticky top-[72px] z-20 -mx-6 mt-6 border-b px-6 py-3 backdrop-blur sm:-mx-10 sm:px-10">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+            }}
+            placeholder={searchLabel}
+            aria-label={searchLabel}
+            className={inputStyles({ className: "h-11 sm:max-w-[340px]" })}
+          />
+          {chips.length > 1 && (
+            <div className="-mx-6 flex gap-2 overflow-x-auto px-6 [scrollbar-width:none] sm:mx-0 sm:px-0">
+              {chips.map((f) => {
+                const isActive = f.slug === active && !needle;
+                const href =
+                  f.slug === "all"
+                    ? pathFor(locale, "/store")
+                    : pathFor(locale, `/store?cat=${f.slug}`);
+                return (
+                  <Link
+                    key={f.slug}
+                    href={href}
+                    onClick={() => {
+                      setQuery("");
+                    }}
+                    aria-current={isActive ? "page" : undefined}
+                    className={`inline-flex h-10 shrink-0 items-center rounded-full border px-4 text-sm font-semibold transition ${
+                      isActive
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border bg-muted text-tx-mute hover:text-foreground"
+                    }`}
+                  >
+                    {f.label}
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
-      {chips.length > 1 && (
-        <div className="mt-4 flex flex-wrap gap-2.5 sm:mt-6">
-          {chips.map((f) => {
-            const isActive = f.slug === active;
-            const href =
-              f.slug === "all"
-                ? pathFor(locale, "/store")
-                : pathFor(locale, `/store?cat=${f.slug}`);
-            return (
-              <Link
-                key={f.slug}
-                href={href}
-                aria-current={isActive ? "page" : undefined}
-                className={`inline-flex h-11 items-center rounded-full border px-4 text-sm font-semibold transition ${
-                  isActive
-                    ? "border-primary bg-primary/10 text-primary"
-                    : "border-border bg-muted text-tx-mute hover:text-foreground"
-                }`}
-              >
-                {f.label}
-              </Link>
-            );
-          })}
-        </div>
-      )}
-
-      {visible.length > 0 ? (
-        <div className="mt-5 grid grid-cols-2 gap-3 sm:mt-7 sm:gap-4 lg:grid-cols-3">
-          {visible.map((item) => item.node)}
-        </div>
-      ) : (
+      {visible.length === 0 ? (
         <p className="text-tx-mute mt-10 text-base">{emptyLabel}</p>
+      ) : grouped ? (
+        <>
+          {sections.map((g) => (
+            <section
+              key={g.chip.slug}
+              className="mt-8 sm:mt-10"
+              aria-labelledby={`shelf-${g.chip.slug}`}
+            >
+              <h2
+                id={`shelf-${g.chip.slug}`}
+                className="flex items-baseline gap-2 text-lg font-bold"
+              >
+                {g.chip.label}
+                <span className="text-tx-dim text-sm font-semibold">{g.items.length}</span>
+              </h2>
+              <div className={GRID}>{g.items.map((item) => item.node)}</div>
+            </section>
+          ))}
+          {unshelved.length > 0 && (
+            <div className={`${GRID} mt-8`}>{unshelved.map((item) => item.node)}</div>
+          )}
+        </>
+      ) : (
+        <div className={`${GRID} mt-8`}>{visible.map((item) => item.node)}</div>
       )}
     </>
   );
