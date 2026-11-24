@@ -82,9 +82,12 @@ export function OrderDetailPage() {
   // The panel opens below both columns; bring it into view when it does.
   useEffect(() => {
     if (openTaskId === null) return;
-    document
-      .getElementById("order-task-detail")
-      ?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+    // `?.()`: jsdom (the page's tests) has no scrollIntoView.
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+    document.getElementById("order-task-detail")?.scrollIntoView?.({
+      behavior: "smooth",
+      block: "start",
+    });
   }, [openTaskId]);
   // Codes stay hidden until the operator asks: they are bearer instruments, the
   // fetch is what gets audited server-side, and nobody wants them on screen
