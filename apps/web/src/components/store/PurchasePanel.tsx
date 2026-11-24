@@ -2603,10 +2603,24 @@ export function PurchasePanel({
                 </Link>
               )}
 
-              {/* One row, always: equal columns however many methods the admin
-                  has switched on, so there is never an empty slot beside the
-                  last tile. Labels wrap to two lines when it gets tight. */}
-              <div className="grid auto-cols-fr grid-flow-col gap-2">
+              {/* Two rows: half as many equal columns as the methods the admin
+                  has switched on (rounded up). Six in one row squeezed every
+                  label onto two lines. */}
+              <div
+                className="grid gap-2"
+                style={{
+                  gridTemplateColumns: `repeat(${String(
+                    Math.max(
+                      1,
+                      Math.ceil(
+                        METHODS.filter(
+                          (m) => methodVisibility(m.provider, providerStatus) !== "hidden",
+                        ).length / 2,
+                      ),
+                    ),
+                  )}, minmax(0, 1fr))`,
+                }}
+              >
                 {METHODS.map((m) => {
                   // Absent from the providers response → admin-disabled, not
                   // offered at all. `maintenance` still renders, but greyed
