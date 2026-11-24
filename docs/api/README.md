@@ -106,6 +106,16 @@ other endpoint. Guests never connect (`useOrderSocket` mounts only for a logged-
 | Uzum     | `/webhooks/payments/uzum`     | HMAC over body                                                     |
 | Crypto   | `/webhooks/payments/crypto`   | HMAC over body                                                     |
 
+### FoxReload (`POST /api/v1/webhooks/foxreload`)
+
+Supplier callback (ADR-0107), `order.completed` / `order.action_required`.
+
+- **Auth:** `X-Webhook-Signature: t=<unix>,v1=<hex>`, HMAC-SHA256 under
+  `FOXRELOAD_WEBHOOK_SECRET` over `"{t}." + raw body`, checked before parsing; a timestamp more
+  than 5 minutes off, a bad signature or an unset secret answers 401.
+- **Effect:** only marks the matching task due; the reconcile sweep reads the order. Anything
+  else (unknown order, other event, unparseable body) answers 200. Rate-limit exempt.
+
 ### Telegram P2P (`POST /webhooks/telegram/p2p`)
 
 Not a payment provider: Telegram posts the owner's @HUMOcardbot notifications (via a

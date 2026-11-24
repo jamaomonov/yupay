@@ -145,6 +145,7 @@ def _exempt_self_authenticating_routes(limiter: Limiter) -> None:
     day it is written. The callbacks stay an explicit list: they live in five
     different modules and each is its own deliberate decision.
     """
+    from yupay.api.webhooks.foxreload import receive_foxreload_webhook
     from yupay.api.webhooks.fzr import receive_fzr_webhook
     from yupay.api.webhooks.g2b import receive_g2b_webhook
     from yupay.api.webhooks.telegram_p2p import receive_p2p_update
@@ -164,6 +165,9 @@ def _exempt_self_authenticating_routes(limiter: Limiter) -> None:
         # own caller. A 429 here would count toward FazerCards' 50-failure
         # auto-disable and cost us the feature, not just one event.
         receive_fzr_webhook,
+        # Signed (HMAC over timestamp + raw body); a 429 would only burn their
+        # five retries of an event the sweep then has to find on its own.
+        receive_foxreload_webhook,
         # Telegram retries non-2xx; it authenticates with the secret header.
         receive_p2p_update,
         payme_merchant,

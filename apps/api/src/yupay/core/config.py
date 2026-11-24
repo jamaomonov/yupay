@@ -908,6 +908,9 @@ class Settings(BaseSettings):
     foxreload_api_key: str = Field(default="")
     foxreload_base_url: str = Field(default="https://public-api.foxreload.com")
     foxreload_request_timeout_seconds: float = Field(default=20.0)
+    #: Secret of the webhook registered in their dashboard («Вебхуки»), shown
+    #: once at creation. Empty → the receiver refuses every delivery.
+    foxreload_webhook_secret: str = Field(default="")
     #: Where a Steam line FoxReload cannot take goes. Empty → it stays on
     #: FoxReload and fails there with our money intact (graded RETURNED).
     foxreload_overflow_supplier: str = Field(default="waxpeer")

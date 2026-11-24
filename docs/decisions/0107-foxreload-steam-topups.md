@@ -39,7 +39,7 @@ channel that can buy it exactly.
 - An order is create (unpaid) + pay. Their `idempotencyKey` is refused on reuse
   (`ORDER_ALREADY_EXISTS`), so a repeat looks the order up by key; `foxreload` is in
   `KEY_REPLAYS_DEAD_ORDER` for the same reason as `fzr`. A lost `pay` is finished by the
-  `fulfillment.foxreload_reconcile` sweep (60 s), which pays an order still unpaid.
+  `fulfillment.foxreload_reconcile` sweep (10 s, the panel vendors' due-check runner), which pays an order still unpaid.
 - They refund a failed wholesale item on their own (`refunded`): graded `RETURNED`.
 
 ### Consequences
@@ -47,7 +47,9 @@ channel that can buy it exactly.
 - Good: cheaper Steam for 3 of 4 orders, nothing changes for the buyer, one-click full switch.
 - Bad: two suppliers to fund for Steam; the Steam login check stays on Waxpeer
   (FoxReload's `GET /api/steam/check-login` is 1 request/second and unused for now).
-- Neutral: no webhook registered — the sweep is enough at our volume and needs no public route.
+- Neutral: the `order.completed` webhook (`/api/v1/webhooks/foxreload`, HMAC over
+  `"{t}." + body`, 5-minute tolerance) only marks the task due; the 10 s panel-style sweep reads
+  the order. Failed/refunded orders send no event — the sweep finds them.
 
 ## Links
 

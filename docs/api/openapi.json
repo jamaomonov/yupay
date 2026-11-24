@@ -44739,6 +44739,52 @@
         ]
       }
     },
+    "/api/v1/webhooks/foxreload": {
+      "post": {
+        "description": "Verify, find the task, mark it due, answer. Nothing slow here.",
+        "operationId": "receive_foxreload_webhook_api_v1_webhooks_foxreload_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Webhook-Signature",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Webhook-Signature",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Receive Foxreload Webhook Api V1 Webhooks Foxreload Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "FoxReload order callback",
+        "tags": [
+          "webhooks:foxreload"
+        ]
+      }
+    },
     "/api/v1/webhooks/fzr": {
       "post": {
         "description": "Verify, identify the task, mark it due, answer. Nothing slow here.",
