@@ -899,6 +899,23 @@ class Settings(BaseSettings):
     fzr_player_check_enabled: bool = Field(default=True)
     fzr_request_timeout_seconds: float = Field(default=20.0)
 
+    # --- supplier: FoxReload (public-api.foxreload.com, ADR-0107) ---
+    # Steam wallet top-ups by login. Their Steam product is sold in whole
+    # dollars, so a line with cents or above their per-item cap cannot be
+    # bought there: those lines go to ``foxreload_overflow_supplier`` instead
+    # (``fulfillment.service``). Key from their dashboard «API ключи»; bind it
+    # to the VPS IP there. Empty key → ``available=False``.
+    foxreload_api_key: str = Field(default="")
+    foxreload_base_url: str = Field(default="https://public-api.foxreload.com")
+    foxreload_request_timeout_seconds: float = Field(default=20.0)
+    #: Where a Steam line FoxReload cannot take goes. Empty → it stays on
+    #: FoxReload and fails there with our money intact (graded RETURNED).
+    foxreload_overflow_supplier: str = Field(default="waxpeer")
+    #: Their per-item bounds for "Steam Wallet 1 USD (Global)", read off the
+    #: catalogue 2026-11-24 (``orderMinQuantity`` 1, ``orderMaxQuantity`` 175).
+    foxreload_steam_min_usd: int = Field(default=1)
+    foxreload_steam_max_usd: int = Field(default=175)
+
     # --- Steam Gifts ---
     # Region-priced Steam gift packages, fulfilled through the G-Engine gifts
     # endpoints (see ``fulfillment.suppliers.gengine``). ``steam_gifts_enabled``

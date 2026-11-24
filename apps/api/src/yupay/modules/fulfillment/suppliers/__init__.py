@@ -22,6 +22,7 @@ from yupay.modules.fulfillment.suppliers.base import (
     MoneyOutcome,
 )
 from yupay.modules.fulfillment.suppliers.csmarket_skins import CsmarketFulfiller
+from yupay.modules.fulfillment.suppliers.foxreload import FoxreloadFulfiller
 from yupay.modules.fulfillment.suppliers.fzr import FzrFulfiller
 from yupay.modules.fulfillment.suppliers.g2b import G2bFulfiller
 from yupay.modules.fulfillment.suppliers.gengine import GEngineFulfiller
@@ -61,6 +62,10 @@ REGISTRY: dict[str, Fulfiller] = {
     # sourcing: a skin line priced against a csmarket offer is routed here by the line
     # itself (``fulfillment.service``). `available` reads the key per call.
     "csmarket": CsmarketFulfiller(),
+    # Steam wallet top-ups in whole dollars (ADR-0107). A line it cannot sell
+    # (cents, above its cap) is sent to `foxreload_overflow_supplier` by
+    # `fulfillment.service` before a task exists. Same hot-reload rule.
+    "foxreload": FoxreloadFulfiller(),
     "steam": StubFulfiller(
         supplier="steam",
         todo_message="Steam supplier not integrated yet; see ADR-0013.",
@@ -106,6 +111,7 @@ def available_suppliers() -> list[str]:
 
 __all__ = [
     "REGISTRY",
+    "FoxreloadFulfiller",
     "FulfillResult",
     "FulfillStatus",
     "Fulfiller",

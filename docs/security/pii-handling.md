@@ -44,6 +44,10 @@ supplier (`source`) and internal/external ids (`external_id`,
 `amount_units`) are never exposed to the customer — admins see the full row via
 `/admin/fulfillment`.
 
+**Steam login to FoxReload (ADR-0107).** A whole-dollar Steam line sends the buyer's Steam
+login to FoxReload in the order item's `note.login`, exactly as Waxpeer receives it; the
+adapter never logs it.
+
 **Recipient echo in the merchant cabinet.** The cabinet's order list and detail
 show a reseller the recipient fields they themselves sent with the order
 (`order_items.fulfillment_data`: Telegram username, Steam login, player id,

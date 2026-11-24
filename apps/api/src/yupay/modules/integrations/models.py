@@ -42,7 +42,9 @@ from yupay.core.db import Base
 #: ``force_supplier`` rule that would fail every order) and ``fulfillment``
 #: (refusing to reassign a task the same way) can read it without an import
 #: cycle. Mirrors ``FULFILMENT_ROUTES[].mappings`` in the admin.
-MAPPING_REQUIRED_SUPPLIERS: frozenset[str] = frozenset({"g2b", "gengine", "nova", "fzr"})
+MAPPING_REQUIRED_SUPPLIERS: frozenset[str] = frozenset(
+    {"g2b", "gengine", "nova", "fzr", "foxreload"}
+)
 
 #: Suppliers a SKU is never routed to **automatically**, however its mapping got
 #: there. A reserve exists to be switched to on purpose: an operator sets

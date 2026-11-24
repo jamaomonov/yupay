@@ -234,7 +234,15 @@ export interface PriceRefreshOut {
 
 /** All G2B-flavoured slugs we expose in the admin today. Extend when adding
  *  Steam / Riot / etc. */
-export const KNOWN_SUPPLIERS = ["g2b", "waxpeer", "gengine", "nova", "fzr", "csmarket"] as const;
+export const KNOWN_SUPPLIERS = [
+  "g2b",
+  "waxpeer",
+  "gengine",
+  "nova",
+  "fzr",
+  "csmarket",
+  "foxreload",
+] as const;
 export type KnownSupplier = (typeof KNOWN_SUPPLIERS)[number];
 
 export const SUPPLIER_LABELS: Record<KnownSupplier, string> = {
@@ -244,6 +252,7 @@ export const SUPPLIER_LABELS: Record<KnownSupplier, string> = {
   nova: "NOVA",
   fzr: "FazerCards",
   csmarket: "csmarket",
+  foxreload: "FoxReload",
 };
 
 /**
@@ -305,6 +314,8 @@ export const SUPPLIER_CAPABILITIES: Record<KnownSupplier, SupplierCapabilities> 
   // FazerCards publishes the same panel API NOVA does, so it syncs the same
   // two catalogues through the same endpoint. No importer either.
   fzr: { catalogueSync: true, gameImport: false },
+  // One mapping by hand (the Steam USD product id); no catalogue sync yet.
+  foxreload: { catalogueSync: false, gameImport: false },
 };
 
 /**
@@ -392,6 +403,13 @@ export const FULFILMENT_ROUTES: FulfilmentRoute[] = [
     external: true,
     mappings: true,
     note: "резерв: игры + подарочные карты",
+  },
+  {
+    slug: "foxreload",
+    label: "FoxReload",
+    external: true,
+    mappings: true,
+    note: "пополнение Steam целыми $ (остальное — в Waxpeer)",
   },
   {
     slug: "mock",

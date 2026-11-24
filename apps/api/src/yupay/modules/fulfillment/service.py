@@ -132,7 +132,11 @@ KEY_BURNED_ON_USE: frozenset[str] = frozenset({"nova"})
 #: old order is refunded or was never charged, so there is nothing left that a
 #: new purchase could duplicate. Any other standing keeps the key, and with it
 #: the replay that stops a second purchase.
-KEY_REPLAYS_DEAD_ORDER: frozenset[str] = frozenset({"fzr"})
+#:
+#: ``foxreload`` belongs here for a different mechanism with the same effect: it
+#: refuses a reused ``idempotencyKey`` and the adapter then *finds* the order
+#: made under it — a refunded one included — so the retry reads the dead order.
+KEY_REPLAYS_DEAD_ORDER: frozenset[str] = frozenset({"fzr", "foxreload"})
 
 _RETRY_NONCE_KEY = "idempotency_nonce"
 
@@ -342,6 +346,28 @@ def _line_route(item: OrderItem) -> str | None:
     """The supplier the line itself names, when checkout bound it to one."""
     named = (item.fulfillment_data or {}).get("supplier")
     return named if named in _LINE_ROUTED_SUPPLIERS else None
+
+
+def _overflow_route(item: OrderItem, route: str) -> str:
+    """Send a line its routed supplier cannot sell to that supplier's overflow.
+
+    Only FoxReload has one (ADR-0107): it sells Steam in whole dollars up to a
+    cap, so a line with cents or above the cap goes to
+    ``foxreload_overflow_supplier`` (Waxpeer by default). Sourcing still decides
+    the SKU's supplier — ``force_supplier = waxpeer`` sends everything to
+    Waxpeer, ``force_supplier = foxreload`` splits like this — and an empty
+    overflow setting leaves the line on FoxReload, which refuses it before any
+    call with our money intact.
+    """
+    if route != "foxreload":
+        return route
+    from yupay.modules.fulfillment.suppliers.foxreload import takes_line
+
+    overflow = get_settings().foxreload_overflow_supplier.strip()
+    if takes_line(item) or not overflow:
+        return route
+    log.info("fulfillment.foxreload_overflow", order_item_id=item.id, to=overflow)
+    return overflow
 
 
 def _supplier_slug(route: str) -> str:
@@ -662,7 +688,9 @@ async def start_for_order(
             order_id=order.id,
             order_item_id=item.id,
             supplier=_line_route(item)
-            or _route_label(await sourcing_svc.resolve_for_sku(db, item.sku_id)),
+            or _overflow_route(
+                item, _route_label(await sourcing_svc.resolve_for_sku(db, item.sku_id))
+            ),
             status="pending",
         )
         db.add(task)

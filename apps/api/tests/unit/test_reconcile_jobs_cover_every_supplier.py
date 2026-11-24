@@ -22,7 +22,7 @@ from yupay_scheduler.main import build_scheduler
 #: and therefore need somebody to poll. A fulfiller that answers terminally on
 #: the spot does not belong here — `manual` waits on an operator, `mock` and
 #: the stubs never call anyone.
-NEEDS_A_SWEEP = ("g2b", "gengine", "nova", "fzr", "waxpeer")
+NEEDS_A_SWEEP = ("g2b", "gengine", "nova", "fzr", "waxpeer", "foxreload")
 
 
 @pytest.fixture

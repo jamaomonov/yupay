@@ -173,7 +173,9 @@ async def sku_codes_for(db: AsyncSession, sku_ids: Iterable[str]) -> dict[str, s
 #: top-up named a denomination. Applied to an unfixed service it demands an id
 #: that does not exist upstream, which would make such a SKU unmappable — from
 #: this seed *and* from the admin form, which calls the same function.
-_AMOUNT_PRICED_SUPPLIERS = frozenset({"gengine"})
+#: FoxReload (ADR-0107) sells Steam as a per-dollar product bought ``amount``
+#: times: the product id is the whole mapping, there is no variant to name.
+_AMOUNT_PRICED_SUPPLIERS = frozenset({"gengine", "foxreload"})
 
 
 def _is_amount_priced(payload: MappingUpsert) -> bool:

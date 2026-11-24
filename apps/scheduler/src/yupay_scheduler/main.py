@@ -45,6 +45,7 @@ from yupay_scheduler.jobs import (
     catalog_watch,
     click_timeout,
     expire_orders,
+    foxreload_reconcile,
     fx_refresh,
     fzr_reconcile,
     g2b_reconcile,
@@ -121,6 +122,7 @@ def build_scheduler() -> AsyncIOScheduler:
     sync_supplier_catalog.register(scheduler)
     uzum_timeout.register(scheduler)
     waxpeer_reconcile.register(scheduler)
+    foxreload_reconcile.register(scheduler)
     return scheduler
 
 
