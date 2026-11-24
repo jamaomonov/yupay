@@ -244,3 +244,22 @@ def test_an_empty_overflow_keeps_the_line_on_foxreload(monkeypatch: pytest.Monke
     monkeypatch.setenv("FOXRELOAD_OVERFLOW_SUPPLIER", "")
     cfg.get_settings.cache_clear()
     assert fsvc._overflow_route(_item("10.50"), "foxreload") == "foxreload"
+
+
+async def test_the_charge_they_took_is_handed_to_the_margin() -> None:
+    with respx.mock(base_url=BASE) as mock:
+        mock.post("/api/orders/").respond(200, json=_order("active"))
+        mock.post(f"/api/orders/{ORDER_ID}/pay").respond(200, json={"id": "p1"})
+        mock.get(f"/api/orders/{ORDER_ID}").respond(200, json=_order("completed"))
+        result = await _fulfill(_item("10"))
+    # $10 of wallet for $9.549: the margin sees the discount, not face value.
+    assert result.extra_metadata["supplier_charged_usd"] == "9.549"
+
+
+async def test_an_unpaid_order_states_no_charge() -> None:
+    with respx.mock(base_url=BASE) as mock:
+        mock.post("/api/orders/").respond(200, json=_order("active"))
+        mock.post(f"/api/orders/{ORDER_ID}/pay").mock(return_value=_err(400, "BALANCE_NOT_ENOUGH"))
+        mock.get("/api/access/me/balances/").respond(200, json=[])
+        result = await _fulfill(_item("10"))
+    assert "supplier_charged_usd" not in result.extra_metadata

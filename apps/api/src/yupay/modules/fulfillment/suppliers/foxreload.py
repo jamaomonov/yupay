@@ -71,6 +71,8 @@ _RETURNED = MoneyOutcome.RETURNED
 _UNKNOWN = MoneyOutcome.UNKNOWN
 
 _IN_FLIGHT = frozenset({"active", "paid", "processing", "action_required"})
+#: Nothing was debited for an order in these: no charge to record.
+_UNPAID = frozenset({"active", "cancelled"})
 
 
 def steam_quantity(item: OrderItem) -> int | None:
@@ -355,6 +357,10 @@ class _Graded:
 def _grade(fox: FoxOrder, *, item: OrderItem, login: str, dollars: int) -> _Graded:
     """What one FoxReload order means for our line. Every path returns."""
     extra: dict[str, Any] = {"foxreload_status": fox.status}
+    if fox.status not in _UNPAID and fox.price is not None and fox.price > 0:
+        # What they debited, in USD: the margin reads this instead of assuming a
+        # wallet dollar costs a dollar (``service._record_supplier_charge``).
+        extra["supplier_charged_usd"] = str(fox.price)
     if fox.status == "completed":
         return _Graded(
             outcome="succeeded",
