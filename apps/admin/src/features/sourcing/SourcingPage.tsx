@@ -16,6 +16,7 @@ import { Button } from "@yupay/ui";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
+import { FailoverSettingsCard } from "./FailoverSettingsCard";
 import { RulesTable } from "./RulesTable";
 import { autoHintFor, disabledReasonFor, MODE_CARDS, ModeOption } from "./SourcingModeCards";
 import { RoutePreview, SkuSummary } from "./SourcingSkuPanel";
@@ -217,6 +218,8 @@ export function SourcingPage() {
           </Link>
         }
       />
+
+      <FailoverSettingsCard />
 
       <section className="space-y-5 rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-5 shadow-[var(--shadow-sm)]">
         <div>

@@ -1,6 +1,6 @@
 # 0108. Умный сорсинг и автопередача упавших задач
 
-- **Status**: Accepted (2026-11-24); part 1a implemented, 1b and 2 pending
+- **Status**: Accepted (2026-11-24); parts 1a and 1b implemented, 2 pending
 - **Date**: 2026-11-24
 - **Deciders**: владелец
 - **Tags**: backend | data
@@ -201,5 +201,13 @@ Mythic Emblem Pack, «первое пополнение» MLBB и похожие
   показывает «Войти и купить»; `fulfillment/one_time_pack.py` возвращает отказанный пакет на
   баланс (весь заказ — если строка одна, иначе только строку, когда остальные доставлены) и пишет
   покупателю в бот. Сид `scripts/seed/2026-11-24_free_fire_one_time_packs.sql`.
-- **1b (next):** автопередача упавшей задачи.
+- **1b (done, migration 0114):** `sourcing_settings` (одна строка, автопередача **выключена**
+  по умолчанию) и карточка «Автопередача при отказе поставщика» на странице «Сорсинг» в админке
+  (`GET/PATCH /admin/sourcing/settings`). `fulfillment/auto_failover.py` вызывается в том же месте,
+  что и возврат скинов: задача с `money_outcome = returned`, не разовый пакет, заказ `paid` или
+  `fulfilling`, розница (или все в режиме `all`), ещё не передавалась → самый дешёвый вариант из
+  `reassign_options` с ценой и не нулевым остатком, у которого маржа ≥ порога от оплаченного и цена
+  ≤ себестоимости строки + `failover_max_step_pct` → `reassign_task(reason="auto_failover")`.
+  Отметка `extra_metadata.auto_failover` (куда передано или почему нет) и событие
+  `fulfillment.auto_failover` в истории заказа.
 - **2 (after):** автовыбор поставщика, сначала в режиме «только смотреть».

@@ -23,6 +23,7 @@ from yupay.modules.inventory import service as inv_svc
 from yupay.modules.sourcing import brand_overview as brand_overview_svc
 from yupay.modules.sourcing import bulk_rules as bulk_rules_svc
 from yupay.modules.sourcing import service as svc
+from yupay.modules.sourcing import settings as sourcing_settings
 from yupay.modules.sourcing.models import SkuSourcingRule
 from yupay.modules.sourcing.schemas import (
     SourcingBrandOverviewOut,
@@ -279,3 +280,37 @@ async def delete_rule(
     if key is not None:
         await save_replay(db, scope=scope, idempotency_key=key, body=None)
     return
+
+
+@admin_router.get(
+    "/settings",
+    response_model=sourcing_settings.SourcingSettingsOut,
+    summary="Smart-sourcing switches (ADR-0108)",
+)
+async def get_settings_route(
+    db: Annotated[AsyncSession, Depends(db_session)],
+) -> sourcing_settings.SourcingSettingsOut:
+    return sourcing_settings.SourcingSettingsOut.model_validate(await sourcing_settings.load(db))
+
+
+@admin_router.patch(
+    "/settings",
+    response_model=sourcing_settings.SourcingSettingsOut,
+    summary="Edit the smart-sourcing switches (ADR-0108)",
+)
+async def patch_settings_route(
+    body: sourcing_settings.SourcingSettingsPatch,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    admin: Annotated[User, Depends(require_admin)],
+    idempotency_key: Annotated[str | None, Header(alias=IDEMPOTENCY_HEADER)] = None,
+) -> sourcing_settings.SourcingSettingsOut:
+    # Idempotent by construction — the same patch twice sets the same values —
+    # so the header is accepted and not stored.
+    normalize_idempotency_key(idempotency_key)
+    row = await sourcing_settings.update(db, body, admin_id=admin.id)
+    log.info(
+        "sourcing.settings.updated",
+        admin_id=admin.id,
+        **body.model_dump(exclude_none=True, mode="json"),
+    )
+    return sourcing_settings.SourcingSettingsOut.model_validate(row)

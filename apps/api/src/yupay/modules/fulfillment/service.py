@@ -1205,6 +1205,19 @@ async def _settle_merchant_deposit(db: AsyncSession, *, task_id: str) -> None:
     # Retail CS2 skins ride the same seam: it is the one place every terminal
     # failure passes after the savepoint. Self-gated and self-contained.
     await _refund_skin_to_wallet(db, task_id=task_id)
+    # A supplier's definite refusal moves the task to the next cheapest one
+    # (ADR-0108, off unless the admin switch is on). When it moved, the move ran
+    # the task again and settled that run itself — nothing is left to do here.
+    try:
+        async with db.begin_nested():
+            from yupay.modules.fulfillment.auto_failover import try_failover
+
+            moved = await try_failover(db, task_id=task_id)
+    except Exception as exc:  # a failed move leaves the refusal as it was
+        moved = False
+        log.exception("fulfillment.auto_failover.failed", error=type(exc).__name__)
+    if moved:
+        return
     # So do one-time packs (Free Fire's Level Up): a refusal refunds to the
     # balance at once (ADR-0108). Self-gated; a fault is alerted, never raised.
     try:
@@ -2059,7 +2072,12 @@ _NOT_REASSIGNABLE: frozenset[str] = frozenset({INVENTORY_ROUTE, "manual"})
 
 
 async def reassign_task(
-    db: AsyncSession, *, task_id: str, supplier: str, admin_id: str
+    db: AsyncSession,
+    *,
+    task_id: str,
+    supplier: str,
+    admin_id: str,
+    reason: str = "admin_reassign",
 ) -> FulfillmentTask:
     """Move a failed task to another supplier and run it there.
 
@@ -2140,7 +2158,7 @@ async def reassign_task(
         payload={
             "route_switch": slug,
             "from": previous,
-            "reason": "admin_reassign",
+            "reason": reason,
             "admin_id": admin_id,
             **cost_note,
         },

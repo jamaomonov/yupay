@@ -21095,6 +21095,118 @@
         "title": "SourcingRuleOut",
         "type": "object"
       },
+      "SourcingSettingsOut": {
+        "description": "The switches as the admin reads them.",
+        "properties": {
+          "failover_max_step_pct": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Failover Max Step Pct",
+            "type": "string"
+          },
+          "failover_min_margin_b2b_pct": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Failover Min Margin B2B Pct",
+            "type": "string"
+          },
+          "failover_min_margin_retail_pct": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Failover Min Margin Retail Pct",
+            "type": "string"
+          },
+          "failover_mode": {
+            "enum": [
+              "off",
+              "retail",
+              "all"
+            ],
+            "title": "Failover Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "failover_mode",
+          "failover_min_margin_retail_pct",
+          "failover_min_margin_b2b_pct",
+          "failover_max_step_pct"
+        ],
+        "title": "SourcingSettingsOut",
+        "type": "object"
+      },
+      "SourcingSettingsPatch": {
+        "additionalProperties": false,
+        "description": "A partial edit; a field left out keeps its value.",
+        "properties": {
+          "failover_max_step_pct": {
+            "anyOf": [
+              {
+                "maximum": 50.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failover Max Step Pct"
+          },
+          "failover_min_margin_b2b_pct": {
+            "anyOf": [
+              {
+                "maximum": 50.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failover Min Margin B2B Pct"
+          },
+          "failover_min_margin_retail_pct": {
+            "anyOf": [
+              {
+                "maximum": 50.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failover Min Margin Retail Pct"
+          },
+          "failover_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "off",
+                  "retail",
+                  "all"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failover Mode"
+          }
+        },
+        "title": "SourcingSettingsPatch",
+        "type": "object"
+      },
       "StatsOut": {
         "description": "Earnings over a rolling window.\n\n``period`` names the window and ``since`` says where it starts, because\n\"month\" here means the last 30 days rather than the calendar month \u2014 see\n``affiliate.panel`` for why.",
         "properties": {
@@ -37616,6 +37728,128 @@
           }
         },
         "summary": "Switch many SKUs to one sourcing decision in a single request",
+        "tags": [
+          "admin:sourcing"
+        ]
+      }
+    },
+    "/api/v1/admin/sourcing/settings": {
+      "get": {
+        "operationId": "get_settings_route_api_v1_admin_sourcing_settings_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourcingSettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Smart-sourcing switches (ADR-0108)",
+        "tags": [
+          "admin:sourcing"
+        ]
+      },
+      "patch": {
+        "operationId": "patch_settings_route_api_v1_admin_sourcing_settings_patch",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourcingSettingsPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourcingSettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Edit the smart-sourcing switches (ADR-0108)",
         "tags": [
           "admin:sourcing"
         ]

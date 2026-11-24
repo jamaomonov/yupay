@@ -332,3 +332,9 @@ no-stock) `task.supplier` перезаписывается на slug прова�
 2. **Cost-based routing** — выбирать дешевле (наш склад vs supplier-margin),
    с фолбэком при изменении цен.
 3. **A/B routing** — % трафика на нового поставщика для прогрева.
+
+## Настройки умного сорсинга (`sourcing_settings`, ADR-0108)
+
+Одна строка (`id = 1`), правится в админке через `GET/PATCH /admin/sourcing/settings`
+(`settings.py`): режим автопередачи упавших задач и её пороги. Как их применяет fulfilment —
+`fulfillment/auto_failover.py`.
