@@ -336,7 +336,12 @@
       "cn": "Xitoy",
       "kr": "Janubiy Koreya",
       "ar": "Argentina",
-      "co": "Kolumbiya"
+      "co": "Kolumbiya",
+      "cl": "Chili",
+      "pe": "Peru",
+      "uy": "Urugvay",
+      "cr": "Kosta-Rika",
+      "usd": "Global (USD)"
     },
     "paymentTitle": "Toʻlov usuli",
     "promoLabel": "Promokod",

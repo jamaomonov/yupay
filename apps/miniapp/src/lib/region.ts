@@ -89,6 +89,11 @@ const LABEL_KEYS: Record<string, MessageKey> = {
   kr: "topup.region.kr",
   ar: "topup.region.ar",
   co: "topup.region.co",
+  cl: "topup.region.cl",
+  pe: "topup.region.pe",
+  uy: "topup.region.uy",
+  cr: "topup.region.cr",
+  usd: "topup.region.usd",
 };
 
 /** The game's main region reads where our customers are ("Глобальный (Узбекистан)"). */

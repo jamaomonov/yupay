@@ -604,6 +604,10 @@ REGION_ORDER: tuple[str, ...] = (
     "kr",
     "ar",
     "co",
+    "cl",
+    "pe",
+    "uy",
+    "cr",
 )
 
 

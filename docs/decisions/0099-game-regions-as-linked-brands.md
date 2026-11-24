@@ -77,3 +77,8 @@ brands already exist from the bulk supplier import, priced and B2B-only.
   Twenty-four more codes were added to `REGION_ORDER` and the labels. The Mini
   App resolves the brand to talk to from every listed region, not just the
   chips, so a one-region platform still lands on its region.
+- **2026-11-24 — Steam Wallet codes.** `steam-wallet` (global USD codes) and
+  its 28 country brands (seed `scripts/seed/2026-11-24_steam_wallet_regions.sql`).
+  The main brand's code is `usd` («Глобальная (USD)»), not `global`, so its
+  chip does not claim to suit Uzbek accounts; the page's FAQ sends those to the
+  login top-up (`steam`). New codes: `cl`, `pe`, `uy`, `cr`, `usd`.

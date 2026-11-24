@@ -336,7 +336,12 @@
       "cn": "China",
       "kr": "South Korea",
       "ar": "Argentina",
-      "co": "Colombia"
+      "co": "Colombia",
+      "cl": "Chile",
+      "pe": "Peru",
+      "uy": "Uruguay",
+      "cr": "Costa Rica",
+      "usd": "Global (USD)"
     },
     "paymentTitle": "Payment method",
     "promoLabel": "Promo code",
