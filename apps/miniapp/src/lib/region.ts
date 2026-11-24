@@ -48,6 +48,23 @@ const LABEL_KEYS: Record<string, MessageKey> = {
   us: "topup.region.us",
   latam: "topup.region.latam",
   br: "topup.region.br",
+  uk: "topup.region.uk",
+  ca: "topup.region.ca",
+  au: "topup.region.au",
+  nz: "topup.region.nz",
+  jp: "topup.region.jp",
+  hk: "topup.region.hk",
+  ae: "topup.region.ae",
+  sa: "topup.region.sa",
+  mx: "topup.region.mx",
+  za: "topup.region.za",
+  fr: "topup.region.fr",
+  at: "topup.region.at",
+  ch: "topup.region.ch",
+  dk: "topup.region.dk",
+  no: "topup.region.no",
+  se: "topup.region.se",
+  pl: "topup.region.pl",
 };
 
 /** The game's main region reads where our customers are ("Глобальный (Узбекистан)"). */

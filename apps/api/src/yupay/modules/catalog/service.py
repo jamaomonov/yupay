@@ -536,6 +536,23 @@ REGION_ORDER: tuple[str, ...] = (
     "us",
     "latam",
     "br",
+    "uk",
+    "ca",
+    "au",
+    "nz",
+    "jp",
+    "hk",
+    "ae",
+    "sa",
+    "mx",
+    "za",
+    "fr",
+    "at",
+    "ch",
+    "dk",
+    "no",
+    "se",
+    "pl",
 )
 
 

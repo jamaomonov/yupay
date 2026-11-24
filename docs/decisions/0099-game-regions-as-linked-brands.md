@@ -55,3 +55,12 @@ brands already exist from the bulk supplier import, priced and B2B-only.
 - Adding a region is data: create or import the brand, set the two columns,
   make it `visible_retail`.
 - Exclusive and Special MLBB catalogues are not regions and stay unlinked.
+
+## Later additions
+
+- **2026-11-24 — Roblox.** The 25 imported `roblox-xx` gift-card brands became
+  regions of `roblox` (seed `scripts/seed/2026-11-24_roblox_regions.sql`), with
+  seventeen new region codes (`uk`, `ca`, `au`, `nz`, `jp`, `hk`, `ae`, `sa`,
+  `mx`, `za`, `fr`, `at`, `ch`, `dk`, `no`, `se`, `pl`) added to `REGION_ORDER`
+  and the web and Mini App switcher labels. Codes need no player check, so no
+  "unchecked" hint shows.
