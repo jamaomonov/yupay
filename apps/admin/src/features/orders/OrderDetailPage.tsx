@@ -1,17 +1,19 @@
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { Button } from "@yupay/ui";
 import {
+  AlertTriangle,
   ArrowLeft,
+  ArrowLeftRight,
   Ban,
   Check,
+  CheckCircle2,
   CircleDot,
   Clock,
   Coins,
   CreditCard,
-  AlertTriangle,
-  CheckCircle2,
   Eye,
   KeyRound,
+  ListTree,
   Mail,
   Package,
   PackageCheck,
@@ -20,7 +22,7 @@ import {
   Undo2,
   Wallet,
 } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { EconomicsCard } from "./EconomicsCard";
@@ -51,6 +53,7 @@ import { Spinner } from "@/components/States";
 import { StatusChip } from "@/components/StatusChip";
 import { useToast } from "@/components/Toast";
 import { ForceCompleteModal } from "@/features/fulfillment/ForceCompleteModal";
+import { TaskDetailPanel } from "@/features/fulfillment/TaskDetailPanel";
 import {
   STATUS_LABEL as PAYMENT_STATUS_LABEL,
   STATUS_TONE as PAYMENT_STATUS_TONE,
@@ -75,6 +78,14 @@ export function OrderDetailPage() {
   const qc = useQueryClient();
   const orderId = params.id ?? "";
   const [manualDeliverFor, setManualDeliverFor] = useState<TaskAdminOut | null>(null);
+  const [openTaskId, setOpenTaskId] = useState<string | null>(null);
+  // The panel opens below both columns; bring it into view when it does.
+  useEffect(() => {
+    if (openTaskId === null) return;
+    document
+      .getElementById("order-task-detail")
+      ?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+  }, [openTaskId]);
   // Codes stay hidden until the operator asks: they are bearer instruments, the
   // fetch is what gets audited server-side, and nobody wants them on screen
   // during a screen-share.
@@ -374,6 +385,7 @@ export function OrderDetailPage() {
   const order = orderQuery.data;
   const payments = paymentsQuery.data?.items ?? [];
   const tasks = tasksQuery.data?.items ?? [];
+  const openTask = tasks.find((t) => t.id === openTaskId) ?? null;
 
   // A held order deliberately keeps status `paid` and grows no fulfilment task
   // (ADR-0047), so it is invisible on the Fulfilment screen and indistinguishable
@@ -616,12 +628,30 @@ export function OrderDetailPage() {
               retryTask.mutate(taskId);
             }}
             onManualDeliver={setManualDeliverFor}
+            onOpen={setOpenTaskId}
+            openId={openTask?.id ?? null}
             retryingId={retryTask.isPending ? retryTask.variables : null}
             failed={tasksQuery.isError}
             onRetryLoad={() => void tasksQuery.refetch()}
           />
         </aside>
       </div>
+
+      {/* The task's full picture without leaving the order: attempt log,
+          metadata, and the supplier switch with live prices. */}
+      {openTask && (
+        <div id="order-task-detail" className="mt-6">
+          <TaskDetailPanel
+            task={openTask}
+            onClose={() => {
+              setOpenTaskId(null);
+            }}
+            onMoved={() => {
+              void qc.invalidateQueries({ queryKey: ["admin", "orders"] });
+            }}
+          />
+        </div>
+      )}
 
       {settleFor && (
         <ConfirmDialog
@@ -1263,6 +1293,8 @@ function FulfillmentCard({
   tasks,
   onRetry,
   onManualDeliver,
+  onOpen,
+  openId,
   retryingId,
   failed,
   onRetryLoad,
@@ -1270,6 +1302,9 @@ function FulfillmentCard({
   tasks: TaskAdminOut[];
   onRetry: (taskId: string) => void;
   onManualDeliver: (task: TaskAdminOut) => void;
+  /** Open the task's detail panel below the order: log, metadata, supplier switch. */
+  onOpen: (taskId: string | null) => void;
+  openId: string | null;
   retryingId: string | null;
   /** The task query failed — do not claim the saga never started. */
   failed?: boolean | undefined;
@@ -1303,6 +1338,31 @@ function FulfillmentCard({
                 {t.last_error && (
                   <p className="mt-1 text-xs text-[var(--danger)]">{t.last_error}</p>
                 )}
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <Button
+                    variant="ghost"
+                    className="h-7 px-2 text-xs"
+                    aria-expanded={openId === t.id}
+                    onClick={() => {
+                      onOpen(openId === t.id ? null : t.id);
+                    }}
+                  >
+                    <ListTree className="size-3.5" />
+                    {openId === t.id ? "Скрыть детали" : "Подробнее"}
+                  </Button>
+                  {retryable && openId !== t.id && (
+                    <Button
+                      variant="ghost"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => {
+                        onOpen(t.id);
+                      }}
+                    >
+                      <ArrowLeftRight className="size-3.5" />
+                      Сменить поставщика
+                    </Button>
+                  )}
+                </div>
                 {(retryable || deliverable) && (
                   <div className="mt-2 flex flex-wrap gap-2">
                     {retryable && (

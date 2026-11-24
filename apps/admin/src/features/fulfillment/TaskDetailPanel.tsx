@@ -32,7 +32,16 @@ const ATTEMPTS_PAGE = 25;
 
 type AttemptFilter = "all" | "error";
 
-export function TaskDetailPanel({ task, onClose }: { task: TaskAdminOut; onClose: () => void }) {
+export function TaskDetailPanel({
+  task,
+  onClose,
+  onMoved,
+}: {
+  task: TaskAdminOut;
+  onClose: () => void;
+  /** Forwarded to the supplier switch — see `ReassignControl`. */
+  onMoved?: (() => void) | undefined;
+}) {
   const [filter, setFilter] = useState<AttemptFilter>("all");
   const [limit, setLimit] = useState(ATTEMPTS_PAGE);
 
@@ -104,7 +113,7 @@ export function TaskDetailPanel({ task, onClose }: { task: TaskAdminOut; onClose
           </section>
         )}
 
-        {canMove && <ReassignControl task={task} />}
+        {canMove && <ReassignControl task={task} onMoved={onMoved} />}
 
         {(task.completed_by || task.admin_note || proofUrl) && (
           <section className="border-[var(--border-default)]/60 bg-[var(--bg-muted)]/40 space-y-2 rounded-md border p-3">

@@ -28,7 +28,14 @@ function money(value: string): string {
   return `$${n < 1 ? n.toFixed(4).replace(/0+$/, "").replace(/\.$/, ".00") : n.toFixed(2)}`;
 }
 
-export function ReassignControl({ task }: { task: TaskAdminOut }) {
+export function ReassignControl({
+  task,
+  onMoved,
+}: {
+  task: TaskAdminOut;
+  /** Called after a successful move — the order page refreshes the order too. */
+  onMoved?: (() => void) | undefined;
+}) {
   const qc = useQueryClient();
   const toast = useToast();
   const options = useQuery<ReassignOptionsOut>({
@@ -52,6 +59,7 @@ export function ReassignControl({ task }: { task: TaskAdminOut }) {
     onSuccess: (updated) => {
       toast.success(`Задача переведена на ${label(updated.supplier)} и запущена.`);
       void qc.invalidateQueries({ queryKey: ["admin", "fulfillment"] });
+      onMoved?.();
     },
     onError: (err) => {
       toast.error(formatApiError(err));

@@ -662,3 +662,45 @@ it("offers no line refund when nothing on the order was delivered", async () => 
   expect(await screen.findByRole("button", { name: /Возврат на баланс/ })).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Вернуть на баланс" })).not.toBeInTheDocument();
 });
+
+it("opens a task's details and supplier switch on the order page", async () => {
+  const task = {
+    id: "task-9",
+    order_id: ORDER_ID,
+    order_item_id: "item-9",
+    supplier: "fzr",
+    status: "failed",
+    attempts_count: 1,
+    last_error: "fzr refunded the order (refund)",
+    external_order_id: null,
+    extra_metadata: {},
+    created_at: "2026-08-14T22:27:10Z",
+    succeeded_at: null,
+    failed_at: "2026-08-14T22:28:00Z",
+    cancelled_at: null,
+    completed_by: null,
+    admin_note: null,
+  };
+  mockedApiGet.mockImplementation((path: string) => {
+    if (path.includes("/reassign-options")) {
+      return Promise.resolve({
+        sku_id: "s",
+        sku_code: "c",
+        price_usd: "1.00",
+        options: [
+          { supplier: "g2b", cost_usdt: "0.90", cost_reason: null, stock: null, reserve: false },
+        ],
+      });
+    }
+    if (path.includes("/fulfillment/attempts")) return Promise.resolve({ items: [], total: 0 });
+    if (path.includes("/fulfillment/tasks")) return Promise.resolve({ items: [task], total: 1 });
+    if (path.includes("/payments")) return Promise.resolve({ items: [], total: 0 });
+    if (path.includes("/deliveries")) return Promise.resolve({ items: [], total: 0 });
+    return Promise.resolve(makeOrder({ events: [] }));
+  });
+  renderPage();
+
+  fireEvent.click(await screen.findByRole("button", { name: /Сменить поставщика/ }));
+  expect(await screen.findByText("Детали задачи")).toBeInTheDocument();
+  expect(await screen.findByText(/Задача уйдёт на выбранного поставщика/)).toBeInTheDocument();
+});
