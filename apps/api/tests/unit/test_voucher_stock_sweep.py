@@ -521,3 +521,96 @@ async def test_a_fresh_cached_g2b_row_spares_the_live_call() -> None:
     assert client.asked == []
     assert await mod._stock_for("g2b", client, product_id="108", variant_id=None, cache=cache) == 0
     assert client.asked == ["108"]
+
+
+# ---------- A panel category that no longer exists ----------
+
+
+class _GoneAwareNovaClient(_NovaClient):
+    """A panel that answers 404 «Unknown or disabled category_id» for some ids."""
+
+    def __init__(self, answers: dict[str, list[dict[str, Any]]], gone: set[str]) -> None:
+        super().__init__(answers)
+        self.gone = gone
+
+    async def list_giftcard_cards(self, category_id: str) -> list[dict[str, Any]]:
+        from yupay.modules.fulfillment.suppliers.fzr_client import FzrError
+
+        if category_id in self.gone:
+            self.asked.append(category_id)
+            raise FzrError("Unknown or disabled category_id.", status=404)
+        return await super().list_giftcard_cards(category_id)
+
+
+async def test_a_category_the_panel_no_longer_has_takes_its_cards_off_sale(
+    _harness: Any,
+) -> None:
+    """fzr withdrew 34 of 567 categories on 2026-11-25; their 199 cards kept
+    their last count, so 151 stayed on sale and every sweep logged 200 errors."""
+    install, alerts = _harness
+    live, dead_a, dead_b = _sku("gc-live", 3), _sku("so2-100", 7), _sku("so2-500", 2)
+    install(
+        [
+            ("id-gc-live", "fzr", "roblox_global", "c-50"),
+            ("id-so2-100", "fzr", "standoff_2_global", "s-100"),
+            ("id-so2-500", "fzr", "standoff_2_global", "s-500"),
+        ],
+        # Written in this order: answered SKUs first, the withdrawn ones after.
+        [live, dead_a, dead_b],
+    )
+    client = _GoneAwareNovaClient(
+        {"roblox_global": [{"card_id": "c-50", "stock": 4}]}, gone={"standoff_2_global"}
+    )
+
+    report = await mod.refresh_voucher_stock(client=None, fzr_client=client)
+
+    assert live.supplier_stock == 4
+    assert (dead_a.supplier_stock, dead_b.supplier_stock) == (0, 0)
+    assert dead_a.in_stock is False
+    # One call for the withdrawn category, not one per card; and not an error.
+    assert client.asked.count("standoff_2_global") == 1
+    assert report.errors == 0
+    assert report.went_out_of_stock == 2
+    assert alerts == ["voucher_out_of_stock"]
+
+
+async def test_every_category_gone_at_once_reads_as_an_outage(_harness: Any) -> None:
+    install, alerts = _harness
+    a, b = _sku("so2-100", 7), _sku("ff-100", 2)
+    install(
+        [
+            ("id-so2-100", "fzr", "standoff_2_global", "s-100"),
+            ("id-ff-100", "fzr", "free_fire_global", "f-100"),
+        ],
+        [a, b],
+    )
+    client = _GoneAwareNovaClient({}, gone={"standoff_2_global", "free_fire_global"})
+
+    report = await mod.refresh_voucher_stock(client=None, fzr_client=client)
+
+    assert (a.supplier_stock, b.supplier_stock) == (7, 2)
+    assert report.went_out_of_stock == 0
+    assert alerts == []
+
+
+async def test_a_withdrawn_category_on_one_source_leaves_the_other(
+    _harness: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    install, alerts = _harness
+    sku = _sku("roblox-4500", 24)
+    install(
+        [
+            ("id-roblox-4500", "g2b", "110", None),
+            ("id-roblox-4500", "fzr", "roblox_old", "4500_robux"),
+        ],
+        [sku],
+    )
+    _route(monkeypatch, _Decision(primary="inventory", fallback=None))
+
+    await mod.refresh_voucher_stock(
+        client=_Client({"110": {"stock": 9}}),
+        fzr_client=_GoneAwareNovaClient({}, gone={"roblox_old"}),
+    )
+
+    assert sku.supplier_stock == 9
+    assert alerts == []

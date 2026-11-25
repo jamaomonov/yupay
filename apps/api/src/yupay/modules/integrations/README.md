@@ -214,3 +214,18 @@ them (5 always allowed) — a supplier that lists none of our games is down, and
 then nothing is stamped (`integrations.catalog_watch.no_category_burst`).
 Before this, six CoD Mobile categories FazerCards dropped were skipped as
 "errors" every hour and a reseller order failed on one.
+
+## Voucher stock: a gift-card category the panel no longer has (2026-11-25)
+
+The same delisting reaches the hourly voucher stock sweep as an HTTP 404
+«Unknown or disabled category_id» from `GET /api/v2/giftcards/cards`. Until this
+date `stock_refresh` logged it as an error per card and left the last count in
+place, so the card stayed on sale: 34 withdrawn FazerCards categories, 199 cards,
+151 of them «in stock». Now the 404 zeroes `supplier_stock` for every card of
+the category (one call per category, the alert fires on the transition), and the
+next sweep puts it back if the panel lists it again. A card with a second
+supplier keeps that supplier's count. Guard, the same as the watch's: acted on
+only while the supplier answered for other categories in the run and the gone
+ones are at most a quarter of all (5 always allowed); otherwise nothing is
+touched (`stock_refresh.categories_gone_burst`). Either way one warning per
+supplier per run (`stock_refresh.categories_gone`), not one error per card.

@@ -55,10 +55,27 @@ from sqlalchemy import select
 from yupay.core.db import get_session_factory
 from yupay.core.logging import get_logger
 from yupay.modules.catalog.models import Sku
+from yupay.modules.fulfillment.suppliers.panel_client import PanelError
 from yupay.modules.integrations.models import SkuSupplierMapping
 from yupay.modules.notifications import api as notifications
 
 log = get_logger("yupay.integrations.stock_refresh")
+
+#: A panel's "no such category" (HTTP 404) is a delisting, not an outage — but a
+#: wave of them is more likely their fault than a real withdrawal. Acted on only
+#: while it stays under a quarter of that supplier's categories (and never for
+#: fewer than this many), the same bound the catalogue watch uses for top-ups.
+_GONE_MAX_ALWAYS = 5
+_GONE_MAX_SHARE = 4
+
+
+class _CategoryGoneError(Exception):
+    """The panel answered 404 for a whole gift-card category."""
+
+    def __init__(self, supplier: str, category_id: str) -> None:
+        super().__init__(f"{supplier}:{category_id}")
+        self.supplier = supplier
+        self.category_id = category_id
 
 
 @dataclass(frozen=True)
@@ -197,20 +214,33 @@ async def refresh_voucher_stock(
 
     checked = updated = out = errors = 0
     emptied: list[tuple[str, str, str]] = []
+    #: Single-source SKUs whose whole category came back 404, held until the
+    #: run knows whether that was a few withdrawals or the supplier failing.
+    pending_gone: list[tuple[str, _Mapping]] = []
     for sku_id, mappings in by_sku.items():
         checked += 1
         asked = _mappings_to_ask(mappings, routes.get(sku_id))
         try:
-            counts = [
-                await _stock_for(
-                    m.supplier,
-                    sources[m.supplier],
-                    product_id=m.product_id,
-                    variant_id=m.variant_id,
-                    cache=denominations,
-                )
-                for m in asked
-            ]
+            counts: list[int | None] = []
+            for m in asked:
+                try:
+                    counts.append(
+                        await _stock_for(
+                            m.supplier,
+                            sources[m.supplier],
+                            product_id=m.product_id,
+                            variant_id=m.variant_id,
+                            cache=denominations,
+                        )
+                    )
+                except _CategoryGoneError:
+                    if len(asked) == 1:
+                        raise
+                    # Another source still answers for this SKU: this one has none.
+                    counts.append(0)
+        except _CategoryGoneError:
+            pending_gone.append((sku_id, asked[0]))
+            continue
         except Exception:
             log.exception(
                 "stock_refresh.fetch_failed",
@@ -219,25 +249,18 @@ async def refresh_voucher_stock(
             )
             errors += 1
             continue
-        new_stock = _combine(counts)
-
-        async with factory() as session:
-            sku = (await session.execute(select(Sku).where(Sku.id == sku_id))).scalar_one_or_none()
-            if sku is None:
-                continue
-            was_in_stock = sku.in_stock
-            if sku.supplier_stock != new_stock:
-                updated += 1
-            sku.supplier_stock = new_stock
-            sku.supplier_stock_at = datetime.now(UTC)
-            now_in_stock = sku.in_stock
-            sku_code = sku.sku_code
-            await session.commit()
-
-        if was_in_stock and not now_in_stock:
+        u, emptied_line = await _write_stock(factory, sku_id, _combine(counts), asked[0])
+        updated += u
+        if emptied_line:
             out += 1
-            first = asked[0]
-            emptied.append((sku_code, str(first.variant_id or first.product_id), first.supplier))
+            emptied.append(emptied_line)
+
+    for sku_id, mapping in _settle_gone(pending_gone, denominations):
+        u, emptied_line = await _write_stock(factory, sku_id, 0, mapping)
+        updated += u
+        if emptied_line:
+            out += 1
+            emptied.append(emptied_line)
 
     # One message per sweep, not one per line: a supplier restocking and
     # un-stocking a hundred denominations at once used to be a hundred
@@ -251,6 +274,70 @@ async def refresh_voucher_stock(
     return StockRefreshReport(
         checked=checked, updated=updated, went_out_of_stock=out, errors=errors
     )
+
+
+async def _write_stock(
+    factory: Any, sku_id: str, new_stock: int | None, first: _Mapping
+) -> tuple[int, tuple[str, str, str] | None]:
+    """Persist one SKU's stock in its own transaction.
+
+    Returns ``(updated, emptied)``: whether the number changed, and the alert
+    line when this write took the SKU out of stock.
+    """
+    async with factory() as session:
+        sku = (await session.execute(select(Sku).where(Sku.id == sku_id))).scalar_one_or_none()
+        if sku is None:
+            return 0, None
+        was_in_stock = sku.in_stock
+        changed = int(sku.supplier_stock != new_stock)
+        sku.supplier_stock = new_stock
+        sku.supplier_stock_at = datetime.now(UTC)
+        now_in_stock = sku.in_stock
+        sku_code = sku.sku_code
+        await session.commit()
+    if was_in_stock and not now_in_stock:
+        return changed, (sku_code, str(first.variant_id or first.product_id), first.supplier)
+    return changed, None
+
+
+def _settle_gone(
+    pending: list[tuple[str, _Mapping]], cache: dict[str, dict[str, Any] | None]
+) -> list[tuple[str, _Mapping]]:
+    """Which 404'd SKUs to zero: all of a supplier's, unless it looks like an outage.
+
+    A category is "answered" when this run holds its cards (from the sync's
+    cache or a live call). A supplier whose gone categories outnumber a quarter
+    of everything it was asked about is treated as failing and nothing of its is
+    touched; either way the run logs one line per supplier, not one per SKU.
+    """
+    by_supplier: dict[str, list[tuple[str, _Mapping]]] = {}
+    for sku_id, mapping in pending:
+        by_supplier.setdefault(mapping.supplier, []).append((sku_id, mapping))
+    settled: list[tuple[str, _Mapping]] = []
+    for supplier, rows in by_supplier.items():
+        gone = sorted({m.product_id for _, m in rows})
+        answered = sum(
+            1 for k, v in cache.items() if k.startswith(f"{supplier}:") and v is not None
+        )
+        total = answered + len(gone)
+        if not answered or len(gone) > max(_GONE_MAX_ALWAYS, total // _GONE_MAX_SHARE):
+            log.warning(
+                "stock_refresh.categories_gone_burst",
+                supplier=supplier,
+                categories=len(gone),
+                answered=answered,
+                skus=len(rows),
+            )
+            continue
+        log.warning(
+            "stock_refresh.categories_gone",
+            supplier=supplier,
+            categories=len(gone),
+            skus=len(rows),
+            category_ids=gone[:50],
+        )
+        settled.extend(rows)
+    return settled
 
 
 async def _routes_for(session: Any, sku_ids: list[str]) -> dict[str, str | None]:
@@ -514,8 +601,19 @@ async def _panel_stock(
     theoretical window.
     """
     key = f"{supplier}:{category_id}"
+    if key in cache and cache[key] is None:
+        # Already answered 404 this run: one call per category, not per card.
+        raise _CategoryGoneError(supplier, category_id)
     if key not in cache:
-        rows = await client.list_giftcard_cards(category_id)
+        try:
+            rows = await client.list_giftcard_cards(category_id)
+        except PanelError as exc:
+            # 404 is their "Unknown or disabled category_id": the category is
+            # gone, not the panel. Anything else stays an error.
+            if exc.status == 404:
+                cache[key] = None
+                raise _CategoryGoneError(supplier, category_id) from exc
+            raise
         cache[key] = {str(row.get("card_id")): row for row in rows if isinstance(row, dict)}
     by_id = cache[key] or {}
     if card_id is None:
