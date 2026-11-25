@@ -161,7 +161,8 @@ async def test_calls_go_through_the_uz_proxy_when_one_is_set(
         kwargs.pop("proxy")
         return real(**kwargs)  # type: ignore[arg-type]
 
-    monkeypatch.setattr(client.httpx, "AsyncClient", spy)
+    # `client` uses the httpx module itself, so patching it there is the same object.
+    monkeypatch.setattr(httpx, "AsyncClient", spy)
     with respx.mock(base_url=BASE) as mock:
         mock.post("/api/v1/pos/invoice/cancel").respond(200)
         await client.cancel_invoice("INV1")
