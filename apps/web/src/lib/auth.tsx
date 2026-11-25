@@ -98,6 +98,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Only the access token is in the body now; the refresh token arrived as an
       // HttpOnly cookie (set by the browser from the login/register response).
       setTokens(tokens.access_token);
+      // Remove, not invalidate: an invalidated entry is still served while the
+      // refetch is in flight, and the account control renders `wallet.data`
+      // ungated — so the previous person's balance would show first. Signing in
+      // without a reload keeps the same QueryClient, which is what makes this
+      // reachable at all.
+      //
+      // First, before `me`: the wallet query enables as soon as `me` lands, so
+      // removing it after the guest-order claim below (p90 1.2 s, p99 4 s)
+      // threw away the balance it had just fetched for *this* account, and
+      // nothing asked again until the header re-rendered — "the balance takes
+      // ages after signing in" (2026-11-25).
+      qc.removeQueries({ queryKey: ["wallet"] });
       // Seed the cache before the caller navigates to an auth-gated route.
       // `setTokens` above has already told the provider it is signed in, so by
       // the time this lands the `me` observer is enabled and publishes it.
@@ -129,12 +141,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       removeGuestOrders(listGuestOrders().map((o) => o.orderId));
       void qc.invalidateQueries({ queryKey: ["orders"] });
-      // Remove, not invalidate: an invalidated entry is still served while the
-      // refetch is in flight, and the account control renders `wallet.data`
-      // ungated — so the previous person's balance would show first. Signing in
-      // without a reload keeps the same QueryClient, which is what makes this
-      // reachable at all.
-      qc.removeQueries({ queryKey: ["wallet"] });
     },
     [qc],
   );

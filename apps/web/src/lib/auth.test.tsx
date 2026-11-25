@@ -245,3 +245,38 @@ it("does not reject the caller when the guest-order claim fails", async () => {
     expect(result.current.user).not.toBeNull();
   });
 });
+
+it("keeps the balance fetched for the account that just signed in", async () => {
+  // The wallet query enables as soon as `me` lands. Clearing the wallet after
+  // the guest-order claim threw away that fresh balance and the header showed
+  // none until something re-rendered it (2026-11-25).
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  qc.setQueryData(["wallet"], { balances: [{ balance: "999999" }] }); // someone else's
+  fetchMock.mockImplementation((url: string) => {
+    if (url.includes("/auth/login")) {
+      return Promise.resolve(jsonResponse(200, { access_token: "tok" }));
+    }
+    if (url.includes("/auth/me")) return Promise.resolve(jsonResponse(200, ME));
+    if (url.includes("/orders/claim")) {
+      // The header's wallet query has already fetched this account's balance.
+      qc.setQueryData(["wallet"], { balances: [{ balance: "500" }] });
+      return Promise.resolve(jsonResponse(200, { claimed: 0 }));
+    }
+    return Promise.resolve(jsonResponse(404, {}));
+  });
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={qc}>
+      <AuthProvider>{children}</AuthProvider>
+    </QueryClientProvider>
+  );
+  const { result } = renderHook(() => useAuth(), { wrapper });
+  await waitFor(() => {
+    expect(result.current.isLoading).toBe(false);
+  });
+
+  await act(async () => {
+    await result.current.login("buyer@example.com", "pw123456");
+  });
+
+  expect(qc.getQueryData(["wallet"])).toEqual({ balances: [{ balance: "500" }] });
+});
