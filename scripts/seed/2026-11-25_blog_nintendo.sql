@@ -62,7 +62,7 @@ ON CONFLICT (id) DO NOTHING;
 
 UPDATE blog_posts
 SET primary_brand_id = (SELECT id FROM brands WHERE slug = 'nintendo'),
-    cover_image_url = 'https://cdn.yupay.uz/blog_image/2026/11/01a21024-3fab-70a3-9b63-056b6a55ad84.jpg',
+    cover_image_url = 'https://cdn.yupay.uz/blog_image/2026/11/01a2102c-2c50-7312-9292-c6222a0062be.jpg',
     updated_at = now()
 WHERE id = :post_id;
 

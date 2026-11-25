@@ -38,7 +38,7 @@ POST = {
     "post_id": "01a21022-13a8-76b1-905f-268d1d1b651a",
     "brand_slug": "playstation",
     "kind": "guide",
-    "cover": "https://cdn.yupay.uz/blog_image/2026/11/01a21024-40db-7890-99a2-0a643117c539.jpg",
+    "cover": "https://cdn.yupay.uz/blog_image/2026/11/01a2102c-2cf1-7110-9c95-a6bf0cff0979.jpg",
     "ru": {
         "slug": "kak-pokupat-igry-v-ps-store-iz-uzbekistana",
         "title": "Как покупать игры в PS Store из Узбекистана",

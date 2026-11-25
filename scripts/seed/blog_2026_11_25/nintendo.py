@@ -54,7 +54,7 @@ POST = {
     "post_id": "01a21022-1547-75e0-acb5-7f1414dd88f0",
     "brand_slug": "nintendo",
     "kind": "guide",
-    "cover": "https://cdn.yupay.uz/blog_image/2026/11/01a21024-3fab-70a3-9b63-056b6a55ad84.jpg",
+    "cover": "https://cdn.yupay.uz/blog_image/2026/11/01a2102c-2c50-7312-9292-c6222a0062be.jpg",
     "ru": {
         "slug": "nintendo-eshop-iz-uzbekistana",
         "title": "Nintendo eShop из Узбекистана: как пополнить Switch картой своей страны",

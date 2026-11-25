@@ -46,7 +46,7 @@ POST = {
     "post_id": "01a21022-148e-72b0-a348-0acf1b30f13e",
     "brand_slug": "xbox",
     "kind": "guide",
-    "cover": "https://cdn.yupay.uz/blog_image/2026/11/01a21024-4167-7ef2-b643-dd8e0b84f81f.jpg",
+    "cover": "https://cdn.yupay.uz/blog_image/2026/11/01a2102c-2d99-7080-b3b5-0f74e1c7b38b.jpg",
     "ru": {
         "slug": "kak-popolnit-xbox-iz-uzbekistana",
         "title": "Как пополнить Xbox из Узбекистана",

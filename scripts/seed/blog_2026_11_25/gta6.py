@@ -55,7 +55,7 @@ POST = {
     "post_id": "01a21022-1603-7102-b307-9ec89641de81",
     "brand_slug": "playstation",
     "kind": "guide",
-    "cover": "https://cdn.yupay.uz/blog_image/2026/11/01a21024-3ec6-7aa1-92f9-b98265acfd96.jpg",
+    "cover": "https://cdn.yupay.uz/blog_image/2026/11/01a2102c-2b68-7f90-987a-d51ec643ba94.jpg",
     "ru": {
         "slug": "kak-kupit-gta-6-v-uzbekistane",
         "title": "Как купить GTA 6 в Узбекистане: PS5 и Xbox",
