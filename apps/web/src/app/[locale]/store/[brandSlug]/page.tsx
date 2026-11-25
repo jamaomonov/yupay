@@ -39,7 +39,7 @@ import {
 import { formatDate } from "@/lib/format-date";
 import { headingStyles } from "@/lib/heading";
 import { isOptimizable } from "@/lib/image";
-import { mapLimit } from "@/lib/map-limit";
+import { createGate } from "@/lib/map-limit";
 import { getBrandReviews, type ReviewPage } from "@/lib/reviews";
 import {
   alternates,
@@ -54,7 +54,11 @@ import {
 } from "@/lib/seo";
 
 const CURRENCY = "UZS";
-const REGION_FETCH_LIMIT = 3;
+/**
+ * Region-switcher fetches across *all* pages this process is rendering, three
+ * at a time — not three per page (see createGate).
+ */
+const regionFetchGate = createGate(3);
 
 /**
  * Declared rather than inherited. Without this the segment takes the *lowest*
@@ -86,15 +90,14 @@ async function getRegionOptions(
 ): Promise<RegionOption[]> {
   const regions = brand.regions ?? [];
   if (regions.length < 2) return [];
-  // Three regions at a time, not all 28 at once: see mapLimit.
-  const options = await mapLimit(
-    regions,
-    REGION_FETCH_LIMIT,
-    async ({ code, slug }): Promise<RegionOption | null> => {
+  const options = await Promise.all(
+    regions.map(async ({ code, slug }): Promise<RegionOption | null> => {
       if (slug === brand.slug) return { code, slug, products };
-      const regional = await getBrandDetail(slug, locale, CURRENCY);
-      return regional ? { code, slug, products: await getProducts(regional, locale) } : null;
-    },
+      return regionFetchGate(async () => {
+        const regional = await getBrandDetail(slug, locale, CURRENCY);
+        return regional ? { code, slug, products: await getProducts(regional, locale) } : null;
+      });
+    }),
   );
   const sellable = options.filter((o): o is RegionOption => o !== null && o.products.length > 0);
   return sellable.length > 1 ? sellable : [];
