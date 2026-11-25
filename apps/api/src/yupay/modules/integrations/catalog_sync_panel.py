@@ -278,6 +278,12 @@ async def sync_panel_catalog(db: AsyncSession, *, slug: str) -> CatalogSyncRepor
     )
 
 
+#: The answer :func:`sync_panel_game_denominations` gives when the panel no longer
+#: has the category at all — a definite "not sold", not an outage. The catalogue
+#: watch keys on it (ADR-0108 follow-up, 2026-11-25).
+NO_CATEGORY = "has no category"
+
+
 async def sync_panel_game_denominations(
     db: AsyncSession, *, slug: str, game_id: str
 ) -> tuple[int, str | None]:
@@ -293,7 +299,7 @@ async def sync_panel_game_denominations(
         return 0, f"{slug.upper()}_API_KEY is not configured"
     written, missing, error = await _sync_category_denoms(db, client, game_id)
     if missing:
-        return 0, f"{slug} has no category {game_id!r}"
+        return 0, f"{slug} {NO_CATEGORY} {game_id!r}"
     return written, error
 
 

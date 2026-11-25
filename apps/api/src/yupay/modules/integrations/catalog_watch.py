@@ -51,6 +51,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core.clock import now
 from yupay.core.logging import get_logger
 from yupay.modules.catalog.models import Sku
+from yupay.modules.integrations.catalog_sync_panel import NO_CATEGORY
 from yupay.modules.integrations.catalog_watch_settle import settle_delisting
 from yupay.modules.integrations.models import (
     CATALOG_DELISTED,
@@ -67,6 +68,11 @@ log = get_logger("yupay.integrations.catalog_watch")
 _CONFIRM_AFTER = timedelta(minutes=45)
 
 _STAMP = "catalog_missing_since"
+#: A panel's "no such category" is acted on only as a minority of one pass: a
+#: supplier that suddenly lists none of our games is having an outage or an API
+#: change, not delisting them all. At most this share (or this many) per pass.
+_GONE_MAX_SHARE = 4
+_GONE_MAX_ALWAYS = 5
 _ACTED = CATALOG_DELISTED
 
 
@@ -300,6 +306,74 @@ async def _cached_denoms(
     return {r[0] for r in rows}, min(r[1] for r in rows)
 
 
+def _by_game(
+    rows: list[tuple[SkuSupplierMapping, Sku]],
+) -> dict[str, list[tuple[SkuSupplierMapping, Sku]]]:
+    """Watchable game mappings, grouped by the panel category they point at."""
+    by_game: dict[str, list[tuple[SkuSupplierMapping, Sku]]] = {}
+    for mapping, sku in rows:
+        if mapping.external_product_id in PANEL_NON_CATALOGUE:
+            # The Steam reserve mapping is not a catalogue category and never
+            # was (ADR-0082 §4). Asking for its denominations is a guaranteed
+            # 404 — the full sweep excludes it for exactly this reason, and
+            # without the same exclusion here every tick would spend a wasted
+            # call to log a warning that reads like a real problem.
+            continue
+        if not mapping.external_variant_id:
+            # Amount-priced: the Steam wallet and Telegram Stars buy a sum,
+            # not a listed pack, so `upsert_mapping` lets them be `kind="game"`
+            # with no variant. There is no denomination to find missing, and
+            # the loop below would count them as "still present" whatever the
+            # supplier said. Syncing their game costs a call and — for a
+            # service the recharge list carries no denominations for — an
+            # hourly warning, which is what the first production tick logged
+            # for G-Engine services 2 and 72.
+            continue
+        by_game.setdefault(mapping.external_product_id, []).append((mapping, sku))
+    return by_game
+
+
+async def _settle_gone(
+    db: AsyncSession,
+    gone: list[list[tuple[SkuSupplierMapping, Sku]]],
+    *,
+    healthy: int,
+    games: int,
+    supplier_slug: str,
+    send_alert: SendAlert,
+) -> tuple[int, int, int, int]:
+    """Games whose whole category the panel no longer has: every mapping missing.
+
+    Acted on only while the supplier answered for other games in the same pass
+    and such games stay a minority of it; otherwise it reads as an outage and
+    nothing is stamped. Returns ``(checked, stamped, deactivated, skipped_games)``.
+    """
+    if not gone:
+        return 0, 0, 0, 0
+    if not healthy or len(gone) > max(_GONE_MAX_ALWAYS, games // _GONE_MAX_SHARE):
+        log.warning(
+            "integrations.catalog_watch.no_category_burst",
+            supplier=supplier_slug,
+            games=len(gone),
+            healthy=healthy,
+        )
+        return 0, 0, 0, len(gone)
+    checked = stamped = deactivated = 0
+    for pairs in gone:
+        for mapping, sku in pairs:
+            checked += 1
+            s, d = await _handle_missing(
+                db,
+                mapping,
+                sku,
+                position=mapping.external_variant_id or mapping.external_product_id,
+                send_alert=send_alert,
+            )
+            stamped += s
+            deactivated += d
+    return checked, stamped, deactivated, 0
+
+
 async def watch_cached_variants(
     db: AsyncSession,
     *,
@@ -333,7 +407,11 @@ async def watch_cached_variants(
 
     Same two-strike rule and the same refusal to act on an ambiguous
     answer: a sync that errors, writes nothing, or leaves the cache empty
-    skips the game and stamps nothing.
+    skips the game and stamps nothing. One answer is not ambiguous: a panel's
+    "no such category" (:data:`catalog_sync_panel.NO_CATEGORY`) means every
+    pack of that game is gone, and is treated as missing — but only while the
+    same supplier answered for other games in this pass and such games stay a
+    minority of it, so an outage still stamps nothing.
     """
     checked = stamped = deactivated = reappeared = skipped_games = 0
     #: Games this tick had to fetch itself because the sweep's rows were
@@ -341,28 +419,11 @@ async def watch_cached_variants(
     fetched = 0
     fetched = 0
 
-    by_game: dict[str, list[tuple[SkuSupplierMapping, Sku]]] = {}
-    for mapping, sku in await _active_mappings(db, supplier_slug=supplier_slug, kind="game"):
-        if mapping.external_product_id in PANEL_NON_CATALOGUE:
-            # The Steam reserve mapping is not a catalogue category and never
-            # was (ADR-0082 §4). Asking for its denominations is a guaranteed
-            # 404 — the full sweep excludes it for exactly this reason, and
-            # without the same exclusion here every tick would spend a wasted
-            # call to log a warning that reads like a real problem.
-            continue
-        if not mapping.external_variant_id:
-            # Amount-priced: the Steam wallet and Telegram Stars buy a sum,
-            # not a listed pack, so `upsert_mapping` lets them be `kind="game"`
-            # with no variant. There is no denomination to find missing, and
-            # the loop below would count them as "still present" whatever the
-            # supplier said. Syncing their game costs a call and — for a
-            # service the recharge list carries no denominations for — an
-            # hourly warning, which is what the first production tick logged
-            # for G-Engine services 2 and 72.
-            continue
-        by_game.setdefault(mapping.external_product_id, []).append((mapping, sku))
+    by_game = _by_game(await _active_mappings(db, supplier_slug=supplier_slug, kind="game"))
 
     cutoff = now() - _CACHE_FRESH_FOR
+    gone: list[list[tuple[SkuSupplierMapping, Sku]]] = []
+    healthy = 0
     for game_id, pairs in by_game.items():
         listed, written_at = await _cached_denoms(db, supplier_slug=supplier_slug, game_id=game_id)
 
@@ -383,6 +444,14 @@ async def watch_cached_variants(
                     game_id=game_id,
                     error=str(exc)[:200],
                 )
+                continue
+            if error and NO_CATEGORY in error:
+                # The panel says the category itself is gone — every pack of it
+                # is unlisted. Decided after the loop, once we know the supplier
+                # answered for other games in this pass (2026-11-25: FazerCards
+                # dropped six CoD Mobile categories and the watch skipped them as
+                # errors, so a reseller order failed on one).
+                gone.append(pairs)
                 continue
             if error or count == 0:
                 skipped_games += 1
@@ -409,6 +478,7 @@ async def watch_cached_variants(
             )
             continue
 
+        healthy += 1
         for mapping, sku in pairs:
             checked += 1
             position = mapping.external_variant_id or mapping.external_product_id
@@ -422,6 +492,19 @@ async def watch_cached_variants(
                 reappeared += await _handle_present(
                     mapping, sku, position=position, send_alert=send_alert
                 )
+
+    g_checked, g_stamped, g_off, g_skipped = await _settle_gone(
+        db,
+        gone,
+        healthy=healthy,
+        games=len(by_game),
+        supplier_slug=supplier_slug,
+        send_alert=send_alert,
+    )
+    checked += g_checked
+    stamped += g_stamped
+    deactivated += g_off
+    skipped_games += g_skipped
 
     await db.flush()
     if fetched:

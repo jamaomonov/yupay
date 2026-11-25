@@ -771,3 +771,67 @@ async def test_auto_routing_skips_a_delisted_mapping(db_session: AsyncSession) -
     await db_session.flush()
 
     assert (await resolve_for_sku(db_session, sku.id)).primary == "supplier:gengine"
+
+
+def _sync_by_game(answers: dict[str, tuple[int, str | None]]) -> Any:
+    """A denomination-sync double answering per game."""
+
+    async def _sync(
+        db: AsyncSession, *, supplier_slug: str, game_id: str
+    ) -> tuple[int, str | None]:
+        return answers[game_id]
+
+    return _sync
+
+
+async def test_a_category_the_panel_no_longer_has_is_a_miss(db_session: AsyncSession) -> None:
+    """2026-11-25: FazerCards dropped the CoD Mobile categories and answered
+    «has no category»; the watch skipped that as an error and kept selling."""
+    gone_sku, gone = await _seed_cached(
+        db_session,
+        supplier="fzr",
+        game_id="codm_gone",
+        variant="88_cp",
+        cached=(),
+        cache_age=timedelta(hours=3),
+    )
+    await _seed_cached(
+        db_session,
+        supplier="fzr",
+        game_id="pubg_ok",
+        variant="60_uc",
+        cached=("60_uc",),
+        cache_age=timedelta(hours=3),
+    )
+    sync = _sync_by_game(
+        {"codm_gone": (0, "fzr has no category 'codm_gone'"), "pubg_ok": (1, None)}
+    )
+
+    report = await watch_cached_variants(
+        db_session, supplier_slug="fzr", sync=sync, send_alert=_AlertSpy()
+    )
+
+    await db_session.refresh(gone)
+    assert "catalog_missing_since" in gone.extra
+    assert report.stamped == 1
+
+
+async def test_every_category_gone_at_once_reads_as_an_outage(db_session: AsyncSession) -> None:
+    _, mapping = await _seed_cached(
+        db_session,
+        supplier="fzr",
+        game_id="only_game",
+        variant="88_cp",
+        cached=(),
+        cache_age=timedelta(hours=3),
+    )
+    sync = _sync_by_game({"only_game": (0, "fzr has no category 'only_game'")})
+
+    report = await watch_cached_variants(
+        db_session, supplier_slug="fzr", sync=sync, send_alert=_AlertSpy()
+    )
+
+    await db_session.refresh(mapping)
+    assert "catalog_missing_since" not in mapping.extra
+    assert report.stamped == 0
+    assert report.skipped_games == 1

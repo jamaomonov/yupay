@@ -201,3 +201,16 @@ from `catalog.admin_service` / `catalog.admin_schemas` directly (inside the
 function) to avoid an import cycle. This is the same pattern
 `service.refresh_sku_cost_for_mapping` already uses for `set_sku_cost_usdt`, so
 the documented coupling is **`integrations → catalog` (write layer)**.
+
+## Catalogue watch: a category the panel no longer has (2026-11-25)
+
+A FazerCards / NOVA denomination sync that answers «`<slug>` has no category …»
+(`catalog_sync_panel.NO_CATEGORY`) is a definite delisting of every pack in that
+game, not an outage: `catalog_watch.watch_cached_variants` stamps those mappings
+missing like any other miss (two strikes, then `catalog_watch_settle`: move the
+route, or take the SKU off sale, and alert). Guard: only while the same supplier
+answered for other games in the same pass and such games are at most a quarter of
+them (5 always allowed) — a supplier that lists none of our games is down, and
+then nothing is stamped (`integrations.catalog_watch.no_category_burst`).
+Before this, six CoD Mobile categories FazerCards dropped were skipped as
+"errors" every hour and a reseller order failed on one.
