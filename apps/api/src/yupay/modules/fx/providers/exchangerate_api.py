@@ -72,8 +72,11 @@ class ExchangerateApiProvider(FxProvider):
                 resp = await client.get(url, timeout=self._timeout)
                 resp.raise_for_status()
                 payload = resp.json()
+        except httpx.HTTPStatusError as exc:
+            # Never ``{exc}``: its text is the request URL, and the key is in the path.
+            raise FxProviderError(f"{self.name}: HTTP {exc.response.status_code}") from exc
         except (httpx.HTTPError, ValueError) as exc:
-            raise FxProviderError(f"{self.name}: transport error: {exc}") from exc
+            raise FxProviderError(f"{self.name}: transport error {type(exc).__name__}") from exc
 
         result_flag = payload.get("result")
         if result_flag != "success":

@@ -11,7 +11,9 @@ import httpx
 import pytest
 import respx
 from yupay.modules.fx.providers import (
+    CbuProvider,
     CoingeckoProvider,
+    ExchangerateApiProvider,
     ExchangerateHostProvider,
     FxProviderError,
     FxRatesApiProvider,
@@ -109,3 +111,63 @@ async def test_fxratesapi_raises_when_success_false() -> None:
     p = FxRatesApiProvider(URL_RATES_API, api_key="fxr_test", timeout_seconds=1.0)
     with pytest.raises(FxProviderError):
         await p.get_rate("USD", "UZS")
+
+
+URL_CBU = "https://cbu.uz/ru/arkhiv-kursov-valyut/json/{ccy}/"
+
+
+def _cbu_row(ccy: str, rate: str, nominal: str = "1") -> list[dict[str, str]]:
+    return [{"Ccy": ccy, "Rate": rate, "Nominal": nominal, "Date": "25.11.2026"}]
+
+
+@respx.mock
+async def test_cbu_returns_the_official_usd_rate() -> None:
+    respx.get(URL_CBU.format(ccy="USD")).mock(
+        return_value=httpx.Response(200, json=_cbu_row("USD", "12050.43"))
+    )
+    q = await CbuProvider(URL_CBU, timeout_seconds=1.0).get_rate("USD", "UZS")
+    assert q.rate == Decimal("12050.43")
+    assert q.source == "cbu.uz"
+
+
+@respx.mock
+async def test_cbu_crosses_other_quotes_through_the_sum() -> None:
+    respx.get(URL_CBU.format(ccy="USD")).mock(
+        return_value=httpx.Response(200, json=_cbu_row("USD", "12000"))
+    )
+    respx.get(URL_CBU.format(ccy="RUB")).mock(
+        return_value=httpx.Response(200, json=_cbu_row("RUB", "1500", nominal="10"))
+    )
+    q = await CbuProvider(URL_CBU, timeout_seconds=1.0).get_rate("USD", "RUB")
+    assert q.rate == Decimal("80")
+
+
+@pytest.mark.parametrize(
+    "body",
+    [[], _cbu_row("EUR", "13000"), _cbu_row("USD", "12.05"), {"Ccy": "USD"}],
+)
+@respx.mock
+async def test_cbu_refuses_an_answer_that_is_not_one_plausible_usd_row(body: object) -> None:
+    respx.get(URL_CBU.format(ccy="USD")).mock(return_value=httpx.Response(200, json=body))
+    with pytest.raises(FxProviderError):
+        await CbuProvider(URL_CBU, timeout_seconds=1.0).get_rate("USD", "UZS")
+
+
+def test_cbu_answers_usd_base_only() -> None:
+    p = CbuProvider(URL_CBU, timeout_seconds=1.0)
+    assert p.supports("USD", "UZS") is True
+    assert p.supports("EUR", "UZS") is False
+    assert p.supports("USD", "BTC") is False
+
+
+@respx.mock
+async def test_exchangerate_api_error_never_carries_the_key() -> None:
+    template = "https://v6.exchangerate-api.com/v6/{key}/latest/USD"
+    respx.get(template.replace("{key}", "SECRET123")).mock(
+        return_value=httpx.Response(429, json={"result": "error", "error-type": "quota-reached"})
+    )
+    p = ExchangerateApiProvider(template, "SECRET123", timeout_seconds=1.0)
+    with pytest.raises(FxProviderError) as err:
+        await p.get_rate("USD", "UZS")
+    assert "SECRET123" not in str(err.value)
+    assert "429" in str(err.value)

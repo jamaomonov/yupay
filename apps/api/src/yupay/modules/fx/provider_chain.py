@@ -42,6 +42,7 @@ CATALOG: tuple[ProviderSpec, ...] = (
     ProviderSpec("exchangerate-host", "exchangerate.host", "fiat"),
     ProviderSpec("openexchangerates", "Open Exchange Rates", "fiat"),
     ProviderSpec("coingecko", "CoinGecko", "crypto"),
+    ProviderSpec("cbu", "ЦБ Узбекистана (cbu.uz)", "fiat"),
 )
 
 CATALOG_BY_SLUG: dict[str, ProviderSpec] = {s.slug: s for s in CATALOG}

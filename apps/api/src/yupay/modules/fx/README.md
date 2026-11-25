@@ -36,6 +36,15 @@ Default seed (admin can reorder):
 3. `exchangerate.host` — fiat, no key
 4. `openexchangerates.org` — fiat, keyed
 5. `coingecko` — USDT / crypto only
+6. `cbu.uz` — Central Bank of Uzbekistan, fiat, no key (2026-11-25). The official
+   daily rate, not a market quote, so it is last: it answers when every commercial
+   provider is down or out of quota. USD→UZS directly, other quotes cross through
+   the soʻm (two calls). A new catalog slug joins an existing admin order at the
+   end, enabled.
+
+Provider errors never quote the request URL: exchangerate-api.com carries its key
+in the path and openexchangerates.org in the query, and `fx.provider.failed` logged
+both verbatim until 2026-11-25.
 
 **USD↔USDT is pegged 1:1 and never fetched** (`service._fixed_quote`, source `peg`),
 since 2026-09-29: USDT is a dollar stablecoin the wallet and supplier costs already count

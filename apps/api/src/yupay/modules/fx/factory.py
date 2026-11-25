@@ -13,6 +13,7 @@ from yupay.core.config import Settings, get_settings
 from yupay.core.db import get_session_factory
 from yupay.core.redis import get_redis
 from yupay.modules.fx.providers import (
+    CbuProvider,
     CoingeckoProvider,
     ExchangerateApiProvider,
     ExchangerateHostProvider,
@@ -33,7 +34,7 @@ def build_default_service(
 
     Runtime order comes from ``fx_provider_settings`` (admin UI). Constructor
     order is the default: FXRatesAPI → ExchangeRate-API → exchangerate.host →
-    Open Exchange Rates → CoinGecko. Keyed adapters with an empty key stay in
+    Open Exchange Rates → CoinGecko → CBU. Keyed adapters with an empty key stay in
     the list but ``supports`` is false, so the chain skips them.
     """
     s = settings or get_settings()
@@ -52,6 +53,8 @@ def build_default_service(
             timeout_seconds=timeout,
         ),
         CoingeckoProvider(s.fx_crypto_url, timeout_seconds=timeout),
+        # Keyless official rate, last: answers when the commercial ones cannot.
+        CbuProvider(s.fx_cbu_url, timeout_seconds=timeout),
     ]
     return FxService(
         providers=providers,

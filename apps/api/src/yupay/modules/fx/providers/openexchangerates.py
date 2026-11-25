@@ -53,7 +53,8 @@ class OpenExchangeRatesProvider(FxProvider):
                 resp.raise_for_status()
                 payload = resp.json()
         except (httpx.HTTPError, ValueError) as exc:
-            raise FxProviderError(f"{self.name}: transport error: {exc}") from exc
+            # Never ``{exc}``: its text is the request URL, which carries the app_id.
+            raise FxProviderError(f"{self.name}: transport error {type(exc).__name__}") from exc
 
         rate_raw = (payload.get("rates") or {}).get(quote_u)
         if rate_raw is None:

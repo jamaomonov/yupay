@@ -9,6 +9,7 @@ from yupay.modules.fx.providers.base import (
     FxProviderError,
     Quote,
 )
+from yupay.modules.fx.providers.cbu import CbuProvider
 from yupay.modules.fx.providers.coingecko import CoingeckoProvider
 from yupay.modules.fx.providers.exchangerate_api import ExchangerateApiProvider
 from yupay.modules.fx.providers.exchangerate_host import ExchangerateHostProvider
@@ -16,6 +17,7 @@ from yupay.modules.fx.providers.fxratesapi import FxRatesApiProvider
 from yupay.modules.fx.providers.openexchangerates import OpenExchangeRatesProvider
 
 __all__ = [
+    "CbuProvider",
     "CoingeckoProvider",
     "ExchangerateApiProvider",
     "ExchangerateHostProvider",

@@ -645,6 +645,8 @@ class Settings(BaseSettings):
     fx_rates_api_url: str = Field(default="https://api.fxratesapi.com/latest")
     fx_rates_api_key: str = Field(default="")
     fx_crypto_url: str = Field(default="https://api.coingecko.com/api/v3/simple/price")
+    # Central Bank of Uzbekistan, keyless; ``{ccy}`` is the currency code.
+    fx_cbu_url: str = Field(default="https://cbu.uz/ru/arkhiv-kursov-valyut/json/{ccy}/")
     fx_cache_fresh_seconds: int = Field(default=15 * 60)
     fx_cache_stale_seconds: int = Field(default=24 * 60 * 60)
     fx_provider_timeout_seconds: float = Field(default=1.5)
