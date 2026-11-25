@@ -244,18 +244,39 @@ async def test_a_transfer_mined_seconds_after_the_hold_is_not_credited(
 ) -> None:
     """Audit 2026-11-14: a pending transfer is visible before it is mined, so a
     front-runner reserves its exact amount seconds before the block. A match
-    under a minute after the hold goes to the operator, not to the balance."""
+    inside the network's lead goes to the operator, not to the balance."""
     thief = await _merchant(db_session)
     await open_usdt(db_session, [thief])
     r = await reserve(db_session, thief, "250")  # created two minutes ago
-    # Mined 10 s after the hold was created.
-    front_run = transfer(r.amount_usdt, at_offset=-timedelta(minutes=1, seconds=50))
+    # Mined 5 s after the hold was created (TRON: the lead is 10 s).
+    front_run = transfer(r.amount_usdt, at_offset=-timedelta(minutes=1, seconds=55))
     res = await intake.ingest(db_session, front_run, received_at=now())
     assert res.status == "unmatched"
     assert [k for k, _ in res.alerts] == ["usdt_unmatched"]
-    assert "меньше чем через минуту" in res.alerts[0][1]
+    assert "слишком быстро" in res.alerts[0][1]
     await db_session.refresh(r)
     assert r.status == "pending"
+
+
+@pytest.mark.asyncio
+async def test_a_fast_honest_bep20_transfer_is_credited(db_session: AsyncSession) -> None:
+    """2026-11-25: an honest BEP20 transfer (2 USDT) 40 s after the hold was held back by
+    the old flat minute. BSC exposes a pending transfer for ~3 s, so 10 s is the
+    lead there."""
+    m = await _merchant(db_session)
+    await open_usdt(db_session, [m], networks=("bep20",))
+    r = await reserve(db_session, m, "20", network="bep20")
+    sent = transfer(r.amount_usdt, at_offset=-timedelta(minutes=1, seconds=20), network="bep20")
+    assert (await intake.ingest(db_session, sent, received_at=now())).status == "matched"
+
+
+@pytest.mark.asyncio
+async def test_erc20_keeps_the_minute(db_session: AsyncSession) -> None:
+    m = await _merchant(db_session)
+    await open_usdt(db_session, [m], networks=("erc20",))
+    r = await reserve(db_session, m, "30", network="erc20")
+    sent = transfer(r.amount_usdt, at_offset=-timedelta(minutes=1, seconds=20), network="erc20")
+    assert (await intake.ingest(db_session, sent, received_at=now())).status == "unmatched"
 
 
 @pytest.mark.asyncio

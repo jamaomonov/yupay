@@ -76,6 +76,13 @@ reading a wallet by hand, and without a fee eating the 7–8 % margin.
     a block is visible about a minute before it is confirmed; a wider grace let a reseller
     reserve an amount after seeing someone else's transfer land, and be credited for it
     (security review, 2026-11-11).
+- **Too fast to be honest.** A transfer mined sooner after its reservation than the network's
+  lead is not credited automatically but goes to the operator (`intake._MIN_LEAD`): a free
+  amount is reserved exactly as asked and a pending transfer is public before its block, so
+  someone watching the address could reserve the amount of another person's unreserved
+  transfer. The lead only has to outlast that public window: 10 s on BEP20 and TRC20 (~3 s
+  blocks), 60 s on ERC20. It was a flat 60 s until 2026-11-25, when an honest BEP20 deposit
+  landed inside it.
 - **Credit.** `merchants.deposit.credit_deposit`, 1 USDT = 1 USD, idempotency key
   `usdt:{reservation.id}`.
 - **Unmatched.** A transfer that matches nothing lands `unmatched` in the journal and sends

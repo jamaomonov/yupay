@@ -70,7 +70,7 @@ async def reserve(
     """A reservation for exactly ``amount`` on ``network``, made two minutes ago.
 
     Backdated so a transfer "now" reads as an honest payer's, past intake's
-    60-second front-running guard; the guard has its own test.
+    front-running lead (10–60 s by network); the guard has its own tests.
     """
     r = await reservations.reserve(
         db, merchant_id=merchant_id, network=network, amount=Decimal(amount), idempotency_key=None
