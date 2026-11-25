@@ -92,10 +92,9 @@ services:
       - "random_page_cost=1.1"
       - "-c"
       - "effective_io_concurrency=200"
-      # 19 connections are in use today, and the configured pools can reach 100
-      # (api 20 + worker 2x20 + scheduler 20 + bot 20) — exactly the old
-      # ceiling, with nothing left for psql or a migration. This is the headroom
-      # that has to exist before a second uvicorn worker is ever considered.
+      # The configured pools can reach 140: api 3 workers x 20 (ADR-0109) +
+      # worker 2x20 + scheduler 20 + bot 20. 200 leaves room for psql and a
+      # migration; a fourth API worker would still fit, a sixth would not.
       - "-c"
       - "max_connections=200"
       # A connection idle *inside a transaction* is the pool-exhaustion shape:
@@ -211,7 +210,9 @@ services:
   api:
     image: ghcr.io/${GHCR_OWNER:-jamaomonov}/yupay-api:${IMAGE_TAG:-main}
     logging: *default-logging
-    mem_limit: 2g
+    # Three workers at ~370 MB each, plus up to 4 argon2 hashes x 64 MiB per
+    # worker (auth.security.PASSWORD_LIMITER is per process): ~1.9 GB at worst.
+    mem_limit: 3g
     # Every signed-in miniapp session holds a WebSocket for its whole life, and
     # each costs two descriptors (the socket, plus its own Redis pub/sub
     # connection). The inherited default is 1024, i.e. a hard wall at roughly
@@ -224,6 +225,15 @@ services:
     restart: unless-stopped
     environment:
       <<: *app-env
+      # uvicorn's --workers default (ADR-0109). One process was one event loop
+      # on one core: a burst of cheap catalogue reads queued checkout behind it
+      # (ApiHighLatency, 2026-11-25). DB budget: 3 x (10 + 10 overflow) = 60.
+      WEB_CONCURRENCY: "3"
+      # Workers write their metric samples here and /metrics sums them; tmpfs so
+      # every container start begins with an empty directory, as it must.
+      PROMETHEUS_MULTIPROC_DIR: /run/prometheus
+    tmpfs:
+      - /run/prometheus
     env_file: ./secrets/api.env
     depends_on:
       postgres: { condition: service_healthy }

@@ -1,18 +1,19 @@
 groups:
   - name: api
     rules:
-      # Saturation first. With a single uvicorn process the event loop is one
-      # core, so CPU is the signal that leads every symptom by minutes —
-      # latency and errors are what it looks like once it is already too late.
-      # If --workers is ever set, divide the threshold by the worker count.
+      # Saturation first. Each uvicorn worker is one event loop on one core, so
+      # CPU is the signal that leads every symptom by minutes — latency and
+      # errors are what it looks like once it is already too late. Since
+      # ADR-0109 the series carry a `pid` label (one per worker), so this fires
+      # when any single worker is pinned, which is the failure that matters.
       - alert: ApiSaturated
         expr: rate(process_cpu_seconds_total{job="api"}[5m]) > 0.85
         for: 3m
         labels: { severity: page }
         annotations:
-          summary: "API process is using >85% of a core"
+          summary: "An API worker is using >85% of a core"
           description: >
-            One uvicorn process means one event loop on one core. Past this the
+            Each uvicorn worker is one event loop on one core. Past this its
             queue grows and everything behind it slows together.
           runbook: "https://github.com/yupay/yupay/blob/main/docs/runbooks/traffic-surge.md"
 

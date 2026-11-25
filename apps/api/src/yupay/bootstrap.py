@@ -38,6 +38,7 @@ from yupay.core.errors import (
     problem_json_validation_handler,
 )
 from yupay.core.logging import configure_logging, get_logger
+from yupay.core.metrics_export import mount_metrics
 from yupay.core.observability import init_sentry
 from yupay.core.redis import close_redis
 from yupay.modules.fulfillment.suppliers.g2b_client import close_g2b_pool
@@ -434,8 +435,9 @@ def create_app() -> FastAPI:
     # as the `ApiHighLatency` rule being dead code: it fires above 1.5s, which
     # the metric could never report. The series cost is handlers x buckets,
     # which is nothing at this size.
-    Instrumentator().add(metrics.default(latency_lowr_buckets=_LATENCY_BUCKETS)).instrument(
-        app
-    ).expose(app, endpoint="/metrics", include_in_schema=False)
+    Instrumentator().add(metrics.default(latency_lowr_buckets=_LATENCY_BUCKETS)).instrument(app)
+    # Not the instrumentator's own ``expose``: with several uvicorn workers the
+    # scrape has to sum their files and keep per-worker CPU/fds (ADR-0109).
+    mount_metrics(app)
 
     return app

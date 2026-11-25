@@ -28,11 +28,13 @@ docker exec yupay-prod-prometheus-1 wget -qO- \
 
 In order:
 
-1. **CPU of the API process.** With one worker this is the saturation signal and
-   it leads every symptom by minutes.
-   `rate(process_cpu_seconds_total{job="api"}[5m])` — above 0.85 means the loop
-   is full.
-2. **File descriptors.** `process_open_fds{job="api"} / process_max_fds{job="api"}`.
+1. **CPU per API worker.** Each uvicorn worker (three since ADR-0109) is one
+   event loop on one core; this is the saturation signal and it leads every
+   symptom by minutes. `rate(process_cpu_seconds_total{job="api"}[5m])` — one
+   series per `pid`; above 0.85 means that worker's loop is full. The supervisor
+   (pid 1) idles near zero.
+2. **File descriptors.** `process_open_fds{job="api"} / process_max_fds{job="api"}`,
+   per worker.
    Past ~0.7 you are approaching a hard wall: at the limit uvicorn stops
    accepting _every_ connection, HTTP included, and does not recover on its own.
 3. **DB connections.** `sum(pg_stat_database_numbackends)` against
@@ -295,7 +297,8 @@ pending-row age/count is a real follow-up candidate, not built yet.
 
 ## ApiHighLatency with low CPU: storefront fan-out (2026-11-25)
 
-The API is one uvicorn process with a 20-connection pool. When `ApiHighLatency`
+The API was one uvicorn process with a 20-connection pool (three workers since
+ADR-0109, each with its own pool). When `ApiHighLatency`
 flaps while CPU and RPS are low, check `pg_stat_activity` for many API
 connections in `idle in transaction` waiting on `Client/ClientRead`: the pool is
 held by a burst the process cannot serve fast enough, and everything else
@@ -304,3 +307,10 @@ switcher fetching all 28 Steam Wallet (25 Roblox, ~20 per platform) countries
 and their products at once on every ISR regeneration, per locale. The web now
 fetches regions and sitemap brands three at a time (`apps/web/src/lib/map-limit.ts`).
 A new fan-out in a server component should go through `mapLimit` too.
+
+The per-page cap was not enough: when the cached region data expired, a crawler
+walking region pages started dozens of regenerations at once, each with its own
+three fetches — ~280 brand and ~280 product calls in a minute, p95 2–9 s with
+the pool idle and one core pinned (each call is ~40 ms of CPU). Region fetches
+now go through one gate per web process (`createGate(3)` in the brand page),
+and the API runs three workers (ADR-0109).
