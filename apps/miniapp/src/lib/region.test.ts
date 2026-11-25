@@ -95,7 +95,7 @@ describe("regionLabel", () => {
   });
 
   it("falls back to the uppercase code for an unknown region", () => {
-    expect(regionLabel("kz", translate)).toBe("KZ");
+    expect(regionLabel("zz", translate)).toBe("ZZ");
   });
 });
 
