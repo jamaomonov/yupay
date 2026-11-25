@@ -35,25 +35,14 @@ Status = Literal["duplicate", "matched", "unmatched", "ignored"]
 #: response carrying the amount reached them, which is after this row exists.
 _SKEW: Final = timedelta(seconds=5)
 _TX_KEY: Final = "uq_usdt_incoming_event"
-#: A transfer mined sooner than this after its reservation was created is not
-#: credited automatically (audit 2026-11-14). A free amount is reserved exactly
-#: as asked, and a pending transfer is public before it is mined, so anyone
-#: watching our address could reserve the exact amount of somebody else's
-#: mistyped or unreserved transfer and have it land on their own reservation.
-#: Too-early matches go to the operator as unmatched — the admin credits them.
-#:
-#: The lead is per network because the exposure is (owner, 2026-11-25: an honest
-#: 2 USDT BEP20 transfer landed inside the old flat minute). It only has to
-#: outlast the time a transfer sits public before its block: ~3 s on BSC and
-#: TRON, ~12 s and often far longer on Ethereum. Nobody honest reads the amount,
-#: opens a wallet, sends and gets mined in 10 s.
-_MIN_LEAD: Final[dict[str, timedelta]] = {
-    "bep20": timedelta(seconds=10),
-    "trc20": timedelta(seconds=10),
-    "erc20": timedelta(seconds=60),
-}
-#: A network not listed above gets the strict lead.
-_MIN_LEAD_DEFAULT: Final = timedelta(seconds=60)
+#: No "too soon after the reservation" hold (owner, 2026-11-25). A transfer mined
+#: after its reservation was created pays it, however soon. The residual risk is
+#: known and accepted: a pending transfer is public before its block, so someone
+#: watching the address could reserve the exact amount of another person's
+#: *unreserved or mistyped* transfer and be credited for it. YuPay loses nothing
+#: either way — the money arrives — and a reseller who sends without a matching
+#: reservation carries that risk. The 60 s hold this replaces (audit 2026-11-14)
+#: sent honest BEP20 deposits to the operator.
 
 
 @dataclass
@@ -132,30 +121,6 @@ async def ingest(db: AsyncSession, t: Transfer, *, received_at: datetime) -> Int
         return IntakeResult("ignored")
 
     reservation = await _payable(db, t) if t.amount == t.amount.quantize(CENT) else None
-    if reservation is not None and t.block_at < reservation.created_at + _MIN_LEAD.get(
-        t.network, _MIN_LEAD_DEFAULT
-    ):
-        row.result = "unmatched"
-        await db.flush()
-        log.warning(
-            "usdt.too_early",
-            number=reservation.number,
-            amount=str(t.amount),
-            tx_id=t.tx_id,
-            lead_s=int((t.block_at - reservation.created_at).total_seconds()),
-        )
-        return IntakeResult(
-            "unmatched",
-            alerts=[
-                (
-                    "usdt_unmatched",
-                    f"USDT ({t.network.upper()}): перевод {t.amount.normalize():f} USDT пришёл "
-                    f"слишком быстро после заявки {reservation.number} — не зачислен "
-                    "автоматически (возможен перехват чужого перевода). Проверьте отправителя "
-                    "и зачислите вручную в админке (USDT → журнал)",
-                )
-            ],
-        )
     if reservation is None:
         row.result = "unmatched"
         await db.flush()
