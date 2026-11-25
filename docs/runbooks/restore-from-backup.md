@@ -78,3 +78,13 @@ curl -fsS https://api.yupay.uz/readyz
 - [ ] Run `make test-py` against the restored DB to confirm no schema drift.
 - [ ] Record the drill date and outcome in `docs/runbooks/restore-drill-log.md`.
 - [ ] If anything failed, file a SEV2 issue.
+
+## Nightly backup failed: `permission denied for table …` (2026-11-25)
+
+The backup container dumps as `yupay_api` (it reads `api.env`). A table created by
+hand as `yupay_app` (an ad-hoc `*_bak_*` copy, say) carries no grant for it, and
+`pg_dump` aborts on the first unreadable table — no dump at all. That cost four
+nights (2026-11-22 … 25) over `sku_sourcing_rules_bak_fzr_20261121`. Fix:
+`GRANT SELECT ON <table> TO yupay_api` (or drop the copy), then run
+`docker exec yupay-prod-backup-1 bash /scripts/pg_backup.sh` and check the object in
+`rclone lsl r2:yupay-backups/<date>/`. Better: never leave ad-hoc copies in `public`.
