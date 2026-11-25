@@ -7,6 +7,7 @@ import { CS2_SKINS_BRAND } from "@/lib/brand-href";
 import { getBrandDetail, getBrandSlugs, getProductDetail } from "@/lib/catalog";
 import { skinsEnabled } from "@/lib/features";
 import { LEGAL_DOCS } from "@/lib/legal";
+import { mapLimit } from "@/lib/map-limit";
 import { localeUrl } from "@/lib/seo";
 
 /**
@@ -61,8 +62,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const entries: MetadataRoute.Sitemap = [];
   // The CS2 skins brand is the /skins market (listed above), not a store page.
   const slugs = (await getBrandSlugs()).filter((slug) => slug !== CS2_SKINS_BRAND);
+  // A few brands at a time: each one is a brand call plus one per product
+  // against a single API process (see mapLimit).
   const imagesBySlug = new Map(
-    await Promise.all(slugs.map(async (slug) => [slug, await brandImages(slug)] as const)),
+    await mapLimit(slugs, 3, async (slug) => [slug, await brandImages(slug)] as const),
   );
 
   // No per-entry content timestamps are exposed to the storefront, so this is

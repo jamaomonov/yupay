@@ -292,3 +292,15 @@ anyway, so no configuration could have made it fire. The fulfilment queue is
 `fulfillment_tasks` in Postgres now (ADR-0064) — depth is checked manually
 via the SQL in `docs/runbooks/fulfillment-queue.md`. An automated alert on
 pending-row age/count is a real follow-up candidate, not built yet.
+
+## ApiHighLatency with low CPU: storefront fan-out (2026-11-25)
+
+The API is one uvicorn process with a 20-connection pool. When `ApiHighLatency`
+flaps while CPU and RPS are low, check `pg_stat_activity` for many API
+connections in `idle in transaction` waiting on `Client/ClientRead`: the pool is
+held by a burst the process cannot serve fast enough, and everything else
+queues behind it. On 2026-11-25 the burst was the web brand page's region
+switcher fetching all 28 Steam Wallet (25 Roblox, ~20 per platform) countries
+and their products at once on every ISR regeneration, per locale. The web now
+fetches regions and sitemap brands three at a time (`apps/web/src/lib/map-limit.ts`).
+A new fan-out in a server component should go through `mapLimit` too.
