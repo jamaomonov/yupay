@@ -1,6 +1,6 @@
 -- Valorant, League of Legends, Fortnite and Call of Duty Mobile on the storefront:
 -- one card each with a country switcher (ADR-0099, "a main brand that sells
--- nothing itself"), plus EA SPORTS FC 26 Points and PUBG: BATTLEGROUNDS, which
+-- nothing itself"), plus EA SPORTS FC 26 Points (PC, EA app) and PUBG: BATTLEGROUNDS, which
 -- have no countries and simply open for retail (owner, 2026-11-25).
 --
 -- Opens on: Valorant RU (the CIS store; owner's call), League of Legends EU,
@@ -12,7 +12,7 @@
 --
 -- Rollback: UPDATE brands SET visible_retail = false WHERE slug IN
 --   ('valorant','league-of-legends','fortnite','call-of-duty-mobile',
---    'ea-sports-fc-26','pubg-battlegrounds');
+--    'ea-sports-fc-26-ea-points','pubg-battlegrounds');
 --
 -- Idempotent. Apply with operator psql.
 
@@ -120,18 +120,18 @@ UPDATE brand_translations t
  WHERE t.brand_id = c.id;
 
 -- 4. The two without countries.
+-- FC 26: the EA app (PC) card. G-Engine's `ea-sports-fc-26` is the Xbox card and
+-- stays reseller-only (2026-11-25_fc26_split_platforms.sql).
 UPDATE brands SET visible_retail = true, sort_order = 34, updated_at = now()
- WHERE slug = 'ea-sports-fc-26';
+ WHERE slug = 'ea-sports-fc-26-ea-points';
 UPDATE brands SET visible_retail = true, sort_order = 35, updated_at = now()
  WHERE slug = 'pubg-battlegrounds';
-UPDATE brand_translations t SET name = 'EA SPORTS FC 26 Points'
-  FROM brands b WHERE b.id = t.brand_id AND b.slug = 'ea-sports-fc-26';
 
 SELECT p.slug AS brand, p.region_code AS opens_on, count(c.id) AS regions,
        string_agg(c.region_code, ' ' ORDER BY c.region_code) AS codes
   FROM brands p
   LEFT JOIN brands c ON c.region_parent_id = p.id AND c.visible_retail
- WHERE p.slug IN (SELECT slug FROM fam) OR p.slug IN ('ea-sports-fc-26', 'pubg-battlegrounds')
+ WHERE p.slug IN (SELECT slug FROM fam) OR p.slug IN ('ea-sports-fc-26-ea-points', 'pubg-battlegrounds')
  GROUP BY 1, 2
  ORDER BY 1;
 

@@ -62,7 +62,9 @@ ADD: list[tuple[str, str, str, bool]] = [
 #: (target brand, source brand) — copy the source SKUs' mappings onto the target
 #: SKU with the same number (same product imported twice).
 COPY: list[tuple[str, str]] = [
-    ("ea-sports-fc-26", "ea-sports-fc-26-ea-points"),
+    # FC 26 is NOT here any more: G-Engine's card is Xbox, FazerCards' is EA app (PC)
+    # — two products, not one imported twice. 2026-11-25_fc26_split_platforms.sql
+    # undoes the copy this script made on its first run.
     ("pubg-battlegrounds", "pubg-g-coins"),
 ]
 
