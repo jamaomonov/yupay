@@ -277,6 +277,10 @@
     "checkSwitchRegion": "Switch to {region}",
     "checkTryRegion": "If the account is from another region, pick it in the switcher above",
     "regionTitle": "Account region",
+    "regionAll": "All regions · {count}",
+    "regionSearch": "Find a country",
+    "regionNone": "No such country on the list",
+    "regionCollapse": "Collapse",
     "regionUnchecked": "IDs for this region are not checked. Make sure your account is registered in the {region} region.",
     "regions": {
       "global": "Other countries",

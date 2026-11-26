@@ -131,3 +131,27 @@ it("isRegionUnchecked: only an id field with no check counts", () => {
   expect(isRegionUnchecked([product("a", "a", [CHECKED])])).toBe(false);
   expect(isRegionUnchecked([product("a", "a", [])])).toBe(false);
 });
+
+it("folds a long region list under «all regions» and finds one by search", () => {
+  // PlayStation-sized: the unknown codes render as their uppercase selves.
+  const codes = ["us", "my", "sg", "id", "th", "tr", "br", "uk", "ca", "au", "nz", "jp", "es"];
+  const many: RegionOption[] = codes.map((code) => ({
+    code,
+    slug: `psn-${code}`,
+    products: [product(code, `${code} card`, [])],
+  }));
+  render(<RegionPurchase regions={many} locale="ru" />);
+
+  // Eight chips plus the fold; Spain is not on screen yet.
+  expect(screen.getAllByRole("button", { pressed: false })).toHaveLength(7);
+  expect(screen.queryByRole("button", { name: "ES" })).toBeNull();
+
+  fireEvent.click(screen.getByRole("button", { name: /regionAll/ }));
+  fireEvent.change(screen.getByRole("searchbox"), { target: { value: "es" } });
+  fireEvent.click(screen.getByRole("button", { name: "ES" }));
+
+  expect(screen.getByText("es card")).toBeInTheDocument();
+  expect(screen.queryByRole("searchbox")).toBeNull();
+  // The picked region now holds the last chip.
+  expect(screen.getByRole("button", { name: "ES", pressed: true })).toBeInTheDocument();
+});

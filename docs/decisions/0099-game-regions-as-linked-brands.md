@@ -82,3 +82,14 @@ brands already exist from the bulk supplier import, priced and B2B-only.
   The main brand's code is `usd` («Глобальная (USD)»), not `global`, so its
   chip does not claim to suit Uzbek accounts; the page's FAQ sends those to the
   login top-up (`steam`). New codes: `cl`, `pe`, `uy`, `cr`, `usd`.
+
+**2026-11-26 — flags and a folded switcher.** Every region chip, the order
+line on the web and the Mini App package card carry the country's flag (static
+SVGs from flag-icons, MIT, in `public/flags/region/` of both apps — not emoji,
+which Windows renders as two letters); a region that is not one country (global,
+CIS, MENA…) shows a globe, and the game's home region shows Uzbekistan's. A game
+sold in 11 regions or more (PlayStation: 43) keeps eight chips — the main region,
+then the countries our buyers pick most (`POPULAR_REGIONS`), then API order — and
+folds the rest under «Все регионы», a list with a search field. The picked region
+always stays a chip. The rule is `foldRegions` in `@yupay/utils`, shared by both
+apps.

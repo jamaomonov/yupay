@@ -54,3 +54,15 @@ export {
   stepPack,
 } from "./pack-cart";
 export type { PackCounts } from "./pack-cart";
+export {
+  FLAG_CODES,
+  foldRegions,
+  homeRegionFlagSrc,
+  POPULAR_REGIONS,
+  REGION_COMPACT_FROM,
+  REGION_TOP,
+  regionFlagCode,
+  regionFlagSrc,
+  regionMatches,
+} from "./region-flag";
+export type { FoldedRegions } from "./region-flag";

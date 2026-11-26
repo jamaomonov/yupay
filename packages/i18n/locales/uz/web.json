@@ -277,6 +277,10 @@
     "checkSwitchRegion": "Oʻtish: {region}",
     "checkTryRegion": "Agar akkaunt boshqa mintaqadan boʻlsa — uni yuqoridagi tanlovdan tanlang",
     "regionTitle": "Akkaunt mintaqasi",
+    "regionAll": "Barcha mintaqalar · {count}",
+    "regionSearch": "Davlatni topish",
+    "regionNone": "Ro‘yxatda bunday davlat yo‘q",
+    "regionCollapse": "Yig‘ish",
     "regionUnchecked": "Bu mintaqa uchun ID tekshirilmaydi. Akkauntingiz «{region}» mintaqasida roʻyxatdan oʻtganiga ishonch hosil qiling.",
     "regions": {
       "global": "Boshqa davlatlar",

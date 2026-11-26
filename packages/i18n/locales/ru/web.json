@@ -277,6 +277,10 @@
     "checkSwitchRegion": "Перейти: {region}",
     "checkTryRegion": "Если аккаунт другого региона — выберите его в переключателе выше",
     "regionTitle": "Регион аккаунта",
+    "regionAll": "Все регионы · {count}",
+    "regionSearch": "Найти страну",
+    "regionNone": "Такой страны нет в списке",
+    "regionCollapse": "Свернуть",
     "regionUnchecked": "Для этого региона ID не проверяется. Убедитесь, что ваш аккаунт зарегистрирован в регионе «{region}».",
     "regions": {
       "global": "Другие страны",

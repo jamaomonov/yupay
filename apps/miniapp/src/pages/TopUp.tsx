@@ -4,7 +4,6 @@ import {
   Check,
   ChevronRight,
   ExternalLink,
-  Globe,
   Minus,
   Package as PackageIcon,
   Plus,
@@ -29,6 +28,7 @@ import { useLocation, useParams } from "wouter";
 import { ConfirmPaymentDialog } from "@/components/ConfirmPaymentDialog";
 import { DynamicFields, pickLocalized } from "@/components/DynamicFields";
 import { type AppliedPromo, PromoField } from "@/components/PromoField";
+import { RegionFlag, RegionPicker } from "@/components/RegionPicker";
 import { ReviewsSheet } from "@/components/ReviewsSheet";
 import { SafeImage } from "@/components/ui/safe-image";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -1268,44 +1268,10 @@ export default function TopUp() {
               <VariantChips variants={variants} current={brandSlug} onPick={pickVariant} />
             )}
             {/* Region picker — only for a game sold in more than one region
-                (ADR-0099). Same chip styling as the product picker below,
-                minus the image slot: there's nothing to show but the region
-                name. */}
+                (ADR-0099). Flags, and a long list folds (RegionPicker). */}
             {regions.length > 0 && (
               <div>
-                <div className="mb-2.5 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Globe size={13} className="text-white/40" />
-                    <span className="text-xs font-semibold uppercase tracking-wide text-white/50">
-                      {t("topup.pickRegion")}
-                    </span>
-                  </div>
-                </div>
-                <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4">
-                  {regions.map((r) => {
-                    const active = r.code === region;
-                    return (
-                      <button
-                        key={r.code}
-                        type="button"
-                        aria-pressed={active}
-                        onClick={() => {
-                          pickRegion(r.code);
-                        }}
-                        className="flex-shrink-0 whitespace-nowrap rounded-2xl px-3.5 py-1.5 text-xs font-semibold transition-all duration-150"
-                        style={{
-                          background: active ? "hsl(var(--surface-3))" : "hsl(var(--surface-2))",
-                          color: active ? "#fff" : "rgba(255,255,255,0.6)",
-                          border: active
-                            ? "1.5px solid hsl(var(--primary) / 0.7)"
-                            : "1px solid hsl(var(--border))",
-                        }}
-                      >
-                        {regionLabel(r.code, t, r.code === regions[0]?.code)}
-                      </button>
-                    );
-                  })}
-                </div>
+                <RegionPicker regions={regions} current={region} onPick={pickRegion} />
                 {regionUnchecked ? (
                   <p className="mt-2 text-[11px] text-amber-400">
                     {t("topup.regionUnchecked", {
@@ -2002,7 +1968,8 @@ function PackageCard({
         </div>
 
         {pkg.region && pkg.region !== "GLOBAL" && (
-          <p className="mb-2 text-[11px] text-white/40">
+          <p className="mb-2 flex items-center gap-1.5 text-[11px] text-white/40">
+            <RegionFlag code={pkg.region} />
             {t("orders.region", { region: pkg.region })}
           </p>
         )}

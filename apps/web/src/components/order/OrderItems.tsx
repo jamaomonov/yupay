@@ -6,6 +6,7 @@ import { useLocale, useTranslations } from "next-intl";
 
 import type { OrderItemOut } from "@/lib/orders-types";
 
+import { RegionFlag } from "@/components/store/RegionFlag";
 import { isOptimizable } from "@/lib/image";
 import { lineTotalUsd } from "@/lib/order-display";
 import { isSkinItem } from "@/lib/orders-types";
@@ -14,14 +15,14 @@ import { isSkinItem } from "@/lib/orders-types";
  *  placeholder denomination ("Любая сумма" / "Any amount") that tells the
  *  customer nothing — for those the "·" segment becomes the credited USD
  *  amount, so the line reads "Steam · $11.30". A fixed denomination ("60 UC",
- *  "820 UC") is kept verbatim ("PUBG Mobile · 60 UC"). Region is appended
- *  when present. */
+ *  "820 UC") is kept verbatim ("PUBG Mobile · 60 UC"). The region is not part
+ *  of it: it renders after the headline with its flag (`ItemRegion`). */
 function itemHeadline(item: OrderItemOut, locale: string): string {
   const d = item.display;
   if (!d) return item.sku_id;
   const amount = d.variable_amount ? formatMoney(lineTotalUsd(item), "USD", locale) : null;
   const middle = amount ?? d.denomination ?? d.product_name;
-  const parts = [d.brand_name, middle, d.region ?? undefined].filter(Boolean);
+  const parts = [d.brand_name, middle].filter(Boolean);
   return parts.join(" · ");
 }
 
@@ -123,6 +124,12 @@ export function OrderItems({ items: raw }: { items: OrderItemOut[] }) {
                 <ItemThumb item={item} />
                 <span className="text-foreground min-w-0 flex-1 truncate text-sm font-semibold">
                   {itemHeadline(item, locale)}
+                  {item.display?.region ? (
+                    <span className="text-tx-mute ml-1.5 inline-flex items-center gap-1 align-middle text-xs font-medium">
+                      <RegionFlag code={item.display.region} />
+                      {item.display.region}
+                    </span>
+                  ) : null}
                 </span>
                 {item.qty > 1 ? (
                   <span className="border-border-2 text-tx-mute rounded-btn shrink-0 border px-2 py-0.5 text-xs font-medium tabular-nums">

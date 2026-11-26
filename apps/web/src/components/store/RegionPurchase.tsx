@@ -4,6 +4,7 @@ import { useTranslations } from "next-intl";
 import { type ReactNode, useEffect, useState } from "react";
 
 import { PurchasePanel } from "./PurchasePanel";
+import { RegionSwitcher } from "./RegionSwitcher";
 
 import type { ProductDetail } from "@/lib/catalog";
 
@@ -80,28 +81,12 @@ export function RegionPurchase({ regions, locale, children }: RegionPurchaseProp
     <>
       <div role="group" aria-label={t("regionTitle")} className="mb-6">
         <div className="text-tx-mute mb-3 text-sm font-semibold">{t("regionTitle")}</div>
-        <div className="flex flex-wrap gap-2">
-          {regions.map((r) => {
-            const active = r.code === current.code;
-            return (
-              <button
-                key={r.code}
-                type="button"
-                aria-pressed={active}
-                onClick={() => {
-                  pick(r.code);
-                }}
-                className={`focus-visible:ring-primary focus-visible:ring-offset-bg min-h-[44px] rounded-full border px-4 py-2 text-[13px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
-                  active
-                    ? "border-primary bg-primary/10 text-foreground"
-                    : "border-border bg-card text-tx-mute hover:border-border-2"
-                }`}
-              >
-                {regionName(r.code)}
-              </button>
-            );
-          })}
-        </div>
+        <RegionSwitcher
+          codes={regions.map((r) => r.code)}
+          current={current.code}
+          name={regionName}
+          onPick={pick}
+        />
         {isRegionUnchecked(current.products) && (
           <p className="border-warning/40 bg-warning/[0.06] text-warning mt-3 rounded-lg border px-4 py-3 text-[13px]">
             {t("regionUnchecked", { region: regionName(current.code) })}
