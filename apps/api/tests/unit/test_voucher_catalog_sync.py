@@ -70,8 +70,16 @@ class _Writes:
         )
 
     async def prune_catalog_denoms(
-        self, db: Any, *, supplier_slug: str, parent_external_id: str, keep: set[str]
+        self,
+        db: Any,
+        *,
+        supplier_slug: str,
+        parent_external_id: str,
+        keep: set[str],
+        kind: str = "game_denom",
     ) -> int:
+        # A gift-card pass must prune its own rows, not the game ones (2026-11-26).
+        assert kind == "voucher_denom"
         self.pruned.append((parent_external_id, keep))
         return 0
 

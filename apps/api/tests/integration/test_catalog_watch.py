@@ -463,6 +463,55 @@ async def test_prune_drops_only_what_the_pass_stopped_seeing(db_session: AsyncSe
     assert left == {"a", "c"}
 
 
+async def test_prune_forgets_a_gift_card_the_panel_stopped_listing(
+    db_session: AsyncSession,
+) -> None:
+    """2026-11-26: fzr sold out PlayStation US $2 and dropped it from the
+    category. Pruning only knew ``game_denom``, so the ``voucher_denom`` row kept
+    its last count (3), the stock sweep read that cached row as live, and the
+    shelf sold a card nobody had. A game row sharing the category id stays."""
+    for kind, external_id in (
+        ("voucher_denom", "1_usd"),
+        ("voucher_denom", "2_usd"),
+        ("game_denom", "2_usd_game"),
+    ):
+        db_session.add(
+            SupplierCatalogCache(
+                supplier_slug="fzr",
+                kind=kind,
+                external_id=external_id,
+                title=external_id,
+                parent_external_id="playstation_us",
+                raw={"stock": 3},
+                fetched_at=now(),
+            )
+        )
+    await db_session.flush()
+
+    removed = await svc.prune_catalog_denoms(
+        db_session,
+        supplier_slug="fzr",
+        parent_external_id="playstation_us",
+        keep={"1_usd"},
+        kind="voucher_denom",
+    )
+    await db_session.flush()
+
+    left = set(
+        (
+            await db_session.execute(
+                select(SupplierCatalogCache.external_id).where(
+                    SupplierCatalogCache.parent_external_id == "playstation_us"
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert removed == 1
+    assert left == {"1_usd", "2_usd_game"}
+
+
 async def test_prune_refuses_to_empty_the_cache_on_an_empty_pass(db_session: AsyncSession) -> None:
     """An empty answer is an outage, not a mass delisting."""
     await _seed_cached(db_session, cached=("a", "b"))

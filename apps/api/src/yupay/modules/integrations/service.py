@@ -462,6 +462,7 @@ async def prune_catalog_denoms(
     supplier_slug: str,
     parent_external_id: str,
     keep: set[str],
+    kind: Literal["game_denom", "voucher_denom"] = "game_denom",
 ) -> int:
     """Forget cached denominations of one game the supplier stopped listing.
 
@@ -476,6 +477,11 @@ async def prune_catalog_denoms(
     "the supplier delisted the whole game at once" — the same rule the
     catalogue watch applies to an empty catalogue.
 
+    ``kind`` is ``voucher_denom`` for a gift-card category. Until 2026-11-26
+    only game rows were ever pruned, so a card a panel sold out and stopped
+    listing kept its last count; the stock sweep reads fresh cached rows as
+    live, and the shelf sold a fzr PlayStation US $2 card nobody had.
+
     Returns the number of rows removed.
     """
     if not keep:
@@ -483,7 +489,7 @@ async def prune_catalog_denoms(
     result = await db.execute(
         sa_delete(SupplierCatalogCache).where(
             SupplierCatalogCache.supplier_slug == supplier_slug,
-            SupplierCatalogCache.kind == "game_denom",
+            SupplierCatalogCache.kind == kind,
             SupplierCatalogCache.parent_external_id == parent_external_id,
             SupplierCatalogCache.external_id.notin_(tuple(keep)),
         )

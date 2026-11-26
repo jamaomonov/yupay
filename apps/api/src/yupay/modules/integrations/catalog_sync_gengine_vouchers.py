@@ -102,7 +102,11 @@ async def _write_shop_denoms(
         # rule — a product that answered with an empty ladder keeps its cache
         # rather than reading as a delisting.
         await svc.prune_catalog_denoms(
-            db, supplier_slug="gengine", parent_external_id=product_id, keep=seen
+            db,
+            supplier_slug="gengine",
+            parent_external_id=product_id,
+            keep=seen,
+            kind="voucher_denom",
         )
     except Exception as exc:  # noqa: BLE001 -- a malformed denomination must not raise past here
         return written, f"{product_id}: malformed denomination: {exc!s}"[:200]

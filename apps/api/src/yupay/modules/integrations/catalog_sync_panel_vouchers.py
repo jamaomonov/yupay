@@ -143,7 +143,11 @@ async def _sync_category_cards(
         # ``seen`` prunes nothing by ``prune_catalog_denoms``'s own rule, so
         # neither can read as NOVA delisting a whole category at once.
         await svc.prune_catalog_denoms(
-            db, supplier_slug=client.slug, parent_external_id=category_id, keep=seen
+            db,
+            supplier_slug=client.slug,
+            parent_external_id=category_id,
+            keep=seen,
+            kind="voucher_denom",
         )
     except Exception as exc:  # noqa: BLE001 -- one malformed card must not raise past this category
         return written, False, f"malformed card payload: {exc!s}"[:200]
