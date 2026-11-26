@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any
@@ -180,3 +181,83 @@ async def test_three_failures_in_a_day_quarantine_the_supplier(db_session: Async
     assert q.strikes == 1
     # Quarantined, the route moves to the other supplier at the same price.
     assert (await _rule(db_session, sku_id)).supplier_slug == "nova"
+
+
+async def _task(db: AsyncSession, sku_id: str, tag: str, *, status: str) -> None:
+    order = await _make_paid_order(db, tag=tag)
+    item = (await db.execute(select(OrderItem).where(OrderItem.order_id == order.id))).scalar_one()
+    item.sku_id = sku_id
+    db.add(
+        FulfillmentTask(
+            id=new_id(), order_id=order.id, order_item_id=item.id, supplier="g2b", status=status
+        )
+    )
+    await db.commit()
+
+
+async def _expired_quarantine(db: AsyncSession, sku_id: str) -> None:
+    from yupay.core.clock import now
+
+    db.add(
+        SourcingQuarantine(
+            sku_id=sku_id,
+            supplier_slug="g2b",
+            until=now() - timedelta(hours=1),
+            strikes=1,
+            updated_at=now() - timedelta(hours=7),
+        )
+    )
+    await db.commit()
+
+
+async def test_a_supplier_that_sold_again_after_its_sit_out_is_released(
+    db_session: AsyncSession,
+) -> None:
+    sku_id = await _sku(db_session, "sr-q-lift", managed=True, nova_cost="1.00")
+    await _expired_quarantine(db_session, sku_id)
+    await _task(db_session, sku_id, "sr-q-lift-ok", status="succeeded")
+    await smart_routing.update_quarantine(db_session)
+    await db_session.commit()
+    assert await db_session.get(SourcingQuarantine, (sku_id, "g2b"), populate_existing=True) is None
+
+
+async def test_a_supplier_that_fails_again_after_its_sit_out_sits_out_longer(
+    db_session: AsyncSession,
+) -> None:
+    sku_id = await _sku(db_session, "sr-q-again", managed=True, nova_cost="1.00")
+    await _expired_quarantine(db_session, sku_id)
+    await _task(db_session, sku_id, "sr-q-again-fail", status="failed")
+    await smart_routing.update_quarantine(db_session)
+    await db_session.commit()
+    q = await db_session.get(SourcingQuarantine, (sku_id, "g2b"), populate_existing=True)
+    assert q is not None
+    assert q.strikes == 2
+
+
+async def test_off_does_nothing(db_session: AsyncSession) -> None:
+    await _mode(db_session, "off")
+    sku_id = await _sku(db_session, "sr-off", managed=True, nova_cost="0.50")
+    report = await smart_routing.run_smart_routing()
+    assert report.mode == "off"
+    assert (await _rule(db_session, sku_id)).supplier_slug == "g2b"
+
+
+async def test_one_sku_failing_does_not_stop_the_run(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A rollback expires the loaded rules; the next SKU must still be decided."""
+    await _mode(db_session, "on")
+    first = await _sku(db_session, "sr-err-a", managed=True, nova_cost="0.95")
+    second = await _sku(db_session, "sr-err-b", managed=True, nova_cost="0.95")
+    real_one = smart_routing._one
+
+    async def _first_fails(db: AsyncSession, rule: SkuSourcingRule, *args: Any) -> None:
+        if rule.sku_id == first:
+            raise RuntimeError("boom")
+        await real_one(db, rule, *args)
+
+    monkeypatch.setattr(smart_routing, "_one", _first_fails)
+    report = await smart_routing.run_smart_routing()
+    assert report.errors == 1
+    assert (await _rule(db_session, first)).supplier_slug == "g2b"
+    assert (await _rule(db_session, second)).supplier_slug == "nova"

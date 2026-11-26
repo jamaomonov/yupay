@@ -28,6 +28,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import timedelta
 from decimal import Decimal
+from types import SimpleNamespace
 from typing import Any, Final
 
 from sqlalchemy import select, text
@@ -165,7 +166,16 @@ async def run_smart_routing() -> Report:
     report = Report()
     factory = get_session_factory()
     async with factory() as db:
-        conf = await sourcing_settings.load(db)
+        row = await sourcing_settings.load(db)
+        # Plain values, not the row: a SKU's rollback below expires every
+        # loaded row, and reading an expired one is a lazy load the async
+        # session refuses.
+        conf = SimpleNamespace(
+            smart_mode=row.smart_mode,
+            smart_switch_pct=row.smart_switch_pct,
+            smart_stock_step_pct=row.smart_stock_step_pct,
+            smart_dwell_hours=row.smart_dwell_hours,
+        )
         report.mode = conf.smart_mode
         if conf.smart_mode == "off":
             return report
@@ -189,17 +199,23 @@ async def run_smart_routing() -> Report:
         recent = await _recent_log(
             db, [r.sku_id for r in rules], dwell_hours=conf.smart_dwell_hours
         )
-        for rule in rules:
+        # The same goes for the rules: their ids are read up front, and a rule
+        # is reloaded once any SKU's failure has rolled the session back.
+        rolled_back = False
+        for rule, sku_id in [(r, r.sku_id) for r in rules]:
             report.checked += 1
             try:
-                await _one(db, rule, candidates.get(rule.sku_id, []), recent, conf, report)
+                if rolled_back:
+                    await db.refresh(rule)
+                await _one(db, rule, candidates.get(sku_id, []), recent, conf, report)
                 await db.commit()
             except Exception as exc:  # one SKU's fault is logged, never the run's
                 await db.rollback()
+                rolled_back = True
                 report.errors += 1
                 log.exception(
                     "sourcing.smart_routing.sku_failed",
-                    sku_id=rule.sku_id,
+                    sku_id=sku_id,
                     error=type(exc).__name__,
                 )
     return report
