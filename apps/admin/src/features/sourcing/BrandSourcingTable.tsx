@@ -14,6 +14,7 @@ import {
   cheapestSlugs,
   countByStatus,
   forceInventoryDisabledReason,
+  formatUnitAmount,
   isCurrentSupplierRoute,
   marginPercent,
   ROUTE_STATUS,
@@ -28,7 +29,6 @@ import type { SourcingBrandSkuOut, SourcingMode } from "./types";
 import { Badge } from "@/components/Badge";
 import { EmptyState, TableSkeleton } from "@/components/States";
 import { RESERVE_SUPPLIERS } from "@/features/integrations/types";
-import { formatMoneyValue } from "@/lib/money";
 
 export interface BrandSourcingTableProps {
   items: SourcingBrandSkuOut[];
@@ -176,7 +176,7 @@ export function BrandSourcingTable({
                   />
                   <td className="py-2 pr-3">
                     <div className="flex flex-col">
-                      <span>{formatMoneyValue(item.price_usd, "USD")} $</span>
+                      <span>{formatUnitAmount(item.price_usd)} $</span>
                       {margin !== null && (
                         <span className="text-[10px] text-[var(--text-tertiary)]">
                           маржа ~{margin}%

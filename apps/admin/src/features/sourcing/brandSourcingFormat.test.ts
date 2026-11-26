@@ -7,6 +7,7 @@ import {
   cheapestSlugs,
   countByStatus,
   describeRoute,
+  formatUnitAmount,
   inventoryRoutedCount,
   isCurrentSupplierRoute,
   marginPercent,
@@ -240,4 +241,11 @@ it("counts rows per status for the summary line", () => {
     { primary: "supplier:manual", rule_present: true },
   ]);
   expect(counts).toEqual({ smart: 2, pinned: 1, default: 0, manual: 1, inventory: 0 });
+});
+
+it("shows sub-dollar unit prices to the stored precision, whole ones to cents", () => {
+  expect(formatUnitAmount("0.015263")).toBe("0,015263");
+  expect(formatUnitAmount("0.0153")).toBe("0,0153");
+  expect(formatUnitAmount("0.5")).toBe("0,50");
+  expect(formatUnitAmount("12.3456")).toBe("12,35");
 });

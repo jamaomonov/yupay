@@ -173,6 +173,19 @@ export function countByStatus(
   return counts;
 }
 
+/** A unit price or cost on this screen. Two decimals hide the whole
+ *  comparison for per-unit SKUs (a Telegram star costs ~$0.0153 at one
+ *  supplier and ~$0.0153 at another), so below $1 show up to six decimals —
+ *  the precision `cost_usdt` is stored at — and never fewer than two. */
+export function formatUnitAmount(amount: string): string {
+  const n = Number(amount);
+  if (!Number.isFinite(n)) return amount;
+  return new Intl.NumberFormat("ru-RU", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: Math.abs(n) < 1 ? 6 : 2,
+  }).format(n);
+}
+
 export function describeRoute(primary: string): string {
   if (primary === "inventory") return "Склад кодов";
   if (primary === "invalid") return "Некорректное правило";

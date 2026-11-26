@@ -5,10 +5,11 @@
  *  SKU), and the switch button's warehouse-bypass warning are all decided
  *  from this cell's own props. */
 
+import { formatUnitAmount } from "./brandSourcingFormat";
+
 import type { SourcingBrandSupplierOut } from "./types";
 
 import { Badge } from "@/components/Badge";
-import { formatMoneyValue } from "@/lib/money";
 
 export function SupplierCell({
   slug,
@@ -65,7 +66,7 @@ export function SupplierCell({
                   on hover instead of two different-looking "дешевле всех"
                   verdicts for what looks like the same number. */}
               <span title={costTitle(cost, supplier.cost_source)}>
-                {formatMoneyValue(cost, "USDT")} USDT
+                {formatUnitAmount(cost)} USDT
               </span>
               {isCheapest && (
                 <Badge tone="bg-[var(--success-soft)] text-[var(--success-fg)]">дешевле всех</Badge>
