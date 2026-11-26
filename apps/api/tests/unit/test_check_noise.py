@@ -30,3 +30,12 @@ def test_an_error_with_no_panel_cause_is_not() -> None:
     assert not is_transient_check_failure(
         FulfillerError("FZR_API_KEY is not configured", money_outcome=MoneyOutcome.UNKNOWN)
     )
+
+
+def test_level_up_packs_fail_quietly() -> None:
+    from yupay.modules.fulfillment.check_noise import is_quiet_failure_sku
+
+    assert is_quiet_failure_sku("freefire_cis-level-up-6")
+    assert is_quiet_failure_sku("freefire_cis-level-up-30")
+    assert not is_quiet_failure_sku("freefire_cis-100-diamonds")
+    assert not is_quiet_failure_sku(None)

@@ -35,7 +35,11 @@ from yupay.core.config import Settings, get_settings
 from yupay.core.errors import AppError, ConflictError, NotFoundError, ValidationError
 from yupay.core.ids import new_id
 from yupay.core.logging import get_logger
-from yupay.modules.fulfillment.check_noise import QUIET_FOR, is_transient_check_failure
+from yupay.modules.fulfillment.check_noise import (
+    QUIET_FOR,
+    is_transient_check_failure,
+    task_sku_is_quiet,
+)
 from yupay.modules.fulfillment.cost_resnapshot import resnapshot_line_cost
 from yupay.modules.fulfillment.models import (
     Delivery,
@@ -572,7 +576,7 @@ async def _record_attempt(
     if status == "error":
         if transient:
             await _alert_if_quiet_too_long(db, task=task, kind=kind, error=error, moment=moment)
-        else:
+        elif not await task_sku_is_quiet(db, task.order_item_id):
             _dispatch_alert(_alert_fulfillment_error(task, kind=kind, error=error))
 
 

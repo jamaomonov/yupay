@@ -22,6 +22,9 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import Final
 
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from yupay.modules.fulfillment.suppliers.panel_client import (
     PanelError,
     PanelUnavailableError,
@@ -47,4 +50,40 @@ def is_transient_check_failure(exc: BaseException) -> bool:
     return False
 
 
-__all__ = ["QUIET_FOR", "is_transient_check_failure"]
+#: SKUs whose supplier refusals are routine, not incidents. Free Fire's Level
+#: Up Packages are refused whenever the account's level is out of the pack's
+#: range: 118 of them in three days on 2026-11-26, every one refunded on its
+#: own, and the chat was all of them (owner's call). Matched as a substring of
+#: ``sku_code``: ``freefire_cis-level-up-6`` … ``-30``.
+QUIET_FAILURE_SKU_MARKERS: Final = ("-level-up-",)
+
+
+def is_quiet_failure_sku(sku_code: str | None) -> bool:
+    """True when a supplier's refusal of this SKU is not announced in the chat."""
+    if not sku_code:
+        return False
+    return any(m in sku_code for m in QUIET_FAILURE_SKU_MARKERS)
+
+
+async def task_sku_is_quiet(db: AsyncSession, order_item_id: str) -> bool:
+    """:func:`is_quiet_failure_sku` for a task's line."""
+    from yupay.modules.catalog.models import Sku
+    from yupay.modules.orders.models import OrderItem
+
+    code = (
+        await db.execute(
+            select(Sku.sku_code)
+            .join(OrderItem, OrderItem.sku_id == Sku.id)
+            .where(OrderItem.id == order_item_id)
+        )
+    ).scalar_one_or_none()
+    return is_quiet_failure_sku(code)
+
+
+__all__ = [
+    "QUIET_FAILURE_SKU_MARKERS",
+    "QUIET_FOR",
+    "is_quiet_failure_sku",
+    "is_transient_check_failure",
+    "task_sku_is_quiet",
+]

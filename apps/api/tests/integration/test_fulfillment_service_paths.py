@@ -31,6 +31,7 @@ from yupay.modules.catalog.models import (
 )
 from yupay.modules.fulfillment import service as ff_svc
 from yupay.modules.fulfillment.models import FulfillmentAttempt, FulfillmentTask
+from yupay.modules.orders.models import OrderItem
 from yupay.modules.payments.gateways.base import PaymentGatewayError
 from yupay.modules.payments.gateways.wallet import WalletGateway
 from yupay.modules.users.models import TelegramLink, User
@@ -571,3 +572,31 @@ async def test_a_real_status_check_error_is_still_announced_at_once(
     )
 
     assert len(_alerts) == 1
+
+
+async def test_a_level_up_pack_refusal_is_not_announced(
+    db_session: AsyncSession,
+    _stub_routed_order: tuple[str, str],
+    _alerts: list[str | None],
+) -> None:
+    """2026-11-26: Free Fire Level Up Packs are refused whenever the account's
+    level is out of range — routine, refunded on their own, and they were most
+    of the chat. Owner's call: no alert for them."""
+    order_id, _ = _stub_routed_order
+    task = await _task_for_order(db_session, order_id)
+    item = await db_session.get(OrderItem, task.order_item_id)
+    assert item is not None
+    sku = await db_session.get(Sku, item.sku_id)
+    assert sku is not None
+    sku.sku_code = "freefire_cis-level-up-6"
+    await db_session.flush()
+
+    await ff_svc._record_attempt(
+        db_session,
+        task=task,
+        kind="status_check",
+        status="error",
+        error="fzr refunded the order (refund)",
+    )
+
+    assert _alerts == []
