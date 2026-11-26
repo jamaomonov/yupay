@@ -109,6 +109,70 @@ export function supplierLabel(slug: string): string {
  *  `"supplier:<slug>"` (including the non-supplier `"supplier:manual"`
  *  sentinel), or `"invalid"` for a malformed rule the backend still
  *  reports rather than 500s on. */
+/** Who decides this row's supplier — the one question the route cell must
+ *  answer at a glance (owner, 2026-11-26: «как понять, закреплены или под
+ *  автовыбором»). `default` is the legacy rule-less route: the oldest
+ *  non-reserve mapping, which smart routing does not touch. */
+export type RouteStatus = "smart" | "pinned" | "default" | "manual" | "inventory";
+
+export function routeStatus(
+  item: Pick<SourcingBrandSkuOut, "primary" | "rule_present" | "managed">,
+): RouteStatus {
+  if (item.primary === "supplier:manual") return "manual";
+  if (item.primary === "inventory") return "inventory";
+  if (item.managed === true) return "smart";
+  return item.rule_present ? "pinned" : "default";
+}
+
+export const ROUTE_STATUS: Record<RouteStatus, { label: string; hint: string; tone: string }> = {
+  smart: {
+    label: "Автовыбор",
+    hint: "раз в час система сама выбирает поставщика",
+    tone: "bg-[var(--success-soft)] text-[var(--success-fg)]",
+  },
+  pinned: {
+    label: "Закреплён вручную",
+    hint: "автовыбор не трогает",
+    tone: "bg-[var(--warning-soft)] text-[var(--warning-fg)]",
+  },
+  default: {
+    label: "Без автовыбора",
+    hint: "старый режим: первый привязанный поставщик",
+    tone: "bg-[var(--info-soft)] text-[var(--info-fg)]",
+  },
+  manual: {
+    label: "Ручная выдача",
+    hint: "заказы выдаёт оператор",
+    tone: "bg-[var(--danger-soft)] text-[var(--danger-fg)]",
+  },
+  inventory: {
+    label: "Склад кодов",
+    hint: "сначала склад, потом поставщик",
+    tone: "bg-[var(--bg-accent-soft)] text-[var(--accent-soft-fg)]",
+  },
+};
+
+/** Whether smart routing can take this row: it must route to a real supplier
+ *  today (`bulk_rules.set_managed` refuses the warehouse and the manual queue). */
+export function canHandToSmart(item: Pick<SourcingBrandSkuOut, "primary">): boolean {
+  return item.primary.startsWith("supplier:") && item.primary !== "supplier:manual";
+}
+
+/** Row counts per status, for the summary line above the table. */
+export function countByStatus(
+  items: readonly Pick<SourcingBrandSkuOut, "primary" | "rule_present" | "managed">[],
+): Record<RouteStatus, number> {
+  const counts: Record<RouteStatus, number> = {
+    smart: 0,
+    pinned: 0,
+    default: 0,
+    manual: 0,
+    inventory: 0,
+  };
+  for (const item of items) counts[routeStatus(item)] += 1;
+  return counts;
+}
+
 export function describeRoute(primary: string): string {
   if (primary === "inventory") return "Склад кодов";
   if (primary === "invalid") return "Некорректное правило";

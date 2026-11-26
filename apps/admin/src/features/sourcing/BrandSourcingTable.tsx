@@ -12,16 +12,20 @@ import { useMemo } from "react";
 import {
   bypassesInventory,
   cheapestSlugs,
-  describeRoute,
+  countByStatus,
   forceInventoryDisabledReason,
   isCurrentSupplierRoute,
   marginPercent,
+  ROUTE_STATUS,
+  routeStatus,
   supplierLabel,
 } from "./brandSourcingFormat";
+import { RouteCell } from "./RouteCell";
 import { SupplierCell } from "./SupplierCostCell";
 
 import type { SourcingBrandSkuOut, SourcingMode } from "./types";
 
+import { Badge } from "@/components/Badge";
 import { EmptyState, TableSkeleton } from "@/components/States";
 import { RESERVE_SUPPLIERS } from "@/features/integrations/types";
 import { formatMoneyValue } from "@/lib/money";
@@ -38,6 +42,8 @@ export interface BrandSourcingTableProps {
    *  action uses (`sku_ids: [skuId]`) — "a row switches from its own
    *  control" per the design (§6). */
   onSwitchOne: (skuId: string, mode: SourcingMode, supplierSlug: string | null) => void;
+  /** Hands one row to smart routing (`true`) or pins it where it is (`false`). */
+  onManagedOne: (skuId: string, managed: boolean) => void;
   /** True while the header's bulk mutation is in flight — disables every
    *  row's controls, since a bulk write can touch any of them. */
   pending: boolean;
@@ -64,6 +70,7 @@ export function BrandSourcingTable({
   onToggle,
   onToggleAll,
   onSwitchOne,
+  onManagedOne,
   pending,
   pendingSkuIds,
   failures,
@@ -89,178 +96,135 @@ export function BrandSourcingTable({
   }
 
   const allSelected = items.length > 0 && items.every((i) => selected.has(i.sku_id));
+  const counts = countByStatus(items);
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] shadow-[var(--shadow-sm)]">
-      <table className="w-full text-sm">
-        <thead className="bg-[var(--bg-muted)] text-left text-xs text-[var(--text-secondary)]">
-          <tr>
-            <th className="w-10 py-2 pl-3">
-              <input
-                type="checkbox"
-                aria-label="Выбрать все"
-                checked={allSelected}
-                onChange={onToggleAll}
-              />
-            </th>
-            <th className="py-2">SKU</th>
-            <th className="py-2">Маршрут сейчас</th>
-            <th className="py-2">Наша цена</th>
-            {supplierSlugs.map((slug) => (
-              <th key={slug} className="py-2 pr-3">
-                {supplierLabel(slug)}
-                {RESERVE_SUPPLIERS.has(slug) && (
-                  <span className="ml-1 text-[10px] font-normal text-[var(--text-tertiary)]">
-                    резерв
-                  </span>
-                )}
+    <div className="space-y-2">
+      <p className="flex flex-wrap gap-2 text-xs text-[var(--text-secondary)]">
+        {(Object.keys(ROUTE_STATUS) as (keyof typeof ROUTE_STATUS)[])
+          .filter((key) => counts[key] > 0)
+          .map((key) => (
+            <Badge key={key} tone={ROUTE_STATUS[key].tone}>
+              {ROUTE_STATUS[key].label}: {counts[key].toString()}
+            </Badge>
+          ))}
+      </p>
+      <div className="overflow-x-auto rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] shadow-[var(--shadow-sm)]">
+        <table className="w-full text-sm">
+          <thead className="bg-[var(--bg-muted)] text-left text-xs text-[var(--text-secondary)]">
+            <tr>
+              <th className="w-10 py-2 pl-3">
+                <input
+                  type="checkbox"
+                  aria-label="Выбрать все"
+                  checked={allSelected}
+                  onChange={onToggleAll}
+                />
               </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((item) => {
-            const cheapest = cheapestSlugs(item.suppliers);
-            const margin = marginPercent(item.price_usd, item.cost_usdt);
-            const failure = failures.get(item.sku_id);
-            const rowPending = pending || pendingSkuIds.has(item.sku_id);
-            const inventoryDisabledReason = forceInventoryDisabledReason(item.product_kind);
-            return (
-              <tr key={item.sku_id} className="border-t border-[var(--border-default)] align-top">
-                <td className="py-2 pl-3">
-                  <input
-                    type="checkbox"
-                    aria-label={`Выбрать ${item.sku_code}`}
-                    checked={selected.has(item.sku_id)}
-                    onChange={() => {
-                      onToggle(item.sku_id);
-                    }}
-                  />
-                </td>
-                <td className="py-2 pr-3">
-                  <div className="flex flex-col">
-                    <span className="font-medium">{item.product_slug}</span>
-                    <code className="text-xs text-[var(--text-secondary)]">
-                      {item.sku_code}
-                      {item.denomination && ` · ${item.denomination}`}
-                    </code>
-                  </div>
-                </td>
-                <td className="py-2 pr-3">
-                  <div className="flex flex-col gap-1">
-                    <span>{describeRoute(item.primary)}</span>
-                    <span className="text-[10px] text-[var(--text-tertiary)]">
-                      {item.managed
-                        ? "автовыбор поставщика"
-                        : item.rule_present
-                          ? "явное правило"
-                          : "авто"}
+              <th className="py-2">SKU</th>
+              <th className="py-2">Маршрут сейчас</th>
+              <th className="py-2">Наша цена</th>
+              {supplierSlugs.map((slug) => (
+                <th key={slug} className="py-2 pr-3">
+                  {supplierLabel(slug)}
+                  {RESERVE_SUPPLIERS.has(slug) && (
+                    <span className="ml-1 text-[10px] font-normal text-[var(--text-tertiary)]">
+                      резерв
                     </span>
-                    <div className="flex flex-wrap gap-1">
-                      <QuickModeButton
-                        label="авто"
-                        onClick={() => {
-                          onSwitchOne(item.sku_id, "auto", null);
-                        }}
-                        disabled={rowPending}
-                      />
-                      {inventoryDisabledReason ? (
-                        // Not offerable — the gap is visible text, not just
-                        // an absent control, same treatment `SupplierCell`
-                        // gives a supplier with no active mapping
-                        // ("нет маппинга"). The backend rejects this mode
-                        // for a top_up SKU outright; this only keeps the
-                        // operator from round-tripping a 422 to find out.
-                        <span
-                          className="text-[11px] text-[var(--text-tertiary)]"
-                          title="Топ-ап нельзя выдать со склада кодов — там нет кодов, которые можно списать за пополнение"
-                        >
-                          склад: {inventoryDisabledReason}
-                        </span>
-                      ) : (
-                        <QuickModeButton
-                          label="склад"
-                          onClick={() => {
-                            onSwitchOne(item.sku_id, "force_inventory", null);
-                          }}
-                          disabled={rowPending}
-                        />
-                      )}
-                      <QuickModeButton
-                        label="вручную"
-                        onClick={() => {
-                          onSwitchOne(item.sku_id, "manual", null);
-                        }}
-                        disabled={rowPending}
-                      />
-                    </div>
-                    {failure && <p className="text-[11px] text-[var(--danger)]">{failure}</p>}
-                  </div>
-                </td>
-                <td className="py-2 pr-3">
-                  <div className="flex flex-col">
-                    <span>{formatMoneyValue(item.price_usd, "USD")} $</span>
-                    {margin !== null && (
-                      <span className="text-[10px] text-[var(--text-tertiary)]">
-                        маржа ~{margin}%
-                      </span>
-                    )}
-                    {staleCostSkuIds.has(item.sku_id) && (
-                      <span
-                        className="text-[10px] font-medium text-[var(--warning-fg)]"
-                        title="Маршрут переключён, но cost_usdt пересчитывает почасовое обновление цен — значение выше ещё от прежнего поставщика."
-                      >
-                        цена не обновилась — обновится в течение часа
-                      </span>
-                    )}
-                  </div>
-                </td>
-                {supplierSlugs.map((slug) => {
-                  const supplier = item.suppliers.find((s) => s.supplier_slug === slug);
-                  return (
-                    <SupplierCell
-                      key={slug}
-                      slug={slug}
-                      supplier={supplier}
-                      isCurrentRoute={isCurrentSupplierRoute(item, slug)}
-                      isFallbackRoute={
-                        item.primary === "inventory" && item.fallback === `supplier:${slug}`
-                      }
-                      wouldBypassInventory={bypassesInventory(item)}
-                      isCheapest={cheapest.has(slug)}
-                      pending={rowPending}
-                      onSwitch={() => {
-                        onSwitchOne(item.sku_id, "force_supplier", slug);
+                  )}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((item) => {
+              const cheapest = cheapestSlugs(item.suppliers);
+              const margin = marginPercent(item.price_usd, item.cost_usdt);
+              const failure = failures.get(item.sku_id);
+              const rowPending = pending || pendingSkuIds.has(item.sku_id);
+              const inventoryDisabledReason = forceInventoryDisabledReason(item.product_kind);
+              const status = routeStatus(item);
+              return (
+                <tr key={item.sku_id} className="border-t border-[var(--border-default)] align-top">
+                  <td className="py-2 pl-3">
+                    <input
+                      type="checkbox"
+                      aria-label={`Выбрать ${item.sku_code}`}
+                      checked={selected.has(item.sku_id)}
+                      onChange={() => {
+                        onToggle(item.sku_id);
                       }}
                     />
-                  );
-                })}
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+                  </td>
+                  <td className="py-2 pr-3">
+                    <div className="flex flex-col">
+                      <span className="font-medium">{item.product_slug}</span>
+                      <code className="text-xs text-[var(--text-secondary)]">
+                        {item.sku_code}
+                        {item.denomination && ` · ${item.denomination}`}
+                      </code>
+                    </div>
+                  </td>
+                  <RouteCell
+                    item={item}
+                    status={status}
+                    failure={failure}
+                    inventoryDisabledReason={inventoryDisabledReason}
+                    disabled={rowPending}
+                    onSwitchOne={onSwitchOne}
+                    onManagedOne={onManagedOne}
+                  />
+                  <td className="py-2 pr-3">
+                    <div className="flex flex-col">
+                      <span>{formatMoneyValue(item.price_usd, "USD")} $</span>
+                      {margin !== null && (
+                        <span className="text-[10px] text-[var(--text-tertiary)]">
+                          маржа ~{margin}%
+                        </span>
+                      )}
+                      {staleCostSkuIds.has(item.sku_id) && (
+                        <span
+                          className="text-[10px] font-medium text-[var(--warning-fg)]"
+                          title="Маршрут переключён, но cost_usdt пересчитывает почасовое обновление цен — значение выше ещё от прежнего поставщика."
+                        >
+                          цена не обновилась — обновится в течение часа
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                  {supplierSlugs.map((slug) => {
+                    const supplier = item.suppliers.find((s) => s.supplier_slug === slug);
+                    return (
+                      <SupplierCell
+                        key={slug}
+                        slug={slug}
+                        supplier={supplier}
+                        isCurrentRoute={isCurrentSupplierRoute(item, slug)}
+                        currentNote={
+                          status === "smart"
+                            ? "выбран автовыбором"
+                            : status === "pinned"
+                              ? "закреплён вручную"
+                              : null
+                        }
+                        isFallbackRoute={
+                          item.primary === "inventory" && item.fallback === `supplier:${slug}`
+                        }
+                        wouldBypassInventory={bypassesInventory(item)}
+                        isCheapest={cheapest.has(slug)}
+                        pending={rowPending}
+                        onSwitch={() => {
+                          onSwitchOne(item.sku_id, "force_supplier", slug);
+                        }}
+                      />
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
-  );
-}
-
-function QuickModeButton({
-  label,
-  onClick,
-  disabled,
-}: {
-  label: string;
-  onClick: () => void;
-  disabled: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className="rounded border border-[var(--border-default)] px-1.5 py-0.5 text-[11px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-muted)] disabled:cursor-not-allowed disabled:opacity-50"
-    >
-      {label}
-    </button>
   );
 }

@@ -15,6 +15,7 @@ export function SupplierCell({
   supplier,
   isCurrentRoute,
   isFallbackRoute,
+  currentNote = null,
   wouldBypassInventory,
   isCheapest,
   pending,
@@ -28,6 +29,8 @@ export function SupplierCell({
    *  row's primary route — so "текущий" alone would read as "we buy from
    *  here first", which is backwards for a voucher SKU. */
   isFallbackRoute: boolean;
+  /** Who put this supplier there — «выбран автовыбором» / «закреплён вручную». */
+  currentNote?: string | null;
   /** True when clicking this cell's own switch button would take the code
    *  warehouse out of routing for this SKU entirely (Important #1) — i.e.
    *  the row's automatic route goes through inventory first today. */
@@ -149,7 +152,11 @@ export function SupplierCell({
         )}
         {isCurrentRoute ? (
           <span className="text-[10px] text-[var(--accent)]">
-            {isFallbackRoute ? "текущий (запасной, после склада)" : "текущий"}
+            {isFallbackRoute
+              ? "текущий (запасной, после склада)"
+              : currentNote
+                ? `текущий · ${currentNote}`
+                : "текущий"}
           </span>
         ) : (
           <button

@@ -8,9 +8,10 @@ import { BrandSourcingPage } from "./BrandSourcingPage";
 
 import type { SourcingBrandOverviewOut, SourcingBulkRuleOut } from "./types";
 
-import { ApiError, apiGet, apiPut } from "@/lib/api";
+import { api, ApiError, apiGet, apiPut } from "@/lib/api";
 
 vi.mock("@/lib/api", () => ({
+  api: vi.fn(),
   apiGet: vi.fn(),
   apiPut: vi.fn(),
   ApiError: class ApiError extends Error {
@@ -31,6 +32,7 @@ vi.mock("@/components/Toast", () => ({
 
 const mockedApiGet = vi.mocked(apiGet);
 const mockedApiPut = vi.mocked(apiPut);
+const mockedApi = vi.mocked(api);
 
 const BRANDS = [
   {
@@ -257,6 +259,7 @@ const MIXED_OVERVIEW: SourcingBrandOverviewOut = {
 beforeEach(() => {
   mockedApiGet.mockReset();
   mockedApiPut.mockReset();
+  mockedApi.mockReset();
   mockedApiGet.mockImplementation((path: string) => {
     if (path.includes("/catalog/brands")) return Promise.resolve(BRANDS);
     if (path.includes("/admin/sourcing/brands/")) return Promise.resolve(OVERVIEW);
@@ -515,16 +518,16 @@ it("disables only the row whose own switch is in flight, not every row", async (
   const row2 = screen.getByText(/MLBB-500/).closest("tr");
   if (!row1 || !row2) throw new Error("row not found");
 
-  fireEvent.click(within(row1).getByRole("button", { name: "авто" }));
+  fireEvent.click(within(row1).getByRole("button", { name: "склад" }));
 
   // Row 1's own quick controls are disabled while its write is in flight...
-  expect(within(row1).getByRole("button", { name: "авто" })).toBeDisabled();
+  expect(within(row1).getByRole("button", { name: "склад" })).toBeDisabled();
   // ...but row 2 has nothing in flight and stays usable.
-  expect(within(row2).getByRole("button", { name: "авто" })).not.toBeDisabled();
+  expect(within(row2).getByRole("button", { name: "склад" })).not.toBeDisabled();
 
   deferred.resolve?.({ items: [{ sku_id: "sku-1", ok: true, error: null }] });
   await waitFor(() => {
-    expect(within(row1).getByRole("button", { name: "авто" })).not.toBeDisabled();
+    expect(within(row1).getByRole("button", { name: "склад" })).not.toBeDisabled();
   });
 });
 
@@ -621,7 +624,7 @@ it("marks a row's cost as stale right after a successful switch — the write do
 
   expect(within(row1).queryByText(/не обновилась/)).not.toBeInTheDocument();
 
-  fireEvent.click(within(row1).getByRole("button", { name: "авто" }));
+  fireEvent.click(within(row1).getByRole("button", { name: "склад" }));
 
   await waitFor(() => {
     expect(within(row1).getByText(/не обновилась/)).toBeInTheDocument();
@@ -762,4 +765,32 @@ it("resolves a force_inventory switch locally, with no network call, when every 
     ).toBeInTheDocument();
   });
   expect(mockedApiPut).not.toHaveBeenCalled();
+});
+
+it("says who decides each row's supplier and hands a pinned row to smart routing", async () => {
+  mockedApi.mockResolvedValue({
+    items: [{ sku_id: "sku-2", ok: true, error: null }],
+  } satisfies SourcingBulkRuleOut);
+
+  renderPage();
+  await screen.findByText(/MLBB-100/);
+  const row1 = screen.getByText(/MLBB-100/).closest("tr");
+  const row2 = screen.getByText(/MLBB-500/).closest("tr");
+  if (!row1 || !row2) throw new Error("row not found");
+
+  // No rule: the legacy default route, outside smart routing.
+  expect(within(row1).getByText("Без автовыбора")).toBeInTheDocument();
+  // An explicit rule without the flag: pinned, and the current supplier says so.
+  expect(within(row2).getByText("Закреплён вручную")).toBeInTheDocument();
+  expect(within(row2).getByText("текущий · закреплён вручную")).toBeInTheDocument();
+
+  fireEvent.click(within(row2).getByRole("button", { name: "отдать автовыбору" }));
+
+  await waitFor(() => {
+    expect(mockedApi).toHaveBeenCalledTimes(1);
+  });
+  const [path, init] = mockedApi.mock.calls[0] ?? [];
+  expect(path).toBe("/api/v1/admin/sourcing/rules:managed");
+  // Narrowing a known shape: the page always sends a JSON string body.
+  expect(JSON.parse(init?.body as string)).toEqual({ sku_ids: ["sku-2"], managed: true });
 });

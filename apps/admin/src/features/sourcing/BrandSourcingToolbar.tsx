@@ -109,10 +109,10 @@ export function BrandSourcingToolbar({
               }}
               containerClassName="w-48"
             >
-              <option value="force_supplier">Только поставщик</option>
+              <option value="force_supplier">Закрепить за поставщиком</option>
               <option value="force_inventory">Только склад</option>
-              <option value="manual">Вручную</option>
-              <option value="auto">Авто</option>
+              <option value="manual">Ручная выдача оператором</option>
+              <option value="auto">Без автовыбора (старый режим)</option>
             </Select>
           </div>
           {bulkMode === "force_supplier" && (

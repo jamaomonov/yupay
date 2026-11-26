@@ -91,17 +91,41 @@ export function BrandSourcingPage() {
   }, [items]);
 
   // Hand the ticked SKUs to smart routing, or pin them where they are (ADR-0108).
-  const managedMutation = useMutation<SourcingBulkRuleOut, unknown, { managed: boolean }>({
-    mutationFn: ({ managed }) =>
+  const managedMutation = useMutation<
+    SourcingBulkRuleOut,
+    unknown,
+    { skuIds: string[]; managed: boolean }
+  >({
+    mutationFn: ({ skuIds, managed }) =>
       api<SourcingBulkRuleOut>("/api/v1/admin/sourcing/rules:managed", {
         method: "PUT",
         headers: { "Idempotency-Key": crypto.randomUUID() },
-        body: JSON.stringify({ sku_ids: [...selected], managed }),
+        body: JSON.stringify({ sku_ids: skuIds, managed }),
       }),
-    onSuccess: (data) => {
+    onSuccess: (data, { managed }) => {
       const failed = data.items.filter((i) => !i.ok);
-      setFailures(new Map(failed.map((f) => [f.sku_id, f.error ?? "неизвестная ошибка"])));
+      const okCount = data.items.length - failed.length;
+      setFailures((prev) => {
+        const next = new Map(prev);
+        for (const item of data.items) {
+          if (item.ok) next.delete(item.sku_id);
+          else next.set(item.sku_id, item.error ?? "неизвестная ошибка");
+        }
+        return next;
+      });
+      if (okCount > 0) {
+        toast.success(
+          managed
+            ? `Отдано автовыбору: ${okCount.toString()}`
+            : `Закреплено: ${okCount.toString()}`,
+        );
+      }
+      if (failed.length > 0) toast.error(`Не получилось: ${failed.length.toString()}`);
       void qc.invalidateQueries({ queryKey: qk.sourcingBrandOverview(brandSlug ?? "") });
+      void qc.invalidateQueries({ queryKey: qk.sourcingRules() });
+    },
+    onError: () => {
+      toast.error("Не удалось изменить автовыбор.");
     },
   });
 
@@ -313,27 +337,25 @@ export function BrandSourcingPage() {
 
       {selected.size > 0 && (
         <div className="flex flex-wrap items-center gap-3 rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] px-4 py-3 text-sm">
-          <span className="text-[var(--text-secondary)]">
-            Автовыбор поставщика для выбранных ({selected.size}):
-          </span>
+          <span className="text-[var(--text-secondary)]">Выбрано {selected.size}:</span>
           <Button
             size="sm"
             disabled={managedMutation.isPending}
             onClick={() => {
-              managedMutation.mutate({ managed: true });
+              managedMutation.mutate({ skuIds: [...selected], managed: true });
             }}
           >
-            Включить
+            Отдать автовыбору
           </Button>
           <Button
             size="sm"
             variant="secondary"
             disabled={managedMutation.isPending}
             onClick={() => {
-              managedMutation.mutate({ managed: false });
+              managedMutation.mutate({ skuIds: [...selected], managed: false });
             }}
           >
-            Закрепить текущего
+            Закрепить текущего поставщика
           </Button>
         </div>
       )}
@@ -362,7 +384,10 @@ export function BrandSourcingPage() {
             onToggle={toggle}
             onToggleAll={toggleAll}
             onSwitchOne={switchOne}
-            pending={switchMutation.isPending}
+            onManagedOne={(skuId, managed) => {
+              managedMutation.mutate({ skuIds: [skuId], managed });
+            }}
+            pending={switchMutation.isPending || managedMutation.isPending}
             pendingSkuIds={rowPending}
             failures={failures}
             staleCostSkuIds={staleCostSkuIds}

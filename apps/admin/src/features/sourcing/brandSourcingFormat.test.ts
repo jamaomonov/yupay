@@ -3,12 +3,15 @@ import { expect, it } from "vitest";
 import {
   bulkConfirmMessage,
   bypassesInventory,
+  canHandToSmart,
   cheapestSlugs,
+  countByStatus,
   describeRoute,
   inventoryRoutedCount,
   isCurrentSupplierRoute,
   marginPercent,
   partitionForceInventorySelection,
+  routeStatus,
   supplierLabel,
 } from "./brandSourcingFormat";
 
@@ -208,4 +211,33 @@ it("appends the warehouse-bypass consequence only for force_supplier with an aff
   expect(bulkConfirmMessage(3, "force_inventory", "g2b", 2)).toBe(
     "Переключить 3 SKU на режим «Только склад»?",
   );
+});
+
+it("names who decides a row's supplier: smart routing, a pin, the legacy default, or neither", () => {
+  expect(routeStatus({ primary: "supplier:fzr", rule_present: true, managed: true })).toBe("smart");
+  expect(routeStatus({ primary: "supplier:fzr", rule_present: true, managed: false })).toBe(
+    "pinned",
+  );
+  expect(routeStatus({ primary: "supplier:g2b", rule_present: false })).toBe("default");
+  // Manual queue and warehouse win over the flag: no supplier is being chosen there.
+  expect(routeStatus({ primary: "supplier:manual", rule_present: true, managed: true })).toBe(
+    "manual",
+  );
+  expect(routeStatus({ primary: "inventory", rule_present: false })).toBe("inventory");
+});
+
+it("offers smart routing only for rows that route to a real supplier today", () => {
+  expect(canHandToSmart({ primary: "supplier:g2b" })).toBe(true);
+  expect(canHandToSmart({ primary: "supplier:manual" })).toBe(false);
+  expect(canHandToSmart({ primary: "inventory" })).toBe(false);
+});
+
+it("counts rows per status for the summary line", () => {
+  const counts = countByStatus([
+    { primary: "supplier:fzr", rule_present: true, managed: true },
+    { primary: "supplier:g2b", rule_present: true, managed: true },
+    { primary: "supplier:g2b", rule_present: true, managed: false },
+    { primary: "supplier:manual", rule_present: true },
+  ]);
+  expect(counts).toEqual({ smart: 2, pinned: 1, default: 0, manual: 1, inventory: 0 });
 });
